@@ -20,6 +20,18 @@ struct ZiggyExampleApp: App {
                     Text(plugin.id)
                         .font(.footnote)
                 }
+                Button("HELLO PRINT") {
+                    print("🚀 hehheheheheheheehhehhheh 🚀")
+                }
+
+                Button("Throw Error") {
+                    // no runtime
+                    let error = NSError(
+                        domain: "com.example.error", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "This is a test error."])
+                    // nromally cause a iOS swift crash, but ziggy should catch it and print it in the console instead
+                    fatalError("This is a test error.")
+                }
 
                 if let error = runtime.lastError {
                     Text("Runtime error: \(error)")

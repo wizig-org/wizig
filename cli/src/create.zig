@@ -305,6 +305,7 @@ pub fn createAndroid(
     destination_dir_raw: []const u8,
 ) !void {
     const app_name = try sanitizeProjectName(arena, app_name_raw);
+    const app_type_name = try toSwiftTypeName(arena, app_name);
     const destination_dir = destination_dir_raw;
 
     std.Io.Dir.cwd().createDirPath(io, destination_dir) catch |err| {
@@ -381,6 +382,7 @@ pub fn createAndroid(
     const root_build_contents =
         "plugins {\n" ++
         "    alias(libs.plugins.android.application) apply false\n" ++
+        "    alias(libs.plugins.kotlin.compose) apply false\n" ++
         "}\n";
     try writeFileAtomically(io, root_build_path, root_build_contents);
 
@@ -398,25 +400,33 @@ pub fn createAndroid(
         "[versions]\n" ++
         "agp = \"9.0.0\"\n" ++
         "kotlin = \"2.2.21\"\n" ++
-        "androidx-core-ktx = \"1.13.1\"\n" ++
-        "androidx-appcompat = \"1.7.0\"\n" ++
-        "material = \"1.12.0\"\n" ++
-        "androidx-activity-ktx = \"1.9.0\"\n" ++
+        "androidx-core-ktx = \"1.15.0\"\n" ++
+        "androidx-lifecycle-runtime-ktx = \"2.8.7\"\n" ++
+        "androidx-activity-compose = \"1.9.3\"\n" ++
+        "androidx-compose-bom = \"2024.10.01\"\n" ++
         "junit = \"4.13.2\"\n" ++
         "androidx-junit = \"1.2.1\"\n" ++
         "espresso-core = \"3.6.1\"\n" ++
         "\n" ++
         "[libraries]\n" ++
         "androidx-core-ktx = { module = \"androidx.core:core-ktx\", version.ref = \"androidx-core-ktx\" }\n" ++
-        "androidx-appcompat = { module = \"androidx.appcompat:appcompat\", version.ref = \"androidx-appcompat\" }\n" ++
-        "material = { module = \"com.google.android.material:material\", version.ref = \"material\" }\n" ++
-        "androidx-activity-ktx = { module = \"androidx.activity:activity-ktx\", version.ref = \"androidx-activity-ktx\" }\n" ++
+        "androidx-lifecycle-runtime-ktx = { module = \"androidx.lifecycle:lifecycle-runtime-ktx\", version.ref = \"androidx-lifecycle-runtime-ktx\" }\n" ++
+        "androidx-activity-compose = { module = \"androidx.activity:activity-compose\", version.ref = \"androidx-activity-compose\" }\n" ++
+        "androidx-compose-bom = { module = \"androidx.compose:compose-bom\", version.ref = \"androidx-compose-bom\" }\n" ++
+        "androidx-ui = { module = \"androidx.compose.ui:ui\" }\n" ++
+        "androidx-ui-graphics = { module = \"androidx.compose.ui:ui-graphics\" }\n" ++
+        "androidx-ui-tooling = { module = \"androidx.compose.ui:ui-tooling\" }\n" ++
+        "androidx-ui-tooling-preview = { module = \"androidx.compose.ui:ui-tooling-preview\" }\n" ++
+        "androidx-ui-test-manifest = { module = \"androidx.compose.ui:ui-test-manifest\" }\n" ++
+        "androidx-ui-test-junit4 = { module = \"androidx.compose.ui:ui-test-junit4\" }\n" ++
+        "androidx-material3 = { module = \"androidx.compose.material3:material3\" }\n" ++
         "junit = { module = \"junit:junit\", version.ref = \"junit\" }\n" ++
         "androidx-junit = { module = \"androidx.test.ext:junit\", version.ref = \"androidx-junit\" }\n" ++
         "espresso-core = { module = \"androidx.test.espresso:espresso-core\", version.ref = \"espresso-core\" }\n" ++
         "\n" ++
         "[plugins]\n" ++
-        "android-application = { id = \"com.android.application\", version.ref = \"agp\" }\n";
+        "android-application = { id = \"com.android.application\", version.ref = \"agp\" }\n" ++
+        "kotlin-compose = { id = \"org.jetbrains.kotlin.plugin.compose\", version.ref = \"kotlin\" }\n";
     try writeFileAtomically(io, version_catalog_path, version_catalog_contents);
 
     const app_build_path = try joinPath(arena, destination_dir, "app/build.gradle.kts");
@@ -424,6 +434,7 @@ pub fn createAndroid(
         arena,
         "plugins {{\n" ++
             "    alias(libs.plugins.android.application)\n" ++
+            "    alias(libs.plugins.kotlin.compose)\n" ++
             "}}\n" ++
             "\n" ++
             "android {{\n" ++
@@ -453,17 +464,36 @@ pub fn createAndroid(
             "        sourceCompatibility = JavaVersion.VERSION_21\n" ++
             "        targetCompatibility = JavaVersion.VERSION_21\n" ++
             "    }}\n" ++
+            "\n" ++
+            "    buildFeatures {{\n" ++
+            "        compose = true\n" ++
+            "    }}\n" ++
+            "\n" ++
+            "    packaging {{\n" ++
+            "        resources {{\n" ++
+            "            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n" ++
+            "        }}\n" ++
+            "    }}\n" ++
             "}}\n" ++
             "\n" ++
             "dependencies {{\n" ++
             "    implementation(libs.androidx.core.ktx)\n" ++
-            "    implementation(libs.androidx.appcompat)\n" ++
-            "    implementation(libs.material)\n" ++
-            "    implementation(libs.androidx.activity.ktx)\n" ++
+            "    implementation(libs.androidx.lifecycle.runtime.ktx)\n" ++
+            "    implementation(libs.androidx.activity.compose)\n" ++
+            "    implementation(platform(libs.androidx.compose.bom))\n" ++
+            "    implementation(libs.androidx.ui)\n" ++
+            "    implementation(libs.androidx.ui.graphics)\n" ++
+            "    implementation(libs.androidx.ui.tooling.preview)\n" ++
+            "    implementation(libs.androidx.material3)\n" ++
             "\n" ++
             "    testImplementation(libs.junit)\n" ++
             "    androidTestImplementation(libs.androidx.junit)\n" ++
             "    androidTestImplementation(libs.espresso.core)\n" ++
+            "    androidTestImplementation(platform(libs.androidx.compose.bom))\n" ++
+            "    androidTestImplementation(libs.androidx.ui.test.junit4)\n" ++
+            "\n" ++
+            "    debugImplementation(libs.androidx.ui.tooling)\n" ++
+            "    debugImplementation(libs.androidx.ui.test.manifest)\n" ++
             "}}\n",
         .{ package_name, package_name },
     );
@@ -488,7 +518,7 @@ pub fn createAndroid(
             "        android:allowBackup=\"true\"\n" ++
             "        android:label=\"@string/app_name\"\n" ++
             "        android:supportsRtl=\"true\"\n" ++
-            "        android:theme=\"@style/Theme.Ziggy\">\n" ++
+            "        android:theme=\"@style/Theme.{s}\">\n" ++
             "        <activity\n" ++
             "            android:name=\".MainActivity\"\n" ++
             "            android:exported=\"true\">\n" ++
@@ -500,7 +530,7 @@ pub fn createAndroid(
             "    </application>\n" ++
             "\n" ++
             "</manifest>\n",
-        .{},
+        .{app_type_name},
     );
     try writeFileAtomically(io, manifest_path, manifest_contents);
 
@@ -523,22 +553,192 @@ pub fn createAndroid(
         "package {s}\n" ++
             "\n" ++
             "import android.os.Bundle\n" ++
-            "import android.widget.TextView\n" ++
-            "import androidx.appcompat.app.AppCompatActivity\n" ++
+            "import android.util.Log\n" ++
+            "import androidx.activity.ComponentActivity\n" ++
+            "import androidx.activity.compose.setContent\n" ++
+            "import androidx.activity.enableEdgeToEdge\n" ++
+            "import androidx.compose.foundation.layout.Arrangement\n" ++
+            "import androidx.compose.foundation.layout.Column\n" ++
+            "import androidx.compose.foundation.layout.fillMaxSize\n" ++
+            "import androidx.compose.foundation.layout.padding\n" ++
+            "import androidx.compose.material3.Button\n" ++
+            "import androidx.compose.material3.MaterialTheme\n" ++
+            "import androidx.compose.material3.Scaffold\n" ++
+            "import androidx.compose.material3.Text\n" ++
+            "import androidx.compose.runtime.Composable\n" ++
+            "import androidx.compose.runtime.getValue\n" ++
+            "import androidx.compose.runtime.mutableStateOf\n" ++
+            "import androidx.compose.runtime.remember\n" ++
+            "import androidx.compose.runtime.setValue\n" ++
+            "import androidx.compose.ui.Modifier\n" ++
+            "import androidx.compose.ui.tooling.preview.Preview\n" ++
+            "import androidx.compose.ui.unit.dp\n" ++
+            "import {s}.ui.theme.{s}Theme\n" ++
             "\n" ++
-            "class MainActivity : AppCompatActivity() {{\n" ++
+            "class MainActivity : ComponentActivity() {{\n" ++
             "    override fun onCreate(savedInstanceState: Bundle?) {{\n" ++
             "        super.onCreate(savedInstanceState)\n" ++
-            "        val label = TextView(this)\n" ++
-            "        label.text = \"Hello from {s}\"\n" ++
-            "        val padding = (24 * resources.displayMetrics.density).toInt()\n" ++
-            "        label.setPadding(padding, padding, padding, padding)\n" ++
-            "        setContentView(label)\n" ++
+            "        enableEdgeToEdge()\n" ++
+            "        setContent {{\n" ++
+            "            {s}Theme {{\n" ++
+            "                Scaffold(modifier = Modifier.fillMaxSize()) {{ innerPadding ->\n" ++
+            "                    Greeting(\n" ++
+            "                        appName = \"{s}\",\n" ++
+            "                        modifier = Modifier.padding(innerPadding),\n" ++
+            "                    )\n" ++
+            "                }}\n" ++
+            "            }}\n" ++
+            "        }}\n" ++
+            "    }}\n" ++
+            "}}\n" ++
+            "\n" ++
+            "@Composable\n" ++
+            "private fun Greeting(appName: String, modifier: Modifier = Modifier) {{\n" ++
+            "    var clickCount by remember {{ mutableStateOf(0) }}\n" ++
+            "    Column(\n" ++
+            "        modifier = modifier\n" ++
+            "            .fillMaxSize()\n" ++
+            "            .padding(24.dp),\n" ++
+            "        verticalArrangement = Arrangement.spacedBy(12.dp),\n" ++
+            "    ) {{\n" ++
+            "        Text(\n" ++
+            "            text = \"Hello from $appName\",\n" ++
+            "            style = MaterialTheme.typography.headlineSmall,\n" ++
+            "        )\n" ++
+            "        Text(\n" ++
+            "            text = \"Button clicks: $clickCount\",\n" ++
+            "            style = MaterialTheme.typography.bodyMedium,\n" ++
+            "        )\n" ++
+            "        Button(\n" ++
+            "            onClick = {{\n" ++
+            "                clickCount += 1\n" ++
+            "                Log.i(\"{s}\", \"Compose button clicked: $clickCount\")\n" ++
+            "                println(\"Compose button clicked: $clickCount\")\n" ++
+            "            }},\n" ++
+            "        ) {{\n" ++
+            "            Text(\"Click me\")\n" ++
+            "        }}\n" ++
+            "    }}\n" ++
+            "}}\n" ++
+            "\n" ++
+            "@Preview(showBackground = true)\n" ++
+            "@Composable\n" ++
+            "private fun GreetingPreview() {{\n" ++
+            "    {s}Theme {{\n" ++
+            "        Greeting(appName = \"{s}\")\n" ++
             "    }}\n" ++
             "}}\n",
-        .{ package_name, app_name },
+        .{
+            package_name,
+            package_name,
+            app_type_name,
+            app_type_name,
+            app_name,
+            app_name,
+            app_type_name,
+            app_name,
+        },
     );
     try writeFileAtomically(io, main_activity_path, main_activity_contents);
+
+    const theme_dir = try std.fmt.allocPrint(
+        arena,
+        "{s}{s}app{s}src{s}main{s}java{s}{s}{s}ui{s}theme",
+        .{
+            destination_dir,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            package_path,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+        },
+    );
+
+    const color_path = try std.fmt.allocPrint(arena, "{s}{s}Color.kt", .{ theme_dir, std.fs.path.sep_str });
+    const color_contents = try std.fmt.allocPrint(
+        arena,
+        "package {s}.ui.theme\n" ++
+            "\n" ++
+            "import androidx.compose.ui.graphics.Color\n" ++
+            "\n" ++
+            "val Purple80 = Color(0xFFD0BCFF)\n" ++
+            "val PurpleGrey80 = Color(0xFFCCC2DC)\n" ++
+            "val Pink80 = Color(0xFFEFB8C8)\n" ++
+            "\n" ++
+            "val Purple40 = Color(0xFF6650A4)\n" ++
+            "val PurpleGrey40 = Color(0xFF625B71)\n" ++
+            "val Pink40 = Color(0xFF7D5260)\n",
+        .{package_name},
+    );
+    try writeFileAtomically(io, color_path, color_contents);
+
+    const type_path = try std.fmt.allocPrint(arena, "{s}{s}Type.kt", .{ theme_dir, std.fs.path.sep_str });
+    const type_contents = try std.fmt.allocPrint(
+        arena,
+        "package {s}.ui.theme\n" ++
+            "\n" ++
+            "import androidx.compose.material3.Typography\n" ++
+            "\n" ++
+            "val Typography = Typography()\n",
+        .{package_name},
+    );
+    try writeFileAtomically(io, type_path, type_contents);
+
+    const theme_path = try std.fmt.allocPrint(arena, "{s}{s}Theme.kt", .{ theme_dir, std.fs.path.sep_str });
+    const theme_contents = try std.fmt.allocPrint(
+        arena,
+        "package {s}.ui.theme\n" ++
+            "\n" ++
+            "import android.os.Build\n" ++
+            "import androidx.compose.foundation.isSystemInDarkTheme\n" ++
+            "import androidx.compose.material3.MaterialTheme\n" ++
+            "import androidx.compose.material3.darkColorScheme\n" ++
+            "import androidx.compose.material3.dynamicDarkColorScheme\n" ++
+            "import androidx.compose.material3.dynamicLightColorScheme\n" ++
+            "import androidx.compose.material3.lightColorScheme\n" ++
+            "import androidx.compose.runtime.Composable\n" ++
+            "import androidx.compose.ui.platform.LocalContext\n" ++
+            "\n" ++
+            "private val DarkColorScheme = darkColorScheme(\n" ++
+            "    primary = Purple80,\n" ++
+            "    secondary = PurpleGrey80,\n" ++
+            "    tertiary = Pink80,\n" ++
+            ")\n" ++
+            "\n" ++
+            "private val LightColorScheme = lightColorScheme(\n" ++
+            "    primary = Purple40,\n" ++
+            "    secondary = PurpleGrey40,\n" ++
+            "    tertiary = Pink40,\n" ++
+            ")\n" ++
+            "\n" ++
+            "@Composable\n" ++
+            "fun {s}Theme(\n" ++
+            "    darkTheme: Boolean = isSystemInDarkTheme(),\n" ++
+            "    dynamicColor: Boolean = true,\n" ++
+            "    content: @Composable () -> Unit,\n" ++
+            ") {{\n" ++
+            "    val colorScheme = when {{\n" ++
+            "        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {{\n" ++
+            "            val context = LocalContext.current\n" ++
+            "            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)\n" ++
+            "        }}\n" ++
+            "\n" ++
+            "        darkTheme -> DarkColorScheme\n" ++
+            "        else -> LightColorScheme\n" ++
+            "    }}\n" ++
+            "\n" ++
+            "    MaterialTheme(\n" ++
+            "        colorScheme = colorScheme,\n" ++
+            "        typography = Typography,\n" ++
+            "        content = content,\n" ++
+            "    )\n" ++
+            "}}\n",
+        .{ package_name, app_type_name },
+    );
+    try writeFileAtomically(io, theme_path, theme_contents);
 
     const app_test_path = try std.fmt.allocPrint(
         arena,
@@ -606,12 +806,15 @@ pub fn createAndroid(
             std.fs.path.sep_str,
         },
     );
-    const themes_contents =
+    const themes_contents = try std.fmt.allocPrint(
+        arena,
         "<resources xmlns:tools=\"http://schemas.android.com/tools\">\n" ++
-        "    <style name=\"Theme.Ziggy\" parent=\"Theme.Material3.DayNight.NoActionBar\">\n" ++
-        "        <item name=\"android:statusBarColor\">@android:color/transparent</item>\n" ++
-        "    </style>\n" ++
-        "</resources>\n";
+            "    <style name=\"Theme.{s}\" parent=\"android:Theme.Material.Light.NoActionBar\">\n" ++
+            "        <item name=\"android:statusBarColor\">@android:color/transparent</item>\n" ++
+            "    </style>\n" ++
+            "</resources>\n",
+        .{app_type_name},
+    );
     try writeFileAtomically(io, themes_path, themes_contents);
 
     const proguard_path = try std.fmt.allocPrint(
