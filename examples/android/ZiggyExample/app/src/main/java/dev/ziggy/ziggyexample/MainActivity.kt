@@ -12,18 +12,5 @@ class MainActivity : AppCompatActivity() {
         val padding = (24 * resources.displayMetrics.density).toInt()
         label.setPadding(padding, padding, padding, padding)
         setContentView(label)
-
-        // create a button
-        createButton()
-    }
-
-    fun createButton() {
-        val button = Button(this)
-        button.text = "Click me"
-        button.setOnClickListener {
-            // print
-            print("Button clicked")
-        }
-        setContentView(button)
     }
 }

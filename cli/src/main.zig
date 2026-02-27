@@ -4,6 +4,19 @@ const ziggy_core = @import("ziggy_core");
 const create_cmd = @import("create.zig");
 const run_cmd = @import("run.zig");
 
+const CreateMode = enum {
+    app,
+    ios,
+    android,
+};
+
+const CreateRequest = struct {
+    mode: CreateMode,
+    app_name: []const u8,
+    destination_dir: []const u8,
+    platforms: create_cmd.CreatePlatforms = .{},
+};
+
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const args = try init.minimal.args.toSlice(arena);
@@ -24,33 +37,32 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (std.mem.eql(u8, args[1], "create")) {
-        if (args.len < 4) {
-            try stderr.writeAll("error: create expects <ios|android> <name> [destination_dir]\n");
+        const request = parseCreateRequest(args[2..], stderr) catch {
             try stderr.flush();
             std.process.exit(1);
-        }
+        };
 
-        const platform = args[2];
-        const app_name = args[3];
-        const destination_dir = if (args.len >= 5) args[4] else app_name;
-
-        if (std.mem.eql(u8, platform, "ios")) {
-            create_cmd.createIos(arena, io, init.environ_map, stderr, stdout, app_name, destination_dir) catch {
+        switch (request.mode) {
+            .app => create_cmd.createApp(
+                arena,
+                io,
+                init.environ_map,
+                stderr,
+                stdout,
+                request.app_name,
+                request.destination_dir,
+                request.platforms,
+            ) catch {
                 std.process.exit(1);
-            };
-            return;
-        }
-
-        if (std.mem.eql(u8, platform, "android")) {
-            create_cmd.createAndroid(arena, io, init.environ_map, stderr, stdout, app_name, destination_dir) catch {
+            },
+            .ios => create_cmd.createIos(arena, io, init.environ_map, stderr, stdout, request.app_name, request.destination_dir) catch {
                 std.process.exit(1);
-            };
-            return;
+            },
+            .android => create_cmd.createAndroid(arena, io, init.environ_map, stderr, stdout, request.app_name, request.destination_dir) catch {
+                std.process.exit(1);
+            },
         }
-
-        try stderr.print("error: unknown platform '{s}', expected ios or android\n", .{platform});
-        try stderr.flush();
-        std.process.exit(1);
+        return;
     }
 
     if (std.mem.eql(u8, args[1], "run")) {
@@ -89,6 +101,139 @@ pub fn main(init: std.process.Init) !void {
     try printUsage(stderr);
     try stderr.flush();
     std.process.exit(1);
+}
+
+fn parseCreateRequest(args: []const []const u8, stderr: *Io.Writer) !CreateRequest {
+    if (args.len == 0) {
+        try stderr.writeAll("error: create expects <name> [destination_dir] [--platforms ios,android,macos]\n");
+        return error.InvalidArguments;
+    }
+
+    const first = args[0];
+    if (std.mem.eql(u8, first, "ios") or std.mem.eql(u8, first, "android")) {
+        if (args.len < 2 or args.len > 3) {
+            try stderr.writeAll("error: create expects <ios|android> <name> [destination_dir]\n");
+            return error.InvalidArguments;
+        }
+
+        if (args.len == 3 and isOptionArg(args[2])) {
+            try stderr.print("error: unexpected option '{s}' for legacy platform create\n", .{args[2]});
+            return error.InvalidArguments;
+        }
+
+        return .{
+            .mode = if (std.mem.eql(u8, first, "ios")) .ios else .android,
+            .app_name = args[1],
+            .destination_dir = if (args.len == 3) args[2] else args[1],
+        };
+    }
+
+    var index: usize = 0;
+    if (std.mem.eql(u8, first, "app")) {
+        index = 1;
+    }
+    if (index >= args.len) {
+        try stderr.writeAll("error: create expects <name> [destination_dir] [--platforms ios,android,macos]\n");
+        return error.InvalidArguments;
+    }
+
+    const app_name = args[index];
+    index += 1;
+    var destination_dir = app_name;
+    if (index < args.len and !isOptionArg(args[index])) {
+        destination_dir = args[index];
+        index += 1;
+    }
+
+    var platforms = create_cmd.CreatePlatforms{};
+    while (index < args.len) {
+        const arg = args[index];
+        if (std.mem.eql(u8, arg, "--platforms")) {
+            if (index + 1 >= args.len) {
+                try stderr.writeAll("error: missing value for --platforms\n");
+                return error.InvalidArguments;
+            }
+            platforms = try parseCreatePlatforms(args[index + 1], stderr);
+            index += 2;
+            continue;
+        }
+        if (std.mem.startsWith(u8, arg, "--platforms=")) {
+            platforms = try parseCreatePlatforms(arg["--platforms=".len..], stderr);
+            index += 1;
+            continue;
+        }
+
+        try stderr.print("error: unknown create option '{s}'\n", .{arg});
+        return error.InvalidArguments;
+    }
+
+    if (!hasAnyCreatePlatform(platforms)) {
+        try stderr.writeAll("error: at least one platform must be selected\n");
+        return error.InvalidArguments;
+    }
+
+    return .{
+        .mode = .app,
+        .app_name = app_name,
+        .destination_dir = destination_dir,
+        .platforms = platforms,
+    };
+}
+
+fn parseCreatePlatforms(raw: []const u8, stderr: *Io.Writer) !create_cmd.CreatePlatforms {
+    var platforms = create_cmd.CreatePlatforms{
+        .ios = false,
+        .android = false,
+        .macos = false,
+    };
+
+    var parts = std.mem.splitScalar(u8, raw, ',');
+    while (parts.next()) |part_raw| {
+        const part = std.mem.trim(u8, part_raw, " \t\r\n");
+        if (part.len == 0) continue;
+
+        if (std.mem.eql(u8, part, "ios")) {
+            platforms.ios = true;
+            continue;
+        }
+        if (std.mem.eql(u8, part, "android")) {
+            platforms.android = true;
+            continue;
+        }
+        if (std.mem.eql(u8, part, "macos")) {
+            platforms.macos = true;
+            continue;
+        }
+        if (std.mem.eql(u8, part, "mobile")) {
+            platforms.ios = true;
+            platforms.android = true;
+            continue;
+        }
+        if (std.mem.eql(u8, part, "all")) {
+            platforms.ios = true;
+            platforms.android = true;
+            platforms.macos = true;
+            continue;
+        }
+
+        try stderr.print("error: unsupported platform '{s}' in --platforms\n", .{part});
+        return error.InvalidArguments;
+    }
+
+    if (!hasAnyCreatePlatform(platforms)) {
+        try stderr.writeAll("error: --platforms must include at least one platform\n");
+        return error.InvalidArguments;
+    }
+
+    return platforms;
+}
+
+fn hasAnyCreatePlatform(platforms: create_cmd.CreatePlatforms) bool {
+    return platforms.ios or platforms.android or platforms.macos;
+}
+
+fn isOptionArg(arg: []const u8) bool {
+    return std.mem.startsWith(u8, arg, "--");
 }
 
 fn pluginValidate(
@@ -218,6 +363,8 @@ fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
         "Ziggy CLI\n" ++
             "\n" ++
             "Usage:\n" ++
+            "  ziggy create <name> [destination_dir] [--platforms ios,android,macos]\n" ++
+            "  ziggy create app <name> [destination_dir] [--platforms ios,android,macos]\n" ++
             "  ziggy create ios <name> [destination_dir]\n" ++
             "  ziggy create android <name> [destination_dir]\n" ++
             "  ziggy run ios|android <project_dir> [options]\n" ++
@@ -234,9 +381,49 @@ test "printUsage includes key commands" {
 
     try printUsage(&out_writer.writer);
     const output = out_writer.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, output, "ziggy create <name>") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "ziggy create ios") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "ziggy run ios|android") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "ziggy plugin sync") != null);
+}
+
+test "parseCreateRequest defaults to mobile app scaffold" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    const request = try parseCreateRequest(&.{"MyApp"}, &err_writer.writer);
+    try std.testing.expectEqual(.app, request.mode);
+    try std.testing.expectEqualStrings("MyApp", request.app_name);
+    try std.testing.expectEqualStrings("MyApp", request.destination_dir);
+    try std.testing.expect(request.platforms.ios);
+    try std.testing.expect(request.platforms.android);
+    try std.testing.expect(!request.platforms.macos);
+}
+
+test "parseCreateRequest accepts explicit platforms" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    const request = try parseCreateRequest(
+        &.{ "app", "MyApp", "workspace/MyApp", "--platforms=ios,macos" },
+        &err_writer.writer,
+    );
+    try std.testing.expectEqual(.app, request.mode);
+    try std.testing.expectEqualStrings("MyApp", request.app_name);
+    try std.testing.expectEqualStrings("workspace/MyApp", request.destination_dir);
+    try std.testing.expect(request.platforms.ios);
+    try std.testing.expect(!request.platforms.android);
+    try std.testing.expect(request.platforms.macos);
+}
+
+test "parseCreateRequest keeps legacy platform form" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    const request = try parseCreateRequest(&.{ "android", "Demo", "examples/android/Demo" }, &err_writer.writer);
+    try std.testing.expectEqual(.android, request.mode);
+    try std.testing.expectEqualStrings("Demo", request.app_name);
+    try std.testing.expectEqualStrings("examples/android/Demo", request.destination_dir);
 }
 
 test "pluginValidate accepts known manifest" {

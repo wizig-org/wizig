@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		12AE4F70018D6A93E2EA9EE9 /* ZiggyExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FE180A3AF8E9A4663FB33B /* ZiggyExampleApp.swift */; };
+		786BEBF7C2FDBDDFA96B2B8A /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5F74AB922B316EAC8658A50 /* App.swift */; };
 		7AC998A12BD591F519FAF214 /* Ziggy in Frameworks */ = {isa = PBXBuildFile; productRef = 7B5C3FAFBDBCEEE3F52921D2 /* Ziggy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		5B14014710037FC375F4ACA6 /* ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ios; path = ../../../sdk/ios; sourceTree = SOURCE_ROOT; };
-		84FE180A3AF8E9A4663FB33B /* ZiggyExampleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZiggyExampleApp.swift; sourceTree = "<group>"; };
+		A5F74AB922B316EAC8658A50 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		C0A40F123D284062C1F276E1 /* ZiggyExample.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ZiggyExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -57,7 +57,7 @@
 		D04909E807521CBBAF144D90 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				84FE180A3AF8E9A4663FB33B /* ZiggyExampleApp.swift */,
+				A5F74AB922B316EAC8658A50 /* App.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -109,7 +109,7 @@
 			mainGroup = 646C671F4EB0978D8DB089AA;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				CAAD96BD9A925A093229FEB6 /* XCLocalSwiftPackageReference "../../../sdk/ios" */,
+				4EDA6E7067DA34C9CD326F04 /* XCLocalSwiftPackageReference "/Users/arata/Developer/zig/ziggy/sdk/ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
@@ -125,7 +125,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				12AE4F70018D6A93E2EA9EE9 /* ZiggyExampleApp.swift in Sources */,
+				786BEBF7C2FDBDDFA96B2B8A /* App.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -262,12 +262,12 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ziggy.example.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ziggy.app.ziggyexample;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -286,12 +286,12 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ziggy.example.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ziggy.app.ziggyexample;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -321,9 +321,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		CAAD96BD9A925A093229FEB6 /* XCLocalSwiftPackageReference "../../../sdk/ios" */ = {
+		4EDA6E7067DA34C9CD326F04 /* XCLocalSwiftPackageReference "/Users/arata/Developer/zig/ziggy/sdk/ios" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../../sdk/ios;
+			relativePath = /Users/arata/Developer/zig/ziggy/sdk/ios;
 		};
 /* End XCLocalSwiftPackageReference section */
 

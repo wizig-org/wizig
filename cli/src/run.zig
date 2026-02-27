@@ -481,7 +481,23 @@ fn runAndroid(
     try gradle_env.put("GRADLE_USER_HOME", "/tmp/ziggy-gradle-home");
 
     const gradle_wrapper_path = try joinPath(arena, options.project_dir, "gradlew");
-    const gradle_cmd: []const u8 = if (pathExists(io, gradle_wrapper_path)) "./gradlew" else "gradle";
+    const gradle_wrapper_jar_path = try std.fmt.allocPrint(
+        arena,
+        "{s}{s}gradle{s}wrapper{s}gradle-wrapper.jar",
+        .{
+            options.project_dir,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+        },
+    );
+    const has_wrapper_script = pathExists(io, gradle_wrapper_path);
+    const has_wrapper_jar = pathExists(io, gradle_wrapper_jar_path);
+    if (has_wrapper_script and !has_wrapper_jar) {
+        try stdout.writeAll("warning: gradle wrapper jar is missing; falling back to system gradle\n");
+        try stdout.flush();
+    }
+    const gradle_cmd: []const u8 = if (has_wrapper_script and has_wrapper_jar) "./gradlew" else "gradle";
     const assemble_task = try std.fmt.allocPrint(arena, ":{s}:assembleDebug", .{options.module});
 
     try stdout.writeAll("building Android app...\n");
