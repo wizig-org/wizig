@@ -23,6 +23,16 @@ zig build run -- create ios MyApp examples/ios/MyApp
 zig build run -- create android MyApp examples/android/MyApp
 ```
 
+## Run Apps
+
+```sh
+# iOS (interactive simulator selection + lldb attach)
+zig build run -- run ios examples/ios/ZiggyExample
+
+# Android (interactive device selection + jdb attach or logcat fallback)
+zig build run -- run android examples/android/ZiggyExample
+```
+
 ## FFI Runtime Notes
 
 - Build host FFI artifacts with `zig build`.

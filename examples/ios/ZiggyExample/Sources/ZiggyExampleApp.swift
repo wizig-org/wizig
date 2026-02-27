@@ -17,6 +17,10 @@ struct ZiggyExampleApp: App {
                 Text("Echo: \((try? runtime.echo("hello")) ?? "unavailable")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button("Normal print") {
+                    print("Hello from Swift!")
+                    print(runtime)
+                }
 
                 ForEach(runtime.plugins, id: \.id) { plugin in
                     VStack(alignment: .leading, spacing: 2) {

@@ -147,6 +147,7 @@ pub fn createAndroid(
 
     const package_segment = try sanitizePackageSegment(arena, app_name);
     const package_name = try std.fmt.allocPrint(arena, "dev.ziggy.{s}", .{package_segment});
+    const package_path = try packageNameToPath(arena, package_name);
 
     std.Io.Dir.cwd().createDirPath(io, "/tmp/ziggy-gradle-home") catch {};
     var environ_map = try parent_environ_map.clone(arena);
@@ -157,80 +158,176 @@ pub fn createAndroid(
         "gradle",
         "init",
         "--type",
-        "kotlin-application",
+        "basic",
         "--dsl",
         "kotlin",
         "--project-name",
         app_name,
-        "--package",
-        package_name,
         "--use-defaults",
+        "--overwrite",
     }, &environ_map) catch |err| {
-        try stderr.print("error: failed to generate Gradle project: {s}\n", .{@errorName(err)});
+        try stderr.print("error: failed to initialize Gradle project: {s}\n", .{@errorName(err)});
         try stderr.flush();
         return error.CreateFailed;
     };
 
-    const cwd_abs = try std.process.currentPathAlloc(io, arena);
-    const sdk_android_abs = try std.fs.path.resolve(arena, &.{ cwd_abs, "sdk/android" });
-    const sdk_path_rel = try toForwardSlashes(arena, sdk_android_abs);
+    runCommand(arena, io, stderr, destination_dir, &.{
+        "gradle",
+        "wrapper",
+        "--gradle-version",
+        "8.7",
+        "--distribution-type",
+        "all",
+    }, &environ_map) catch |err| {
+        try stderr.print("error: failed to configure Gradle wrapper: {s}\n", .{@errorName(err)});
+        try stderr.flush();
+        return error.CreateFailed;
+    };
 
     const settings_path = try joinPath(arena, destination_dir, "settings.gradle.kts");
     const settings_contents = try std.fmt.allocPrint(
         arena,
-        "plugins {{\n" ++
-            "    id(\"org.gradle.toolchains.foojay-resolver-convention\") version \"1.0.0\"\n" ++
+        "pluginManagement {{\n" ++
+            "    repositories {{\n" ++
+            "        google()\n" ++
+            "        mavenCentral()\n" ++
+            "        gradlePluginPortal()\n" ++
+            "    }}\n" ++
+            "}}\n" ++
+            "\n" ++
+            "dependencyResolutionManagement {{\n" ++
+            "    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)\n" ++
+            "    repositories {{\n" ++
+            "        google()\n" ++
+            "        mavenCentral()\n" ++
+            "    }}\n" ++
             "}}\n" ++
             "\n" ++
             "rootProject.name = \"{s}\"\n" ++
-            "include(\"app\")\n" ++
-            "include(\":ziggy-sdk\")\n" ++
-            "project(\":ziggy-sdk\").projectDir = file(\"{s}\")\n",
-        .{ app_name, sdk_path_rel },
+            "include(\":app\")\n",
+        .{app_name},
     );
     try writeFileAtomically(io, settings_path, settings_contents);
+
+    const root_build_path = try joinPath(arena, destination_dir, "build.gradle.kts");
+    const root_build_contents =
+        "plugins {\n" ++
+        "    alias(libs.plugins.android.application) apply false\n" ++
+        "    alias(libs.plugins.kotlin.android) apply false\n" ++
+        "}\n";
+    try writeFileAtomically(io, root_build_path, root_build_contents);
+
+    const gradle_properties_path = try joinPath(arena, destination_dir, "gradle.properties");
+    const gradle_properties_contents =
+        "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8\n" ++
+        "android.useAndroidX=true\n" ++
+        "kotlin.code.style=official\n" ++
+        "org.gradle.configuration-cache=true\n";
+    try writeFileAtomically(io, gradle_properties_path, gradle_properties_contents);
+
+    const version_catalog_path = try joinPath(arena, destination_dir, "gradle/libs.versions.toml");
+    const version_catalog_contents =
+        "[versions]\n" ++
+        "agp = \"8.5.2\"\n" ++
+        "kotlin = \"1.9.24\"\n" ++
+        "\n" ++
+        "[plugins]\n" ++
+        "android-application = { id = \"com.android.application\", version.ref = \"agp\" }\n" ++
+        "kotlin-android = { id = \"org.jetbrains.kotlin.android\", version.ref = \"kotlin\" }\n";
+    try writeFileAtomically(io, version_catalog_path, version_catalog_contents);
 
     const app_build_path = try joinPath(arena, destination_dir, "app/build.gradle.kts");
     const app_build_contents = try std.fmt.allocPrint(
         arena,
         "plugins {{\n" ++
-            "    alias(libs.plugins.kotlin.jvm)\n" ++
-            "    application\n" ++
+            "    alias(libs.plugins.android.application)\n" ++
+            "    alias(libs.plugins.kotlin.android)\n" ++
             "}}\n" ++
             "\n" ++
-            "repositories {{\n" ++
-            "    mavenCentral()\n" ++
-            "}}\n" ++
+            "android {{\n" ++
+            "    namespace = \"{s}\"\n" ++
+            "    compileSdk = 35\n" ++
             "\n" ++
-            "dependencies {{\n" ++
-            "    testImplementation(\"org.jetbrains.kotlin:kotlin-test\")\n" ++
-            "    testImplementation(libs.junit.jupiter.engine)\n" ++
-            "    testRuntimeOnly(\"org.junit.platform:junit-platform-launcher\")\n" ++
+            "    defaultConfig {{\n" ++
+            "        applicationId = \"{s}\"\n" ++
+            "        minSdk = 24\n" ++
+            "        targetSdk = 35\n" ++
+            "        versionCode = 1\n" ++
+            "        versionName = \"1.0\"\n" ++
+            "        testInstrumentationRunner = \"androidx.test.runner.AndroidJUnitRunner\"\n" ++
+            "    }}\n" ++
             "\n" ++
-            "    implementation(project(\":ziggy-sdk\"))\n" ++
-            "}}\n" ++
+            "    buildTypes {{\n" ++
+            "        release {{\n" ++
+            "            isMinifyEnabled = false\n" ++
+            "            proguardFiles(\n" ++
+            "                getDefaultProguardFile(\"proguard-android-optimize.txt\"),\n" ++
+            "                \"proguard-rules.pro\"\n" ++
+            "            )\n" ++
+            "        }}\n" ++
+            "    }}\n" ++
             "\n" ++
-            "java {{\n" ++
-            "    toolchain {{\n" ++
-            "        languageVersion = JavaLanguageVersion.of(21)\n" ++
+            "    compileOptions {{\n" ++
+            "        sourceCompatibility = JavaVersion.VERSION_17\n" ++
+            "        targetCompatibility = JavaVersion.VERSION_17\n" ++
+            "    }}\n" ++
+            "    kotlinOptions {{\n" ++
+            "        jvmTarget = \"17\"\n" ++
             "    }}\n" ++
             "}}\n" ++
             "\n" ++
-            "application {{\n" ++
-            "    mainClass = \"{s}.AppKt\"\n" ++
-            "}}\n" ++
+            "dependencies {{\n" ++
+            "    implementation(\"androidx.core:core-ktx:1.13.1\")\n" ++
+            "    implementation(\"androidx.appcompat:appcompat:1.7.0\")\n" ++
+            "    implementation(\"com.google.android.material:material:1.12.0\")\n" ++
+            "    implementation(\"androidx.activity:activity-ktx:1.9.0\")\n" ++
             "\n" ++
-            "tasks.named<Test>(\"test\") {{\n" ++
-            "    useJUnitPlatform()\n" ++
+            "    testImplementation(\"junit:junit:4.13.2\")\n" ++
+            "    androidTestImplementation(\"androidx.test.ext:junit:1.2.1\")\n" ++
+            "    androidTestImplementation(\"androidx.test.espresso:espresso-core:3.6.1\")\n" ++
             "}}\n",
-        .{package_name},
+        .{ package_name, package_name },
     );
     try writeFileAtomically(io, app_build_path, app_build_contents);
 
-    const package_path = try packageNameToPath(arena, package_name);
-    const app_kt_path = try std.fmt.allocPrint(
+    const manifest_path = try std.fmt.allocPrint(
         arena,
-        "{s}{s}app{s}src{s}main{s}kotlin{s}{s}{s}App.kt",
+        "{s}{s}app{s}src{s}main{s}AndroidManifest.xml",
+        .{
+            destination_dir,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+        },
+    );
+    const manifest_contents = try std.fmt.allocPrint(
+        arena,
+        "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n" ++
+            "\n" ++
+            "    <application\n" ++
+            "        android:allowBackup=\"true\"\n" ++
+            "        android:label=\"@string/app_name\"\n" ++
+            "        android:supportsRtl=\"true\"\n" ++
+            "        android:theme=\"@style/Theme.Ziggy\">\n" ++
+            "        <activity\n" ++
+            "            android:name=\".MainActivity\"\n" ++
+            "            android:exported=\"true\">\n" ++
+            "            <intent-filter>\n" ++
+            "                <action android:name=\"android.intent.action.MAIN\" />\n" ++
+            "                <category android:name=\"android.intent.category.LAUNCHER\" />\n" ++
+            "            </intent-filter>\n" ++
+            "        </activity>\n" ++
+            "    </application>\n" ++
+            "\n" ++
+            "</manifest>\n",
+        .{},
+    );
+    try writeFileAtomically(io, manifest_path, manifest_contents);
+
+    const main_activity_path = try std.fmt.allocPrint(
+        arena,
+        "{s}{s}app{s}src{s}main{s}java{s}{s}{s}MainActivity.kt",
         .{
             destination_dir,
             std.fs.path.sep_str,
@@ -242,33 +339,31 @@ pub fn createAndroid(
             std.fs.path.sep_str,
         },
     );
-
-    const app_kt_contents = try std.fmt.allocPrint(
+    const main_activity_contents = try std.fmt.allocPrint(
         arena,
         "package {s}\n" ++
             "\n" ++
-            "import dev.ziggy.ZiggyRuntime\n" ++
+            "import android.os.Bundle\n" ++
+            "import android.widget.TextView\n" ++
+            "import androidx.appcompat.app.AppCompatActivity\n" ++
             "\n" ++
-            "class App {{\n" ++
-            "    val greeting: String\n" ++
-            "        get() {{\n" ++
-            "            ZiggyRuntime(appName = \"{s}\").use {{ runtime ->\n" ++
-            "                val echo = runCatching {{ runtime.echo(\"hello\") }}.getOrElse {{ \"unavailable\" }}\n" ++
-            "                return \"Hello Ziggy! Registered plugins: ${{runtime.plugins.size}}; runtimeAvailable=${{runtime.isAvailable}}; echo=$echo\"\n" ++
-            "            }}\n" ++
-            "        }}\n" ++
-            "}}\n" ++
-            "\n" ++
-            "fun main() {{\n" ++
-            "    println(App().greeting)\n" ++
+            "class MainActivity : AppCompatActivity() {{\n" ++
+            "    override fun onCreate(savedInstanceState: Bundle?) {{\n" ++
+            "        super.onCreate(savedInstanceState)\n" ++
+            "        val label = TextView(this)\n" ++
+            "        label.text = \"Hello from {s}\"\n" ++
+            "        val padding = (24 * resources.displayMetrics.density).toInt()\n" ++
+            "        label.setPadding(padding, padding, padding, padding)\n" ++
+            "        setContentView(label)\n" ++
+            "    }}\n" ++
             "}}\n",
         .{ package_name, app_name },
     );
-    try writeFileAtomically(io, app_kt_path, app_kt_contents);
+    try writeFileAtomically(io, main_activity_path, main_activity_contents);
 
     const app_test_path = try std.fmt.allocPrint(
         arena,
-        "{s}{s}app{s}src{s}test{s}kotlin{s}{s}{s}AppTest.kt",
+        "{s}{s}app{s}src{s}test{s}java{s}{s}{s}MainActivitySmokeTest.kt",
         .{
             destination_dir,
             std.fs.path.sep_str,
@@ -284,22 +379,83 @@ pub fn createAndroid(
         arena,
         "package {s}\n" ++
             "\n" ++
-            "import kotlin.test.Test\n" ++
-            "import kotlin.test.assertTrue\n" ++
+            "import org.junit.Test\n" ++
+            "import org.junit.Assert.assertTrue\n" ++
             "\n" ++
-            "class AppTest {{\n" ++
+            "class MainActivitySmokeTest {{\n" ++
             "    @Test\n" ++
-            "    fun appHasGreeting() {{\n" ++
-            "        val greeting = App().greeting\n" ++
-            "        assertTrue(greeting.contains(\"Ziggy\"))\n" ++
+            "    fun packageNameLooksValid() {{\n" ++
+            "        assertTrue(\"{s}\".contains(\".\"))\n" ++
             "    }}\n" ++
             "}}\n",
-        .{package_name},
+        .{ package_name, package_name },
     );
     try writeFileAtomically(io, app_test_path, app_test_contents);
 
+    const strings_path = try std.fmt.allocPrint(
+        arena,
+        "{s}{s}app{s}src{s}main{s}res{s}values{s}strings.xml",
+        .{
+            destination_dir,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+        },
+    );
+    const strings_contents = try std.fmt.allocPrint(
+        arena,
+        "<resources>\n" ++
+            "    <string name=\"app_name\">{s}</string>\n" ++
+            "</resources>\n",
+        .{app_name},
+    );
+    try writeFileAtomically(io, strings_path, strings_contents);
+
+    const themes_path = try std.fmt.allocPrint(
+        arena,
+        "{s}{s}app{s}src{s}main{s}res{s}values{s}themes.xml",
+        .{
+            destination_dir,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+        },
+    );
+    const themes_contents =
+        "<resources xmlns:tools=\"http://schemas.android.com/tools\">\n" ++
+        "    <style name=\"Theme.Ziggy\" parent=\"Theme.Material3.DayNight.NoActionBar\">\n" ++
+        "        <item name=\"android:statusBarColor\">@android:color/transparent</item>\n" ++
+        "    </style>\n" ++
+        "</resources>\n";
+    try writeFileAtomically(io, themes_path, themes_contents);
+
+    const proguard_path = try std.fmt.allocPrint(
+        arena,
+        "{s}{s}app{s}proguard-rules.pro",
+        .{
+            destination_dir,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+        },
+    );
+    try writeFileAtomically(io, proguard_path, "# Ziggy Android app ProGuard rules.\n");
+
+    const sdk_dir = parent_environ_map.get("ANDROID_SDK_ROOT") orelse parent_environ_map.get("ANDROID_HOME");
+    if (sdk_dir) |sdk| {
+        const local_properties_path = try joinPath(arena, destination_dir, "local.properties");
+        const escaped_sdk = try escapeLocalPropertiesValue(arena, sdk);
+        const local_properties_contents = try std.fmt.allocPrint(arena, "sdk.dir={s}\n", .{escaped_sdk});
+        try writeFileAtomically(io, local_properties_path, local_properties_contents);
+    }
+
     try stdout.print("created Android app '{s}' at '{s}'\n", .{ app_name, destination_dir });
-    try stdout.print("next: GRADLE_USER_HOME=/tmp/gradle-home gradle -p {s} test\n", .{destination_dir});
+    try stdout.print("next: (cd {s} && ./gradlew :app:assembleDebug)\n", .{destination_dir});
     try stdout.flush();
 }
 
@@ -443,6 +599,20 @@ fn toForwardSlashes(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return out;
 }
 
+fn escapeLocalPropertiesValue(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+
+    for (input) |ch| {
+        if (ch == '\\') {
+            try out.appendSlice(allocator, "\\\\");
+            continue;
+        }
+        try out.append(allocator, ch);
+    }
+    return out.toOwnedSlice(allocator);
+}
+
 fn toSwiftTypeName(allocator: std.mem.Allocator, raw_name: []const u8) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
@@ -471,4 +641,35 @@ fn toSwiftTypeName(allocator: std.mem.Allocator, raw_name: []const u8) ![]u8 {
     }
 
     return out.toOwnedSlice(allocator);
+}
+
+test "sanitizeProjectName keeps safe characters" {
+    const got = try sanitizeProjectName(std.testing.allocator, "My App!@# 123");
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("My-App-123", got);
+}
+
+test "sanitizePackageSegment produces valid lowercase token" {
+    const got = try sanitizePackageSegment(std.testing.allocator, "123 Hello-World");
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("app_123_hello_world", got);
+}
+
+test "packageNameToPath converts dots to separators" {
+    const got = try packageNameToPath(std.testing.allocator, "dev.ziggy.demo");
+    defer std.testing.allocator.free(got);
+    try std.testing.expect(std.mem.indexOfScalar(u8, got, '.') == null);
+    try std.testing.expect(std.mem.indexOfScalar(u8, got, std.fs.path.sep) != null);
+}
+
+test "toSwiftTypeName strips separators and capitalizes words" {
+    const got = try toSwiftTypeName(std.testing.allocator, "my-cool_app");
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("MyCoolApp", got);
+}
+
+test "escapeLocalPropertiesValue escapes backslashes" {
+    const got = try escapeLocalPropertiesValue(std.testing.allocator, "C:\\Users\\ziggy\\sdk");
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("C:\\\\Users\\\\ziggy\\\\sdk", got);
 }

@@ -2,6 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const ziggy_core = @import("ziggy_core");
 const create_cmd = @import("create.zig");
+const run_cmd = @import("run.zig");
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -50,6 +51,13 @@ pub fn main(init: std.process.Init) !void {
         try stderr.print("error: unknown platform '{s}', expected ios or android\n", .{platform});
         try stderr.flush();
         std.process.exit(1);
+    }
+
+    if (std.mem.eql(u8, args[1], "run")) {
+        run_cmd.run(arena, io, init.environ_map, stderr, stdout, args[2..]) catch {
+            std.process.exit(1);
+        };
+        return;
     }
 
     if (std.mem.eql(u8, args[1], "plugin")) {
@@ -212,7 +220,102 @@ fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "Usage:\n" ++
             "  ziggy create ios <name> [destination_dir]\n" ++
             "  ziggy create android <name> [destination_dir]\n" ++
+            "  ziggy run ios|android <project_dir> [options]\n" ++
             "  ziggy plugin validate <ziggy-plugin.toml>\n" ++
-            "  ziggy plugin sync <plugin_root> [registry_dir] [ios_dir] [android_dir]\n",
+            "  ziggy plugin sync <plugin_root> [registry_dir] [ios_dir] [android_dir]\n" ++
+            "\n",
     );
+    try run_cmd.printUsage(writer);
+}
+
+test "printUsage includes key commands" {
+    var out_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out_writer.deinit();
+
+    try printUsage(&out_writer.writer);
+    const output = out_writer.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, output, "ziggy create ios") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "ziggy run ios|android") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "ziggy plugin sync") != null);
+}
+
+test "pluginValidate accepts known manifest" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var out_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out_writer.deinit();
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    try pluginValidate(
+        arena,
+        std.testing.io,
+        &err_writer.writer,
+        &out_writer.writer,
+        "examples/plugin-hello/ziggy-plugin.toml",
+    );
+
+    try std.testing.expect(std.mem.indexOf(u8, out_writer.writer.buffered(), "valid plugin 'dev.ziggy.hello'") != null);
+}
+
+test "pluginSync generates registrants for plugin tree" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const io = std.testing.io;
+    const gpa = arena;
+
+    const root_path = try std.fmt.allocPrint(gpa, ".zig-cache/tmp/{s}", .{tmp.sub_path});
+    defer gpa.free(root_path);
+
+    try tmp.dir.createDirPath(io, "plugins/demo");
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "plugins/demo/ziggy-plugin.toml",
+        .data =
+        \\id = "dev.ziggy.demo"
+        \\version = "1.2.3"
+        \\api_version = 1
+        \\capabilities = ["log"]
+        \\ios_spm = []
+        \\android_maven = []
+        \\
+        ,
+    });
+
+    const plugin_root = try std.fmt.allocPrint(gpa, "{s}{s}plugins", .{ root_path, std.fs.path.sep_str });
+    defer gpa.free(plugin_root);
+    const registry_dir = try std.fmt.allocPrint(gpa, "{s}{s}registry", .{ root_path, std.fs.path.sep_str });
+    defer gpa.free(registry_dir);
+    const ios_dir = try std.fmt.allocPrint(gpa, "{s}{s}ios", .{ root_path, std.fs.path.sep_str });
+    defer gpa.free(ios_dir);
+    const android_dir = try std.fmt.allocPrint(gpa, "{s}{s}android", .{ root_path, std.fs.path.sep_str });
+    defer gpa.free(android_dir);
+
+    var out_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out_writer.deinit();
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    try pluginSync(
+        gpa,
+        io,
+        &err_writer.writer,
+        &out_writer.writer,
+        plugin_root,
+        registry_dir,
+        ios_dir,
+        android_dir,
+    );
+
+    const lockfile_path = try std.fmt.allocPrint(gpa, "{s}{s}plugins.lock.toml", .{ registry_dir, std.fs.path.sep_str });
+    defer gpa.free(lockfile_path);
+    const lockfile = try std.Io.Dir.cwd().readFileAlloc(io, lockfile_path, gpa, .limited(1024 * 1024));
+    defer gpa.free(lockfile);
+    try std.testing.expect(std.mem.indexOf(u8, lockfile, "dev.ziggy.demo") != null);
 }
