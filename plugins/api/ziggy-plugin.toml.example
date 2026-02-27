@@ -1,0 +1,6 @@
+id = "dev.ziggy.example"
+version = "1.0.0"
+api_version = 1
+capabilities = ["network", "storage"]
+ios_spm = ["https://github.com/apple/swift-collections"]
+android_maven = ["com.squareup.okhttp3:okhttp:4.12.0"]

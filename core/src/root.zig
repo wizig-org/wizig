@@ -1,0 +1,9 @@
+pub const Runtime = @import("runtime.zig").Runtime;
+pub const PluginManifest = @import("plugins/manifest.zig").PluginManifest;
+pub const PluginRegistry = @import("plugins/registry_codegen.zig").Registry;
+pub const PluginRecord = @import("plugins/registry_codegen.zig").PluginRecord;
+pub const collectPluginRegistry = @import("plugins/registry_codegen.zig").collectFromDir;
+pub const renderPluginLockfile = @import("plugins/registry_codegen.zig").renderLockfile;
+pub const renderZigRegistrant = @import("plugins/registry_codegen.zig").renderZigRegistrant;
+pub const renderSwiftRegistrant = @import("plugins/registry_codegen.zig").renderSwiftRegistrant;
+pub const renderKotlinRegistrant = @import("plugins/registry_codegen.zig").renderKotlinRegistrant;
