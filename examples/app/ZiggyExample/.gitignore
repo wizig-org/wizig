@@ -1,0 +1,14 @@
+.zig-cache/
+zig-out/
+build/
+.DS_Store
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# iOS
+ios/build/
+ios/DerivedData/
