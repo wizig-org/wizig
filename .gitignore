@@ -1,5 +1,9 @@
 .zig-cache/
 zig-out/
+.gradle/
+**/.gradle/
+**/local.properties
+DerivedData/
 # Prerequisites
 *.d
 
