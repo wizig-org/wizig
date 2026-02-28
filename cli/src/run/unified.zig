@@ -2,6 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 
 const legacy = @import("legacy.zig");
+const codegen_cmd = @import("../commands/codegen/root.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -81,6 +82,8 @@ pub fn run(
         try stdout.flush();
         return error.RunFailed;
     }
+
+    try runCodegenPreflight(arena, io, stderr, stdout, project_root, &log_lines);
 
     var candidates = std.ArrayList(Candidate).empty;
     defer candidates.deinit(arena);
@@ -520,6 +523,34 @@ fn buildLogPath(arena: Allocator, io: std.Io, project_root: []const u8) ![]const
 fn appendLogLine(arena: Allocator, log_lines: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) !void {
     const line = try std.fmt.allocPrint(arena, fmt, args);
     try log_lines.appendSlice(arena, line);
+}
+
+fn runCodegenPreflight(
+    arena: Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    project_root: []const u8,
+    log_lines: *std.ArrayList(u8),
+) !void {
+    const api_path = try joinPath(arena, project_root, "ziggy.api.json");
+    if (!pathExists(io, api_path)) {
+        try appendLogLine(arena, log_lines, "codegen=skipped:no_api_contract\n", .{});
+        return;
+    }
+
+    try appendLogLine(arena, log_lines, "codegen=running\n", .{});
+    try stdout.writeAll("running codegen...\n");
+    try stdout.flush();
+
+    codegen_cmd.generateProject(arena, io, stderr, stdout, project_root, api_path) catch |err| {
+        try appendLogLine(arena, log_lines, "codegen=failed:{s}\n", .{@errorName(err)});
+        try stderr.print("error: failed to generate API bindings from '{s}': {s}\n", .{ api_path, @errorName(err) });
+        try stderr.flush();
+        return error.RunFailed;
+    };
+
+    try appendLogLine(arena, log_lines, "codegen=ok\n", .{});
 }
 
 fn writeFileAtomically(io: std.Io, path: []const u8, contents: []const u8) !void {

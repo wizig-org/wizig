@@ -1,6 +1,6 @@
 # Ziggy Plugin API
 
-`ziggy-plugin.toml` declares plugin identity, contract version, and native dependencies.
+`ziggy-plugin.json` declares plugin identity, contract version, and native dependencies.
 
 ## Fields
 
@@ -8,11 +8,11 @@
 - `version`: plugin implementation version
 - `api_version`: Ziggy plugin API compatibility version
 - `capabilities`: permissions requested by plugin
-- `ios_spm`: optional Swift Package Manager dependencies
-- `android_maven`: optional Gradle/Maven dependencies
+- `ios_spm`: Swift Package Manager dependencies (`url`, `requirement`, `product`)
+- `android_maven`: Gradle/Maven dependencies (`coordinate`, optional `classifier`, optional `scope`)
 
 ## Notes
 
 - Plugin loading is designed for build-time registration on mobile.
 - Native dependencies are declared here, then resolved by platform adapters.
-- Run `ziggy plugin sync <plugin_root>` to generate lockfile and registrants in default platform paths.
+- Run `ziggy plugin sync [project_root]` to generate lockfile and registrants in `.ziggy/generated`.

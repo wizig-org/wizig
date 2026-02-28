@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "namespace": "{{APP_IDENTIFIER}}",
+  "methods": [
+    {
+      "name": "echo",
+      "input": "string",
+      "output": "string"
+    }
+  ],
+  "events": [
+    {
+      "name": "log",
+      "payload": "string"
+    }
+  ]
+}

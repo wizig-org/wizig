@@ -1,6 +1,0 @@
-id = "dev.ziggy.hello"
-version = "0.1.0"
-api_version = 1
-capabilities = ["log"]
-ios_spm = []
-android_maven = []

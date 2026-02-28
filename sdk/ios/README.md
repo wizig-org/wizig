@@ -11,7 +11,7 @@ Planned components:
 Generate registrants:
 
 ```sh
-zig build run -- plugin sync examples
+zig build run -- plugin sync .
 ```
 
 To load Zig FFI at runtime during development, set `ZIGGY_FFI_LIB` to the built dynamic library path (for example `zig-out/lib/libziggyffi.dylib`).

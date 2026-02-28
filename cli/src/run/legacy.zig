@@ -225,6 +225,7 @@ fn runIos(
 
     const debugger_mode = try resolveIosDebugger(arena, io, stderr, options.debugger);
 
+    try maybeRegenerateIosProject(arena, io, stderr, stdout, options.project_dir);
     const xcode_project = try findXcodeProject(arena, io, stderr, options.project_dir);
     const scheme = options.scheme orelse inferSchemeFromProject(xcode_project) orelse {
         try stderr.writeAll("error: failed to infer iOS scheme, pass --scheme\n");
@@ -1208,6 +1209,34 @@ fn findXcodeProject(arena: Allocator, io: std.Io, stderr: *Io.Writer, project_di
     return arena.dupe(u8, first.?);
 }
 
+fn maybeRegenerateIosProject(
+    arena: Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    project_dir: []const u8,
+) !void {
+    const project_spec = try joinPath(arena, project_dir, "project.yml");
+    if (!pathExists(io, project_spec)) return;
+
+    if (!commandExists(arena, io, "xcodegen")) {
+        try stderr.writeAll("warning: xcodegen not found; skipping iOS project regeneration\n");
+        try stderr.flush();
+        return;
+    }
+
+    try stdout.writeAll("regenerating iOS project...\n");
+    try stdout.flush();
+    try runInheritChecked(
+        io,
+        project_dir,
+        &.{ "xcodegen", "generate" },
+        null,
+        stderr,
+        "generate iOS project",
+    );
+}
+
 fn inferSchemeFromProject(project_path: []const u8) ?[]const u8 {
     const base = std.fs.path.basename(project_path);
     if (!std.mem.endsWith(u8, base, ".xcodeproj")) return null;
@@ -1390,6 +1419,10 @@ fn resolveZiggyWorkspaceRoot(
     project_dir: []const u8,
     stderr: *Io.Writer,
 ) ![]const u8 {
+    if (try resolveAppLocalRuntimeRoot(arena, io, project_dir)) |runtime_root| {
+        return runtime_root;
+    }
+
     if (parent_environ_map.get("ZIGGY_SDK_ROOT")) |raw_root| {
         const resolved = if (std.fs.path.isAbsolute(raw_root))
             try arena.dupe(u8, raw_root)
@@ -1418,9 +1451,42 @@ fn resolveZiggyWorkspaceRoot(
     if (pathExists(io, cwd_marker)) return cwd;
 
     try stderr.writeAll(
-        "error: unable to resolve Ziggy workspace root; set ZIGGY_SDK_ROOT or ensure ios/project.yml has a valid sdk path\n",
+        "error: unable to resolve Ziggy runtime root; expected app-local .ziggy/runtime or set ZIGGY_SDK_ROOT\n",
     );
     return error.RunFailed;
+}
+
+fn resolveAppLocalRuntimeRoot(
+    arena: Allocator,
+    io: std.Io,
+    project_dir: []const u8,
+) !?[]const u8 {
+    const direct = try std.fs.path.resolve(arena, &.{ project_dir, ".ziggy", "runtime" });
+    if (runtimeRootLooksValid(arena, io, direct)) return direct;
+
+    const parent = std.fs.path.dirname(project_dir) orelse return null;
+    const parent_candidate = try std.fs.path.resolve(arena, &.{ parent, ".ziggy", "runtime" });
+    if (runtimeRootLooksValid(arena, io, parent_candidate)) return parent_candidate;
+
+    return null;
+}
+
+fn runtimeRootLooksValid(
+    arena: Allocator,
+    io: std.Io,
+    root: []const u8,
+) bool {
+    const marker_core = std.fmt.allocPrint(
+        arena,
+        "{s}{s}core{s}src{s}root.zig",
+        .{ root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
+    ) catch return false;
+    const marker_ffi = std.fmt.allocPrint(
+        arena,
+        "{s}{s}ffi{s}src{s}root.zig",
+        .{ root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
+    ) catch return false;
+    return pathExists(io, marker_core) and pathExists(io, marker_ffi);
 }
 
 fn extractZiggyWorkspaceFromProjectYml(

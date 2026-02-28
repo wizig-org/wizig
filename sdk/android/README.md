@@ -13,7 +13,7 @@ Current module type is Kotlin/JVM for fast local iteration. It can be moved to a
 Generate registrants:
 
 ```sh
-zig build run -- plugin sync examples
+zig build run -- plugin sync .
 ```
 
 `ZiggyRuntime` uses JNA for direct FFI calls. Set `ZIGGY_FFI_LIB` to the shared library path/name when running on desktop JVM.

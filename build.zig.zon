@@ -79,8 +79,10 @@
         "examples",
         "ffi",
         "plugins",
+        "runtime",
         "sdk",
         "src",
+        "templates",
         "README.md",
         // For example...
         //"LICENSE",

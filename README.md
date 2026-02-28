@@ -30,29 +30,29 @@ zig build test
 ## Plugin Registry
 
 ```sh
-zig build run -- plugin validate examples/plugin-hello/ziggy-plugin.toml
-zig build run -- plugin sync examples
+zig build run -- plugin validate examples/plugin-hello/ziggy-plugin.json
+zig build run -- plugin sync .
 ```
 
 ## App Scaffolding
 
 ```sh
 zig build run -- create MyApp examples/app/MyApp
-zig build run -- create MyApp examples/app/MyApp --platforms ios,android,macos
-
-# Legacy per-platform mode
-zig build run -- create ios MyLegacyIos examples/ios/MyLegacyIos
-zig build run -- create android MyLegacyAndroid examples/android/MyLegacyAndroid
+zig build run -- create MyApp examples/app/MyApp --platforms ios,android,macos --sdk-root .
 ```
 
 ## Run Apps
 
 ```sh
-# iOS (interactive simulator selection + lldb attach)
-zig build run -- run ios examples/app/ZiggyExample/ios
+# Unified host/device selection from project root
+zig build run -- run examples/app/ZiggyExample --once
+```
 
-# Android (interactive device selection + jdb attach or logcat fallback)
-zig build run -- run android examples/app/ZiggyExample/android
+## Codegen And Diagnostics
+
+```sh
+zig build run -- codegen examples/app/ZiggyExample
+zig build run -- doctor
 ```
 
 ## FFI Runtime Notes

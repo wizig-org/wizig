@@ -34,6 +34,27 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(exe);
 
+    const install_sdk = b.addInstallDirectory(.{
+        .source_dir = b.path("sdk"),
+        .install_dir = .prefix,
+        .install_subdir = "share/ziggy/sdk",
+    });
+    b.getInstallStep().dependOn(&install_sdk.step);
+
+    const install_runtime = b.addInstallDirectory(.{
+        .source_dir = b.path("runtime"),
+        .install_dir = .prefix,
+        .install_subdir = "share/ziggy/runtime",
+    });
+    b.getInstallStep().dependOn(&install_runtime.step);
+
+    const install_templates = b.addInstallDirectory(.{
+        .source_dir = b.path("templates"),
+        .install_dir = .prefix,
+        .install_subdir = "share/ziggy/templates",
+    });
+    b.getInstallStep().dependOn(&install_templates.step);
+
     const ffi_module = b.createModule(.{
         .root_source_file = b.path("ffi/src/root.zig"),
         .target = target,

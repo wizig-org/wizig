@@ -1,5 +1,9 @@
 const std = @import("std");
 const Io = std.Io;
+const fs_util = @import("../../support/fs.zig");
+const process_util = @import("../../support/process.zig");
+const sdk_locator = @import("../../support/sdk_locator.zig");
+const codegen_cmd = @import("../codegen/root.zig");
 
 pub const CreateError = error{CreateFailed};
 pub const CreatePlatforms = struct {
@@ -17,6 +21,7 @@ pub fn createApp(
     app_name_raw: []const u8,
     destination_dir_raw: []const u8,
     platforms: CreatePlatforms,
+    explicit_sdk_root: ?[]const u8,
 ) !void {
     if (!hasAnyPlatform(platforms)) {
         try stderr.writeAll("error: at least one platform must be selected\n");
@@ -25,6 +30,7 @@ pub fn createApp(
     }
 
     const app_name = try sanitizeProjectName(arena, app_name_raw);
+    const app_identifier = try toIdentifierLower(arena, app_name);
     const destination_dir = destination_dir_raw;
 
     std.Io.Dir.cwd().createDirPath(io, destination_dir) catch |err| {
@@ -33,120 +39,77 @@ pub fn createApp(
         return error.CreateFailed;
     };
 
+    const resolved = sdk_locator.resolve(arena, io, parent_environ_map, stderr, explicit_sdk_root) catch {
+        try stderr.flush();
+        return error.CreateFailed;
+    };
+
+    const dot_ziggy_dir = try joinPath(arena, destination_dir, ".ziggy");
     const lib_dir = try joinPath(arena, destination_dir, "lib");
     const plugins_dir = try joinPath(arena, destination_dir, "plugins");
-    std.Io.Dir.cwd().createDirPath(io, lib_dir) catch |err| {
-        try stderr.print("error: failed to create lib dir '{s}': {s}\n", .{ lib_dir, @errorName(err) });
+    const app_sdk_dir = try joinPath(arena, dot_ziggy_dir, "sdk");
+    const app_runtime_dir = try joinPath(arena, dot_ziggy_dir, "runtime");
+    const app_generated_dir = try joinPath(arena, dot_ziggy_dir, "generated");
+    const app_generated_swift_dir = try joinPath(arena, app_generated_dir, "swift");
+    const app_generated_kotlin_dir = try joinPath(arena, app_generated_dir, "kotlin");
+    const app_generated_zig_dir = try joinPath(arena, app_generated_dir, "zig");
+    const app_plugins_meta_dir = try joinPath(arena, dot_ziggy_dir, "plugins");
+
+    for (&[_][]const u8{
+        lib_dir,
+        plugins_dir,
+        app_sdk_dir,
+        app_runtime_dir,
+        app_generated_dir,
+        app_generated_swift_dir,
+        app_generated_kotlin_dir,
+        app_generated_zig_dir,
+        app_plugins_meta_dir,
+    }) |dir_path| {
+        std.Io.Dir.cwd().createDirPath(io, dir_path) catch |err| {
+            try stderr.print("error: failed to create '{s}': {s}\n", .{ dir_path, @errorName(err) });
+            try stderr.flush();
+            return error.CreateFailed;
+        };
+    }
+
+    fs_util.removeTreeIfExists(io, app_sdk_dir) catch {};
+    fs_util.removeTreeIfExists(io, app_runtime_dir) catch {};
+
+    fs_util.copyTree(arena, io, resolved.sdk_dir, app_sdk_dir) catch |err| {
+        try stderr.print("error: failed to copy SDK into app (.ziggy/sdk): {s}\n", .{@errorName(err)});
         try stderr.flush();
         return error.CreateFailed;
     };
-    std.Io.Dir.cwd().createDirPath(io, plugins_dir) catch |err| {
-        try stderr.print("error: failed to create plugins dir '{s}': {s}\n", .{ plugins_dir, @errorName(err) });
+    fs_util.copyTree(arena, io, resolved.runtime_dir, app_runtime_dir) catch |err| {
+        try stderr.print("error: failed to copy runtime into app (.ziggy/runtime): {s}\n", .{@errorName(err)});
         try stderr.flush();
         return error.CreateFailed;
     };
 
-    const gitignore_path = try joinPath(arena, destination_dir, ".gitignore");
-    const ziggy_yaml_path = try joinPath(arena, destination_dir, "ziggy.yaml");
-    const readme_path = try joinPath(arena, destination_dir, "README.md");
-    const lib_main_path = try joinPath(arena, lib_dir, "main.zig");
-    const plugins_readme_path = try joinPath(arena, plugins_dir, "README.md");
+    const template_tokens = [_]fs_util.RenderToken{
+        .{ .key = "APP_NAME", .value = app_name },
+        .{ .key = "APP_IDENTIFIER", .value = app_identifier },
+        .{ .key = "APP_TYPE_NAME", .value = try toSwiftTypeName(arena, app_name) },
+    };
 
-    const gitignore_contents =
-        ".zig-cache/\n" ++
-        "zig-out/\n" ++
-        "build/\n" ++
-        ".DS_Store\n" ++
-        "\n" ++
-        "# Android\n" ++
-        "android/.gradle/\n" ++
-        "android/build/\n" ++
-        "android/app/build/\n" ++
-        "android/local.properties\n" ++
-        "\n" ++
-        "# iOS\n" ++
-        "ios/build/\n" ++
-        "ios/DerivedData/\n";
-    try writeFileAtomically(io, gitignore_path, gitignore_contents);
+    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/.gitignore", try joinPath(arena, destination_dir, ".gitignore"), &template_tokens);
+    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/README.md", try joinPath(arena, destination_dir, "README.md"), &template_tokens);
+    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/ziggy.yaml", try joinPath(arena, destination_dir, "ziggy.yaml"), &template_tokens);
+    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/ziggy.api.json", try joinPath(arena, destination_dir, "ziggy.api.json"), &template_tokens);
+    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/lib/main.zig", try joinPath(arena, lib_dir, "main.zig"), &template_tokens);
+    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/plugins/README.md", try joinPath(arena, plugins_dir, "README.md"), &template_tokens);
 
-    var platform_lines = std.ArrayList(u8).empty;
-    defer platform_lines.deinit(arena);
-    var run_lines = std.ArrayList(u8).empty;
-    defer run_lines.deinit(arena);
-    var structure_lines = std.ArrayList(u8).empty;
-    defer structure_lines.deinit(arena);
-
-    try structure_lines.appendSlice(arena, "- `lib/`: shared Zig logic entry points\n");
-    try structure_lines.appendSlice(arena, "- `plugins/`: local plugin manifests/adapters\n");
-
-    if (platforms.ios) {
-        try platform_lines.appendSlice(arena, "  - ios\n");
-        try run_lines.appendSlice(arena, "ziggy run ios ios\n");
-        try structure_lines.appendSlice(arena, "- `ios/`: Xcode-compatible iOS host project\n");
-    }
-    if (platforms.android) {
-        try platform_lines.appendSlice(arena, "  - android\n");
-        try run_lines.appendSlice(arena, "ziggy run android android\n");
-        try structure_lines.appendSlice(arena, "- `android/`: Android Studio-compatible host project\n");
-    }
-    if (platforms.macos) {
-        try platform_lines.appendSlice(arena, "  - macos\n");
-        try run_lines.appendSlice(arena, "# macOS host scaffold is currently a placeholder\n");
-        try structure_lines.appendSlice(arena, "- `macos/`: desktop host placeholder\n");
-    }
-
-    const ziggy_yaml_contents = try std.fmt.allocPrint(
-        arena,
-        "name: {s}\n" ++
-            "description: Ziggy application scaffold.\n" ++
-            "platforms:\n" ++
-            "{s}",
-        .{ app_name, platform_lines.items },
-    );
-    try writeFileAtomically(io, ziggy_yaml_path, ziggy_yaml_contents);
-
-    const readme_contents = try std.fmt.allocPrint(
-        arena,
-        "# {s}\n" ++
-            "\n" ++
-            "Generated by `ziggy create`.\n" ++
-            "\n" ++
-            "## Structure\n" ++
-            "\n" ++
-            "{s}" ++
-            "\n" ++
-            "## Run\n" ++
-            "\n" ++
-            "```sh\n" ++
-            "{s}" ++
-            "```\n",
-        .{ app_name, structure_lines.items, run_lines.items },
-    );
-    try writeFileAtomically(io, readme_path, readme_contents);
-
-    const lib_main_contents = try std.fmt.allocPrint(
-        arena,
-        "const std = @import(\"std\");\n" ++
-            "\n" ++
-            "pub fn appName() []const u8 {{\n" ++
-            "    return \"{s}\";\n" ++
-            "}}\n" ++
-            "\n" ++
-            "test \"appName is non-empty\" {{\n" ++
-            "    try std.testing.expect(appName().len > 0);\n" ++
-            "}}\n",
-        .{app_name},
-    );
-    try writeFileAtomically(io, lib_main_path, lib_main_contents);
-    try writeFileAtomically(
-        io,
-        plugins_readme_path,
-        "# Plugins\n\nAdd plugin manifests under subdirectories, then run `ziggy plugin sync <plugin_root>`.\n",
-    );
+    const api_path = try joinPath(arena, destination_dir, "ziggy.api.json");
+    codegen_cmd.generateProject(arena, io, stderr, stdout, destination_dir, api_path) catch |err| {
+        try stderr.print("error: failed to run initial codegen: {s}\n", .{@errorName(err)});
+        try stderr.flush();
+        return error.CreateFailed;
+    };
 
     if (platforms.ios) {
         const ios_dir = try joinPath(arena, destination_dir, "ios");
-        createIos(arena, io, parent_environ_map, stderr, stdout, app_name, ios_dir) catch return error.CreateFailed;
+        createIos(arena, io, stderr, stdout, resolved.templates_dir, app_name, ios_dir) catch return error.CreateFailed;
     }
     if (platforms.android) {
         const android_dir = try joinPath(arena, destination_dir, "android");
@@ -174,14 +137,13 @@ pub fn createApp(
 pub fn createIos(
     arena: std.mem.Allocator,
     io: std.Io,
-    _: *const std.process.Environ.Map,
     stderr: *Io.Writer,
     stdout: *Io.Writer,
+    templates_root: []const u8,
     app_name_raw: []const u8,
     destination_dir_raw: []const u8,
 ) !void {
     const app_name = try sanitizeProjectName(arena, app_name_raw);
-    const app_type_name = try toSwiftTypeName(arena, app_name);
     const destination_dir = destination_dir_raw;
 
     std.Io.Dir.cwd().createDirPath(io, destination_dir) catch |err| {
@@ -197,95 +159,27 @@ pub fn createIos(
         return error.CreateFailed;
     };
 
-    const cwd_abs = try std.process.currentPathAlloc(io, arena);
-    const sdk_ios_abs = try std.fs.path.resolve(arena, &.{ cwd_abs, "sdk/ios" });
-    const normalized_sdk_path = sdk_ios_abs;
+    const tokens = [_]fs_util.RenderToken{
+        .{ .key = "APP_NAME", .value = app_name },
+        .{ .key = "APP_IDENTIFIER", .value = try toIdentifierLower(arena, app_name) },
+        .{ .key = "APP_TYPE_NAME", .value = try toSwiftTypeName(arena, app_name) },
+    };
 
     const project_yml_path = try joinPath(arena, destination_dir, "project.yml");
     const app_swift_path = try joinPath(arena, sources_dir, "App.swift");
 
-    const project_yml_contents = try std.fmt.allocPrint(
-        arena,
-        "name: {s}\n" ++
-            "options:\n" ++
-            "  bundleIdPrefix: dev.ziggy.app\n" ++
-            "settings:\n" ++
-            "  base:\n" ++
-            "    SWIFT_VERSION: 6.0\n" ++
-            "packages:\n" ++
-            "  Ziggy:\n" ++
-            "    path: {s}\n" ++
-            "targets:\n" ++
-            "  {s}:\n" ++
-            "    type: application\n" ++
-            "    platform: iOS\n" ++
-            "    deploymentTarget: \"17.0\"\n" ++
-            "    sources:\n" ++
-            "      - Sources\n" ++
-            "    dependencies:\n" ++
-            "      - package: Ziggy\n" ++
-            "    settings:\n" ++
-            "      base:\n" ++
-            "        PRODUCT_BUNDLE_IDENTIFIER: dev.ziggy.app.{s}\n" ++
-            "        GENERATE_INFOPLIST_FILE: YES\n" ++
-            "        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES\n" ++
-            "        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES\n" ++
-            "        INFOPLIST_KEY_UILaunchScreen_Generation: YES\n" ++
-            "        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait\n" ++
-            "        CODE_SIGNING_ALLOWED: NO\n" ++
-            "        CODE_SIGNING_REQUIRED: NO\n" ++
-            "        CODE_SIGN_IDENTITY: \"\"\n" ++
-            "        DEVELOPMENT_TEAM: \"\"\n",
-        .{ app_name, normalized_sdk_path, app_name, try toIdentifierLower(arena, app_name) },
-    );
+    try renderTemplateToPath(arena, io, templates_root, "app/ios/project.yml", project_yml_path, &tokens);
+    try renderTemplateToPath(arena, io, templates_root, "app/ios/Sources/App.swift", app_swift_path, &tokens);
 
-    const app_swift_contents = try std.fmt.allocPrint(
-        arena,
-        "import SwiftUI\n" ++
-            "import Ziggy\n" ++
-            "\n" ++
-            "@main\n" ++
-            "struct {s}App: App {{\n" ++
-            "    private let runtime = ZiggyRuntime(appName: \"{s}\")\n" ++
-            "\n" ++
-            "    var body: some Scene {{\n" ++
-            "        WindowGroup {{\n" ++
-            "            VStack(alignment: .leading, spacing: 12) {{\n" ++
-            "                Text(\"{s}\")\n" ++
-            "                    .font(.title2.bold())\n" ++
-            "                Text(\"Registered plugins: \\(runtime.plugins.count)\")\n" ++
-            "                Text(\"Runtime available: \\(runtime.isAvailable ? \"yes\" : \"no\")\")\n" ++
-            "                Text(\"Echo: \\((try? runtime.echo(\"hello\")) ?? \"unavailable\")\")\n" ++
-            "                    .font(.caption)\n" ++
-            "                    .foregroundStyle(.secondary)\n" ++
-            "\n" ++
-            "                ForEach(runtime.plugins, id: \\.id) {{ plugin in\n" ++
-            "                    Text(plugin.id)\n" ++
-            "                        .font(.footnote)\n" ++
-            "                }}\n" ++
-            "\n" ++
-            "                if let error = runtime.lastError {{\n" ++
-            "                    Text(\"Runtime error: \\(error)\")\n" ++
-            "                        .font(.caption2)\n" ++
-            "                        .foregroundStyle(.secondary)\n" ++
-            "                }}\n" ++
-            "            }}\n" ++
-            "            .padding(24)\n" ++
-            "        }}\n" ++
-            "    }}\n" ++
-            "}}\n",
-        .{ app_type_name, app_name, app_name },
-    );
-
-    try writeFileAtomically(io, project_yml_path, project_yml_contents);
-    try writeFileAtomically(io, app_swift_path, app_swift_contents);
-
-    runCommand(arena, io, stderr, destination_dir, &.{ "xcodegen", "generate" }, null) catch |err| {
-        try stderr.print("error: failed to generate Xcode project with xcodegen: {s}\n", .{@errorName(err)});
-        try stderr.writeAll("hint: install xcodegen and run `xcodegen generate` in the created directory\n");
+    if (process_util.commandExists(arena, io, "xcodegen")) {
+        _ = process_util.runChecked(arena, io, stderr, destination_dir, &.{ "xcodegen", "generate" }, null, "generate iOS project") catch |err| {
+            try stderr.print("warning: xcodegen failed: {s}\n", .{@errorName(err)});
+            try stderr.flush();
+        };
+    } else {
+        try stderr.writeAll("warning: xcodegen not found; run `xcodegen generate` inside ios/ when installed\n");
         try stderr.flush();
-        return error.CreateFailed;
-    };
+    }
 
     try stdout.print("created iOS app '{s}' at '{s}'\n", .{ app_name, destination_dir });
     try stdout.print(
@@ -295,6 +189,18 @@ pub fn createIos(
     try stdout.flush();
 }
 
+fn renderTemplateToPath(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    templates_root: []const u8,
+    template_rel: []const u8,
+    output_path: []const u8,
+    tokens: []const fs_util.RenderToken,
+) !void {
+    const template = try fs_util.readTemplate(arena, io, templates_root, template_rel);
+    const rendered = try fs_util.renderTemplate(arena, template, tokens);
+    try fs_util.writeFileAtomically(io, output_path, rendered);
+}
 pub fn createAndroid(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -470,10 +376,14 @@ pub fn createAndroid(
             "    }}\n" ++
             "\n" ++
             "    packaging {{\n" ++
-            "        resources {{\n" ++
-            "            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n" ++
-            "        }}\n" ++
+                "        resources {{\n" ++
+                    "            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n" ++
+                "        }}\n" ++
             "    }}\n" ++
+            "}}\n" ++
+            "\n" ++
+            "tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {{\n" ++
+            "    source(rootProject.file(\"../.ziggy/generated/kotlin\"))\n" ++
             "}}\n" ++
             "\n" ++
             "dependencies {{\n" ++
@@ -573,6 +483,7 @@ pub fn createAndroid(
             "import androidx.compose.ui.Modifier\n" ++
             "import androidx.compose.ui.tooling.preview.Preview\n" ++
             "import androidx.compose.ui.unit.dp\n" ++
+            "import dev.ziggy.generated.ZiggyGeneratedApi\n" ++
             "import {s}.ui.theme.{s}Theme\n" ++
             "\n" ++
             "class MainActivity : ComponentActivity() {{\n" ++
@@ -594,6 +505,7 @@ pub fn createAndroid(
             "\n" ++
             "@Composable\n" ++
             "private fun Greeting(appName: String, modifier: Modifier = Modifier) {{\n" ++
+            "    val api = remember {{ ZiggyGeneratedApi() }}\n" ++
             "    var clickCount by remember {{ mutableStateOf(0) }}\n" ++
             "    Column(\n" ++
             "        modifier = modifier\n" ++
@@ -608,6 +520,10 @@ pub fn createAndroid(
             "        Text(\n" ++
             "            text = \"Button clicks: $clickCount\",\n" ++
             "            style = MaterialTheme.typography.bodyMedium,\n" ++
+            "        )\n" ++
+            "        Text(\n" ++
+            "            text = \"Generated API echo: ${{api.echo(\"hello\")}}\",\n" ++
+            "            style = MaterialTheme.typography.bodySmall,\n" ++
             "        )\n" ++
             "        Button(\n" ++
             "            onClick = {{\n" ++

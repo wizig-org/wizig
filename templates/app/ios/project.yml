@@ -1,0 +1,31 @@
+name: {{APP_NAME}}
+options:
+  bundleIdPrefix: dev.ziggy.app
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+packages:
+  Ziggy:
+    path: ../.ziggy/sdk/ios
+targets:
+  {{APP_NAME}}:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - Sources
+      - ../.ziggy/generated/swift
+    dependencies:
+      - package: Ziggy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ziggy.app.{{APP_IDENTIFIER}}
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: ""

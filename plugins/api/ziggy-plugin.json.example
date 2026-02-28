@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "id": "dev.ziggy.example",
+  "version": "1.0.0",
+  "api_version": 1,
+  "capabilities": ["network", "storage"],
+  "ios_spm": [
+    {
+      "url": "https://github.com/apple/swift-collections",
+      "requirement": "from:1.1.0",
+      "product": "Collections"
+    }
+  ],
+  "android_maven": [
+    {
+      "coordinate": "com.squareup.okhttp3:okhttp:4.12.0",
+      "classifier": "",
+      "scope": "implementation"
+    }
+  ]
+}
