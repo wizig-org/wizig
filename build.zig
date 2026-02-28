@@ -1,5 +1,13 @@
+//! Ziggy build graph.
+//!
+//! This file defines build/install targets for:
+//! - CLI executable (`ziggy`)
+//! - Core and compatibility modules
+//! - FFI static/shared libraries
+//! - Installed SDK/runtime/templates assets
 const std = @import("std");
 
+/// Configures all build steps for Ziggy.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -87,6 +95,10 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
+
+    const docs_step = b.step("docs", "Generate Ziggy documentation site");
+    const docs_cmd = b.addSystemCommand(&.{ "python3", "scripts/docs_build.py" });
+    docs_step.dependOn(&docs_cmd.step);
 
     const core_tests = b.addTest(.{
         .name = "core-tests",

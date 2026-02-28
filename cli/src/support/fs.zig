@@ -1,15 +1,19 @@
+//! Filesystem helpers used by Ziggy CLI commands.
 const std = @import("std");
 const path_util = @import("path.zig");
 
+/// Returns true when `path` exists.
 pub fn pathExists(io: std.Io, path: []const u8) bool {
     _ = std.Io.Dir.cwd().statFile(io, path, .{}) catch return false;
     return true;
 }
 
+/// Creates a directory tree if it does not already exist.
 pub fn ensureDir(io: std.Io, path: []const u8) !void {
     try std.Io.Dir.cwd().createDirPath(io, path);
 }
 
+/// Atomically writes `contents` to `path`, creating parents as needed.
 pub fn writeFileAtomically(io: std.Io, path: []const u8, contents: []const u8) !void {
     var atomic_file = try std.Io.Dir.cwd().createFileAtomic(io, path, .{
         .make_path = true,
@@ -21,11 +25,13 @@ pub fn writeFileAtomically(io: std.Io, path: []const u8, contents: []const u8) !
     try atomic_file.replace(io);
 }
 
+/// Removes `path` tree if present; no-op when missing.
 pub fn removeTreeIfExists(io: std.Io, path: []const u8) !void {
     if (!pathExists(io, path)) return;
     try std.Io.Dir.cwd().deleteTree(io, path);
 }
 
+/// Recursively copies `src_root` into `dst_root`.
 pub fn copyTree(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -57,6 +63,7 @@ pub fn copyTree(
     }
 }
 
+/// Loads a template file from `<templates_root>/<template_rel>`.
 pub fn readTemplate(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -67,11 +74,13 @@ pub fn readTemplate(
     return std.Io.Dir.cwd().readFileAlloc(io, full, arena, .limited(1024 * 1024));
 }
 
+/// Token replacement entry used by template rendering.
 pub const RenderToken = struct {
     key: []const u8,
     value: []const u8,
 };
 
+/// Replaces `{{KEY}}` placeholders in template content.
 pub fn renderTemplate(
     arena: std.mem.Allocator,
     template: []const u8,

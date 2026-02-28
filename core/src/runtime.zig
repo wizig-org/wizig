@@ -1,9 +1,12 @@
+//! Minimal runtime object used by generated host bindings.
 const std = @import("std");
 
+/// Runtime holds app-level metadata and provides simple sample methods.
 pub const Runtime = struct {
     allocator: std.mem.Allocator,
     app_name: []u8,
 
+    /// Allocates and initializes a runtime instance for `app_name`.
     pub fn init(allocator: std.mem.Allocator, app_name: []const u8) !Runtime {
         return .{
             .allocator = allocator,
@@ -11,11 +14,13 @@ pub const Runtime = struct {
         };
     }
 
+    /// Releases owned runtime resources.
     pub fn deinit(self: *Runtime) void {
         self.allocator.free(self.app_name);
         self.* = undefined;
     }
 
+    /// Returns a formatted string prefixing input with the app name.
     pub fn echo(self: *const Runtime, input: []const u8, allocator: std.mem.Allocator) ![]u8 {
         return std.fmt.allocPrint(allocator, "{s}:{s}", .{ self.app_name, input });
     }

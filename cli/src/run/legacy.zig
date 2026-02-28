@@ -1,9 +1,11 @@
+//! Platform-specific run pipeline used by unified run selection.
 const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
 
 const Allocator = std.mem.Allocator;
 
+/// Public run command error set.
 pub const RunError = error{RunFailed};
 
 const Platform = enum {
@@ -56,6 +58,7 @@ const AndroidTarget = union(enum) {
     avd: []const u8,
 };
 
+/// Executes platform run pipeline (`ios` or `android`) with parsed options.
 pub fn run(
     arena: Allocator,
     io: std.Io,
@@ -93,6 +96,7 @@ pub fn run(
     }
 }
 
+/// Writes legacy platform run usage help.
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Run:\n" ++

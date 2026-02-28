@@ -1,3 +1,4 @@
+//! Unified run mode that auto-detects iOS/Android hosts and devices.
 const std = @import("std");
 const Io = std.Io;
 
@@ -33,6 +34,7 @@ const DeviceInfo = struct {
     state: []const u8,
 };
 
+/// Discovers available targets and runs the selected host flow.
 pub fn run(
     arena: Allocator,
     io: std.Io,
@@ -198,6 +200,7 @@ pub fn run(
     try stdout.flush();
 }
 
+/// Writes unified run usage help.
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Unified run options:\n" ++

@@ -1,5 +1,7 @@
+//! Runtime-packaged plugin manifest parser.
 const std = @import("std");
 
+/// Parsed plugin manifest for app-local runtime usage.
 pub const PluginManifest = struct {
     id: []u8,
     version: []u8,
@@ -8,6 +10,7 @@ pub const PluginManifest = struct {
     ios_spm: [][]u8,
     android_maven: [][]u8,
 
+    /// Parses and validates a plugin manifest JSON payload.
     pub fn parse(allocator: std.mem.Allocator, text: []const u8) !PluginManifest {
         var id: ?[]u8 = null;
         var version: ?[]u8 = null;
@@ -81,6 +84,7 @@ pub const PluginManifest = struct {
         };
     }
 
+    /// Releases all manifest-owned memory.
     pub fn deinit(self: *PluginManifest, allocator: std.mem.Allocator) void {
         allocator.free(self.id);
         allocator.free(self.version);

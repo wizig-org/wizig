@@ -1,12 +1,15 @@
+//! Plugin registry collection and registrant source generation.
 const std = @import("std");
 const PluginManifest = @import("manifest.zig").PluginManifest;
 const SpmDependency = @import("manifest.zig").SpmDependency;
 const MavenDependency = @import("manifest.zig").MavenDependency;
 
+/// Plugin file path paired with parsed manifest contents.
 pub const PluginRecord = struct {
     manifest_path: []u8,
     manifest: PluginManifest,
 
+    /// Releases owned path/manifest data.
     pub fn deinit(self: *PluginRecord, allocator: std.mem.Allocator) void {
         allocator.free(self.manifest_path);
         self.manifest.deinit(allocator);
@@ -14,9 +17,11 @@ pub const PluginRecord = struct {
     }
 };
 
+/// In-memory registry of discovered plugins.
 pub const Registry = struct {
     records: []PluginRecord,
 
+    /// Releases all registry records and their owned allocations.
     pub fn deinit(self: *Registry, allocator: std.mem.Allocator) void {
         for (self.records) |*record| {
             record.deinit(allocator);
@@ -26,6 +31,7 @@ pub const Registry = struct {
     }
 };
 
+/// Collects plugin manifests from the given `plugins_dir`.
 pub fn collectFromDir(
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -72,6 +78,7 @@ pub fn collectFromDir(
     return .{ .records = records_slice };
 }
 
+/// Renders deterministic JSON lockfile text for all plugin records.
 pub fn renderLockfile(allocator: std.mem.Allocator, records: []const PluginRecord) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
@@ -101,6 +108,7 @@ pub fn renderLockfile(allocator: std.mem.Allocator, records: []const PluginRecor
     return out.toOwnedSlice(allocator);
 }
 
+/// Renders Zig registrant source from discovered plugins.
 pub fn renderZigRegistrant(allocator: std.mem.Allocator, records: []const PluginRecord) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
@@ -154,6 +162,7 @@ pub fn renderZigRegistrant(allocator: std.mem.Allocator, records: []const Plugin
     return out.toOwnedSlice(allocator);
 }
 
+/// Renders Swift registrant source from discovered plugins.
 pub fn renderSwiftRegistrant(allocator: std.mem.Allocator, records: []const PluginRecord) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
@@ -209,6 +218,7 @@ pub fn renderSwiftRegistrant(allocator: std.mem.Allocator, records: []const Plug
     return out.toOwnedSlice(allocator);
 }
 
+/// Renders Kotlin registrant source from discovered plugins.
 pub fn renderKotlinRegistrant(allocator: std.mem.Allocator, records: []const PluginRecord) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);

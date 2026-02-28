@@ -1,0 +1,38 @@
+# API Reference
+
+Auto-generated on 2026-02-28 01:45:16Z.
+
+## Source Files
+
+- [`build`](build.md)
+- [`cli/src/commands/codegen/root`](cli/src/commands/codegen/root.md)
+- [`cli/src/commands/codegen/targets`](cli/src/commands/codegen/targets.md)
+- [`cli/src/commands/create/root`](cli/src/commands/create/root.md)
+- [`cli/src/commands/create/scaffold`](cli/src/commands/create/scaffold.md)
+- [`cli/src/commands/doctor/root`](cli/src/commands/doctor/root.md)
+- [`cli/src/commands/plugin/root`](cli/src/commands/plugin/root.md)
+- [`cli/src/commands/run/root`](cli/src/commands/run/root.md)
+- [`cli/src/main`](cli/src/main.md)
+- [`cli/src/run`](cli/src/run.md)
+- [`cli/src/run/legacy`](cli/src/run/legacy.md)
+- [`cli/src/run/unified`](cli/src/run/unified.md)
+- [`cli/src/support/errors`](cli/src/support/errors.md)
+- [`cli/src/support/fs`](cli/src/support/fs.md)
+- [`cli/src/support/path`](cli/src/support/path.md)
+- [`cli/src/support/process`](cli/src/support/process.md)
+- [`cli/src/support/sdk_locator`](cli/src/support/sdk_locator.md)
+- [`core/src/plugins/manifest`](core/src/plugins/manifest.md)
+- [`core/src/plugins/registry_codegen`](core/src/plugins/registry_codegen.md)
+- [`core/src/root`](core/src/root.md)
+- [`core/src/runtime`](core/src/runtime.md)
+- [`examples/app/ZiggyExample/lib/main`](examples/app/ZiggyExample/lib/main.md)
+- [`ffi/src/root`](ffi/src/root.md)
+- [`plugins/registry/generated_plugins`](plugins/registry/generated_plugins.md)
+- [`runtime/core/src/plugins/manifest`](runtime/core/src/plugins/manifest.md)
+- [`runtime/core/src/plugins/registry_codegen`](runtime/core/src/plugins/registry_codegen.md)
+- [`runtime/core/src/root`](runtime/core/src/root.md)
+- [`runtime/core/src/runtime`](runtime/core/src/runtime.md)
+- [`runtime/ffi/src/root`](runtime/ffi/src/root.md)
+- [`src/main`](src/main.md)
+- [`src/root`](src/root.md)
+- [`templates/app/lib/main`](templates/app/lib/main.md)

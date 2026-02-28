@@ -1,8 +1,10 @@
+//! `ziggy doctor` diagnostics for host tools and bundled assets.
 const std = @import("std");
 const Io = std.Io;
 const sdk_locator = @import("../../support/sdk_locator.zig");
 const process_util = @import("../../support/process.zig");
 
+/// Runs environment diagnostics and SDK integrity checks.
 pub fn run(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -62,6 +64,7 @@ pub fn run(
     try stdout.flush();
 }
 
+/// Writes usage help for the doctor command.
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Doctor:\n" ++

@@ -1,3 +1,4 @@
+//! Project scaffolding for `ziggy create`.
 const std = @import("std");
 const Io = std.Io;
 const fs_util = @import("../../support/fs.zig");
@@ -5,13 +6,16 @@ const process_util = @import("../../support/process.zig");
 const sdk_locator = @import("../../support/sdk_locator.zig");
 const codegen_cmd = @import("../codegen/root.zig");
 
+/// Errors emitted by scaffolding helpers.
 pub const CreateError = error{CreateFailed};
+/// Platform selection for generated hosts.
 pub const CreatePlatforms = struct {
     ios: bool = true,
     android: bool = true,
     macos: bool = false,
 };
 
+/// Creates a full Ziggy application scaffold at `destination_dir_raw`.
 pub fn createApp(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -134,6 +138,7 @@ pub fn createApp(
     try stdout.flush();
 }
 
+/// Creates the iOS host scaffold and optionally runs `xcodegen generate`.
 pub fn createIos(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -201,6 +206,7 @@ fn renderTemplateToPath(
     const rendered = try fs_util.renderTemplate(arena, template, tokens);
     try fs_util.writeFileAtomically(io, output_path, rendered);
 }
+/// Creates the Android host scaffold and initializes Gradle wrapper files.
 pub fn createAndroid(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -376,9 +382,9 @@ pub fn createAndroid(
             "    }}\n" ++
             "\n" ++
             "    packaging {{\n" ++
-                "        resources {{\n" ++
-                    "            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n" ++
-                "        }}\n" ++
+            "        resources {{\n" ++
+            "            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n" ++
+            "        }}\n" ++
             "    }}\n" ++
             "}}\n" ++
             "\n" ++

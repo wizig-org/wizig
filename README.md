@@ -55,6 +55,14 @@ zig build run -- codegen examples/app/ZiggyExample
 zig build run -- doctor
 ```
 
+## Documentation
+
+```sh
+python3 scripts/docs_build.py
+```
+
+Generates API reference markdown from Zig doc comments and renders a static site to `docs/site/`.
+
 ## FFI Runtime Notes
 
 - Build host FFI artifacts with `zig build`.

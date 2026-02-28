@@ -1,7 +1,9 @@
+//! `ziggy create` command parser and dispatch.
 const std = @import("std");
 const Io = std.Io;
 const scaffold = @import("scaffold.zig");
 
+/// Parses create options and delegates scaffold generation.
 pub fn run(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -28,6 +30,7 @@ pub fn run(
     );
 }
 
+/// Writes usage help for the create command.
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Create:\n" ++

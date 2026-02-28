@@ -1,10 +1,13 @@
+//! Plugin manifest v2 schema parsing/validation.
 const std = @import("std");
 
+/// Swift Package Manager dependency descriptor declared by a plugin.
 pub const SpmDependency = struct {
     url: []u8,
     requirement: []u8,
     product: []u8,
 
+    /// Releases owned string fields.
     pub fn deinit(self: *SpmDependency, allocator: std.mem.Allocator) void {
         allocator.free(self.url);
         allocator.free(self.requirement);
@@ -13,11 +16,13 @@ pub const SpmDependency = struct {
     }
 };
 
+/// Maven dependency descriptor declared by a plugin.
 pub const MavenDependency = struct {
     coordinate: []u8,
     classifier: []u8,
     scope: []u8,
 
+    /// Releases owned string fields.
     pub fn deinit(self: *MavenDependency, allocator: std.mem.Allocator) void {
         allocator.free(self.coordinate);
         allocator.free(self.classifier);
@@ -26,6 +31,7 @@ pub const MavenDependency = struct {
     }
 };
 
+/// Parsed plugin manifest with native dependency descriptors.
 pub const PluginManifest = struct {
     schema_version: u32,
     id: []u8,
@@ -35,6 +41,7 @@ pub const PluginManifest = struct {
     ios_spm: []SpmDependency,
     android_maven: []MavenDependency,
 
+    /// Parses a JSON plugin manifest payload into a validated structure.
     pub fn parse(allocator: std.mem.Allocator, text: []const u8) !PluginManifest {
         const parsed = std.json.parseFromSlice(std.json.Value, allocator, text, .{}) catch {
             return error.InvalidManifest;
@@ -75,6 +82,7 @@ pub const PluginManifest = struct {
         };
     }
 
+    /// Releases all manifest-owned memory.
     pub fn deinit(self: *PluginManifest, allocator: std.mem.Allocator) void {
         allocator.free(self.id);
         allocator.free(self.version);

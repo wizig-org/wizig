@@ -1,9 +1,11 @@
+//! `ziggy codegen` command and typed API binding generators.
 const std = @import("std");
 const Io = std.Io;
 const fs_util = @import("../../support/fs.zig");
 const path_util = @import("../../support/path.zig");
 const targets = @import("targets.zig");
 
+/// Parses codegen CLI options and triggers project generation.
 pub fn run(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -49,6 +51,7 @@ pub fn run(
     try generateProject(arena, io, stderr, stdout, root_abs, api_path);
 }
 
+/// Writes usage help for the codegen command.
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     const ts_supported = targets.supportedNow(.typescript);
     try writer.writeAll(
@@ -59,6 +62,7 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.print("  # reserved target: typescript ({s})\n\n", .{if (ts_supported) "enabled" else "planned"});
 }
 
+/// Generates Zig/Swift/Kotlin API bindings from `ziggy.api.json`.
 pub fn generateProject(
     arena: std.mem.Allocator,
     io: std.Io,

@@ -1,8 +1,11 @@
+//! Process execution helpers with checked error reporting.
 const std = @import("std");
 const Io = std.Io;
 
+/// Alias for captured command execution output.
 pub const CommandResult = std.process.RunResult;
 
+/// Runs a subprocess and captures stdout/stderr.
 pub fn runCapture(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -19,6 +22,7 @@ pub fn runCapture(
     });
 }
 
+/// Runs a subprocess and surfaces command output on non-zero exit.
 pub fn runChecked(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -49,6 +53,7 @@ pub fn runChecked(
     return result;
 }
 
+/// Returns true when `command_name` is discoverable via `which`.
 pub fn commandExists(
     arena: std.mem.Allocator,
     io: std.Io,

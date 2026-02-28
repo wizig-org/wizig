@@ -1,3 +1,4 @@
+//! `ziggy plugin` command handlers for validation, syncing, and adding plugins.
 const std = @import("std");
 const Io = std.Io;
 const ziggy_core = @import("ziggy_core");
@@ -5,6 +6,7 @@ const fs_util = @import("../../support/fs.zig");
 const path_util = @import("../../support/path.zig");
 const process_util = @import("../../support/process.zig");
 
+/// Executes plugin subcommands.
 pub fn run(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -47,6 +49,7 @@ pub fn run(
     return error.InvalidArguments;
 }
 
+/// Writes usage help for the plugin command.
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Plugin:\n" ++

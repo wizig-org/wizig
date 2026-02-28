@@ -139,6 +139,7 @@ playground.xcworkspace
 # .swiftpm
 
 .build/
+docs/site/
 
 # CocoaPods
 #

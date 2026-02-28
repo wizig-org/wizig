@@ -1,8 +1,10 @@
+//! SDK/runtime/template locator for portable Ziggy installs.
 const std = @import("std");
 const Io = std.Io;
 const fs_util = @import("fs.zig");
 const path_util = @import("path.zig");
 
+/// Resolved directories required to scaffold and run projects.
 pub const ResolvedSdk = struct {
     root: []const u8,
     sdk_dir: []const u8,
@@ -10,6 +12,7 @@ pub const ResolvedSdk = struct {
     templates_dir: []const u8,
 };
 
+/// Resolves Ziggy SDK roots using CLI/env/install/dev fallback precedence.
 pub fn resolve(
     arena: std.mem.Allocator,
     io: std.Io,

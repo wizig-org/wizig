@@ -1,6 +1,8 @@
+//! C ABI bridge exposing Ziggy runtime functions to native hosts.
 const std = @import("std");
 const ziggy_core = @import("ziggy_core");
 
+/// Stable status codes returned by exported FFI functions.
 pub const Status = enum(i32) {
     ok = 0,
     null_argument = 1,
@@ -9,6 +11,7 @@ pub const Status = enum(i32) {
     internal_error = 255,
 };
 
+/// Opaque runtime handle used by C/Swift/Kotlin callers.
 pub const ZiggyRuntimeHandle = opaque {};
 
 const allocator = std.heap.page_allocator;
@@ -29,6 +32,7 @@ fn toHandle(box: *RuntimeBox) *ZiggyRuntimeHandle {
     return @ptrCast(box);
 }
 
+/// Allocates a runtime handle for the provided app name.
 pub export fn ziggy_runtime_new(
     app_name_ptr: [*]const u8,
     app_name_len: usize,
@@ -52,6 +56,7 @@ pub export fn ziggy_runtime_new(
     return statusCode(.ok);
 }
 
+/// Destroys a runtime handle previously returned by `ziggy_runtime_new`.
 pub export fn ziggy_runtime_free(handle: ?*ZiggyRuntimeHandle) void {
     if (handle == null) return;
 
@@ -60,6 +65,7 @@ pub export fn ziggy_runtime_free(handle: ?*ZiggyRuntimeHandle) void {
     allocator.destroy(box);
 }
 
+/// Executes runtime echo and returns an owned UTF-8 byte buffer.
 pub export fn ziggy_runtime_echo(
     handle: ?*ZiggyRuntimeHandle,
     input_ptr: [*]const u8,
@@ -88,6 +94,7 @@ pub export fn ziggy_runtime_echo(
     return statusCode(.ok);
 }
 
+/// Frees buffers returned by Ziggy FFI functions.
 pub export fn ziggy_bytes_free(ptr: ?[*]u8, len: usize) void {
     if (ptr == null) return;
     allocator.free(ptr.?[0..len]);

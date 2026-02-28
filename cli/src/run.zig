@@ -1,10 +1,13 @@
+//! Shared run command entrypoint that forwards to unified runner.
 const std = @import("std");
 const Io = std.Io;
 
 const unified = @import("run/unified.zig");
 
+/// Top-level run command errors.
 pub const RunError = error{RunFailed};
 
+/// Executes unified run flow for project hosts/devices.
 pub fn run(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -16,6 +19,7 @@ pub fn run(
     return unified.run(arena, io, parent_environ_map, stderr, stdout, args);
 }
 
+/// Writes run command usage text.
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Run:\n" ++

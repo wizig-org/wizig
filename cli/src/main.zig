@@ -1,3 +1,4 @@
+//! Ziggy CLI entrypoint and command router.
 const std = @import("std");
 const Io = std.Io;
 
@@ -7,6 +8,7 @@ const plugin_cmd = @import("commands/plugin/root.zig");
 const codegen_cmd = @import("commands/codegen/root.zig");
 const doctor_cmd = @import("commands/doctor/root.zig");
 
+/// Parses top-level CLI arguments and dispatches to command handlers.
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const args = try init.minimal.args.toSlice(arena);

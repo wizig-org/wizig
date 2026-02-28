@@ -1,0 +1,10 @@
+index.md
+getting-started.md
+architecture.md
+cli-reference.md
+bridge-and-codegen.md
+plugin-system.md
+docs-pipeline.md
+development-requirements.md
+adr/0001-native-host-plus-zig-core.md
+reference/index.md
