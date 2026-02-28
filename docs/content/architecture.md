@@ -1,49 +1,78 @@
 # Architecture
 
-## Design Direction
+## Goals
 
-Ziggy uses a hybrid model:
+Ziggy is optimized for three constraints:
 
-- Native UI hosts on each platform
-- Zig core for shared domain logic/runtime
-- Typed code-generated bridge boundary
+- Keep platform UX native and first-class.
+- Share runtime/domain logic across hosts with Zig.
+- Keep host interop typed and deterministic.
 
-This keeps platform UX native while sharing the majority of app behavior.
+## Runtime Layers
 
-## Project Layout
+1. **Host UI layer**
+   - iOS: SwiftUI app target.
+   - Android: Compose app module.
+2. **Generated bridge layer**
+   - Generated clients/events in Swift, Kotlin, Zig from one contract.
+3. **FFI/runtime layer**
+   - `ffi/src/root.zig` exports C ABI symbols.
+   - `core/src/runtime.zig` provides runtime primitives.
+4. **App domain layer**
+   - Application business logic in `lib/` (Zig).
 
-`ziggy create` scaffolds:
+## Scaffold Layout
 
-- `lib/` app Zig logic
-- `ios/` native iOS host
-- `android/` native Android host
-- `.ziggy/sdk/` app-local host SDK wrappers
-- `.ziggy/runtime/` app-local runtime/FFI sources
-- `.ziggy/generated/` typed generated bindings
+`ziggy create` produces:
+
+- `lib/` app logic.
+- `ios/` iOS host project.
+- `android/` Android host project.
+- `.ziggy/sdk/` vendored host SDK wrappers.
+- `.ziggy/runtime/` vendored runtime sources.
+- `.ziggy/generated/` generated bridge + registrants.
+- `plugins/` local plugin packages.
+- `ziggy.yaml` app configuration.
+- `ziggy.api.zig` API contract.
+
+Vendoring `.ziggy/` assets is deliberate: projects remain portable and do not depend on Ziggy repository-relative paths.
 
 ## SDK Resolution
 
-SDK lookup precedence:
+Ziggy resolves SDK roots with strict precedence:
 
-1. `--sdk-root`
-2. `ZIGGY_SDK_ROOT`
-3. install-relative bundles (`share/ziggy`)
-4. dev workspace fallback markers
+1. CLI flag `--sdk-root`
+2. env `ZIGGY_SDK_ROOT`
+3. install-relative bundles (`../share/ziggy`)
+4. development workspace fallback markers
+
+Resolution validates required markers and reports attempted roots when lookup fails.
 
 ## Run Pipeline
 
-Unified run flow:
+`ziggy run` uses one unified flow:
 
-1. Resolve project root and host presence
-2. Run codegen preflight (`ziggy.api.json`)
-3. Enumerate available iOS/Android targets
-4. Delegate to platform runner
-5. Build/install/launch app
+1. Resolve project root and available hosts.
+2. Run codegen preflight (`ziggy.api.zig`, fallback `ziggy.api.json`).
+3. Discover runnable iOS/Android targets.
+4. Select target (interactive or non-interactive).
+5. Delegate to platform build/install/launch flow.
+6. Write run log to `.ziggy/logs/run.log`.
 
-iOS path additionally regenerates Xcode project from `project.yml` before build to keep generated source inclusion correct.
+## Type-Safety Boundary
 
-## Runtime Boundary
+Type safety is generated from the contract into all target languages:
 
-- `core/src/runtime.zig` provides shared runtime primitives
-- `ffi/src/root.zig` exposes C ABI entrypoints
-- Host runtimes consume `ziggy_runtime_*` exported functions
+- Host call signatures are generated, not handwritten.
+- Event sink interfaces are generated, not handwritten.
+- Contract edits fail fast during compile if host code drifts.
+
+The transport boundary still uses C ABI for runtime interoperability, but application-facing APIs stay typed.
+
+## Web Expansion Hooks
+
+Current web scope is interface-only:
+
+- Target abstraction exists in codegen design.
+- Runtime host capability abstractions reserve future web integration.
+- No production web runtime is shipped in this phase.

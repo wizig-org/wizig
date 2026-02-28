@@ -9,4 +9,4 @@ paths:
   runtime: .ziggy/runtime
   generated: .ziggy/generated
   plugins: plugins
-api: ziggy.api.json
+api: ziggy.api.zig

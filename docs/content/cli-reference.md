@@ -6,7 +6,7 @@
 ziggy <command> [args]
 ```
 
-Commands:
+Primary commands:
 
 - `create`
 - `run`
@@ -20,7 +20,21 @@ Commands:
 ziggy create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]
 ```
 
-Creates a full app scaffold including `.ziggy/` app-local runtime assets.
+Behavior:
+
+1. Resolves SDK/runtime/templates roots.
+2. Creates app structure (`lib/`, hosts, `.ziggy/`, config files).
+3. Writes `ziggy.api.zig` contract.
+4. Runs initial `ziggy codegen`.
+5. Generates iOS/Android host projects.
+
+Examples:
+
+```sh
+ziggy create Runa
+ziggy create Runa /Users/arata/Developer/zig/tests/Runa --sdk-root /Users/arata/Developer/zig/ziggy
+ziggy create Runa /tmp/Runa --platforms ios,android
+```
 
 ## `ziggy run`
 
@@ -30,9 +44,19 @@ ziggy run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-inter
 
 Behavior:
 
-- Runs codegen preflight automatically
-- Discovers host projects under `ios/` and `android/`
-- Shows/selects available devices across platforms
+1. Performs codegen preflight from contract.
+2. Discovers iOS and Android run targets.
+3. Prompts for target selection unless non-interactive.
+4. Delegates to platform-specific build/install/launch.
+5. Writes run log under `.ziggy/logs/run.log`.
+
+Examples:
+
+```sh
+ziggy run .
+ziggy run /tmp/Runa --non-interactive --device emulator-5554 --once
+ziggy run /tmp/Runa --non-interactive --device 3BE718C0-8315-4698-8C04-7F62D2EE71C7 --debugger none --once
+```
 
 ## `ziggy codegen`
 
@@ -40,11 +64,24 @@ Behavior:
 ziggy codegen [project_root] [--api <path>]
 ```
 
-Generates typed bindings into:
+Contract resolution:
 
-- `.ziggy/generated/zig`
-- `.ziggy/generated/swift`
-- `.ziggy/generated/kotlin`
+1. `--api <path>`
+2. `<project>/ziggy.api.zig`
+3. `<project>/ziggy.api.json`
+
+Outputs:
+
+- `.ziggy/generated/zig/ZiggyGeneratedApi.zig`
+- `.ziggy/generated/swift/ZiggyGeneratedApi.swift`
+- `.ziggy/generated/kotlin/dev/ziggy/generated/ZiggyGeneratedApi.kt`
+
+Examples:
+
+```sh
+ziggy codegen .
+ziggy codegen /tmp/Runa --api /tmp/Runa/ziggy.api.zig
+```
 
 ## `ziggy plugin`
 
@@ -54,10 +91,21 @@ ziggy plugin sync <project_root>
 ziggy plugin add <git_or_path>
 ```
 
+`sync` performs manifest validation, lockfile update, registrant generation, and host managed-section updates.
+
 ## `ziggy doctor`
 
 ```sh
 ziggy doctor [--sdk-root <path>]
 ```
 
-Checks host toolchain and bundled SDK/runtime/templates integrity.
+Checks:
+
+- Required host tools (Zig/Xcode/Java/Gradle/adb/xcodegen)
+- SDK/runtime/templates bundle integrity
+- Path marker validity for selected SDK root
+
+## Exit Semantics
+
+- Command exits non-zero on validation/build/codegen failures.
+- Diagnostics are emitted to stderr with actionable path/context hints.

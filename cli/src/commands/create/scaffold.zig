@@ -100,11 +100,11 @@ pub fn createApp(
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/.gitignore", try joinPath(arena, destination_dir, ".gitignore"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/README.md", try joinPath(arena, destination_dir, "README.md"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/ziggy.yaml", try joinPath(arena, destination_dir, "ziggy.yaml"), &template_tokens);
-    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/ziggy.api.json", try joinPath(arena, destination_dir, "ziggy.api.json"), &template_tokens);
+    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/ziggy.api.zig", try joinPath(arena, destination_dir, "ziggy.api.zig"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/lib/main.zig", try joinPath(arena, lib_dir, "main.zig"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/plugins/README.md", try joinPath(arena, plugins_dir, "README.md"), &template_tokens);
 
-    const api_path = try joinPath(arena, destination_dir, "ziggy.api.json");
+    const api_path = try joinPath(arena, destination_dir, "ziggy.api.zig");
     codegen_cmd.generateProject(arena, io, stderr, stdout, destination_dir, api_path) catch |err| {
         try stderr.print("error: failed to run initial codegen: {s}\n", .{@errorName(err)});
         try stderr.flush();
@@ -386,10 +386,12 @@ pub fn createAndroid(
             "            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n" ++
             "        }}\n" ++
             "    }}\n" ++
-            "}}\n" ++
             "\n" ++
-            "tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {{\n" ++
-            "    source(rootProject.file(\"../.ziggy/generated/kotlin\"))\n" ++
+            "    sourceSets {{\n" ++
+            "        getByName(\"main\") {{\n" ++
+            "            kotlin.directories.add(rootProject.file(\"../.ziggy/generated/kotlin\").path)\n" ++
+            "        }}\n" ++
+            "    }}\n" ++
             "}}\n" ++
             "\n" ++
             "dependencies {{\n" ++
@@ -513,6 +515,7 @@ pub fn createAndroid(
             "private fun Greeting(appName: String, modifier: Modifier = Modifier) {{\n" ++
             "    val api = remember {{ ZiggyGeneratedApi() }}\n" ++
             "    var clickCount by remember {{ mutableStateOf(0) }}\n" ++
+            "    val echoed = remember {{ api.echo(\"hello\") }}\n" ++
             "    Column(\n" ++
             "        modifier = modifier\n" ++
             "            .fillMaxSize()\n" ++
@@ -528,7 +531,7 @@ pub fn createAndroid(
             "            style = MaterialTheme.typography.bodyMedium,\n" ++
             "        )\n" ++
             "        Text(\n" ++
-            "            text = \"Generated API echo: ${{api.echo(\"hello\")}}\",\n" ++
+            "            text = \"Generated API echo: $echoed\",\n" ++
             "            style = MaterialTheme.typography.bodySmall,\n" ++
             "        )\n" ++
             "        Button(\n" ++

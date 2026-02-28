@@ -536,19 +536,18 @@ fn runCodegenPreflight(
     project_root: []const u8,
     log_lines: *std.ArrayList(u8),
 ) !void {
-    const api_path = try joinPath(arena, project_root, "ziggy.api.json");
-    if (!pathExists(io, api_path)) {
+    const contract = (try codegen_cmd.resolveApiContract(arena, io, stderr, project_root, null)) orelse {
         try appendLogLine(arena, log_lines, "codegen=skipped:no_api_contract\n", .{});
         return;
-    }
+    };
 
     try appendLogLine(arena, log_lines, "codegen=running\n", .{});
     try stdout.writeAll("running codegen...\n");
     try stdout.flush();
 
-    codegen_cmd.generateProject(arena, io, stderr, stdout, project_root, api_path) catch |err| {
+    codegen_cmd.generateProject(arena, io, stderr, stdout, project_root, contract.path) catch |err| {
         try appendLogLine(arena, log_lines, "codegen=failed:{s}\n", .{@errorName(err)});
-        try stderr.print("error: failed to generate API bindings from '{s}': {s}\n", .{ api_path, @errorName(err) });
+        try stderr.print("error: failed to generate API bindings from '{s}': {s}\n", .{ contract.path, @errorName(err) });
         try stderr.flush();
         return error.RunFailed;
     };

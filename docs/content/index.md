@@ -1,22 +1,53 @@
 # Ziggy Documentation
 
-Ziggy is a mobile-first framework built around:
+Ziggy is a mobile application framework that keeps product UI native (`SwiftUI`/`Jetpack Compose`) while sharing core runtime and domain logic in Zig.
 
-- Native host UIs (`SwiftUI`, `Jetpack Compose`)
-- Shared Zig business logic and runtime
-- Typed host-to-Zig bridge generation from `ziggy.api.json`
-- Static plugin registration and deterministic lockfiles
+The framework is built around four hard rules:
 
-This documentation bundle has two layers:
+- Native hosts are first-class and production-default.
+- Cross-platform behavior lives in Zig.
+- Host-to-Zig calls are generated from a typed contract.
+- Application scaffolds are app-local and portable (`.ziggy/` vendored assets).
 
-- Curated manuals under `docs/content/*.md`
-- Auto-generated Zig source API reference under `docs/content/reference/`
+## What You Get
 
-## Start Here
+When you scaffold an app with `ziggy create`, Ziggy generates:
 
-- [Getting Started](getting-started.md)
-- [Architecture](architecture.md)
-- [CLI Reference](cli-reference.md)
-- [Bridge And Codegen](bridge-and-codegen.md)
-- [Plugin System](plugin-system.md)
-- [API Reference](reference/index.md)
+- `ios/` and `android/` host apps.
+- `lib/` Zig application logic.
+- `.ziggy/sdk/` host runtime wrappers.
+- `.ziggy/runtime/` Zig runtime/FFI glue.
+- `.ziggy/generated/` generated bridge and plugin registrants.
+- `ziggy.api.zig` typed bridge contract.
+
+This structure is intentionally self-contained so projects work outside the Ziggy repository.
+
+## Reading Path
+
+If you are new to Ziggy, read in this order:
+
+1. [Getting Started](getting-started.md)
+2. [Architecture](architecture.md)
+3. [Bridge And Codegen](bridge-and-codegen.md)
+4. [Zig-First Bridge Design](zig-first-bridge.md)
+5. [Plugin System](plugin-system.md)
+
+For command details, use [CLI Reference](cli-reference.md).
+
+For implementation-level API details generated from Zig comments, use [API Reference](reference/index.md).
+
+## Design Decisions
+
+High-level design rationale is tracked in ADRs:
+
+- [ADR-0001: Native Host + Zig Core](adr/0001-native-host-plus-zig-core.md)
+
+## Documentation Build
+
+Ziggy ships a built-in docs pipeline:
+
+```sh
+zig build docs
+```
+
+This runs `scripts/docs_build.py`, generates API markdown under `docs/content/reference/`, and renders the static site under `docs/site/`.

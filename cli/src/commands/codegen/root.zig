@@ -5,6 +5,18 @@ const fs_util = @import("../../support/fs.zig");
 const path_util = @import("../../support/path.zig");
 const targets = @import("targets.zig");
 
+/// Supported contract source formats.
+pub const ApiContractSource = enum {
+    zig,
+    json,
+};
+
+/// Resolved API contract file path and format.
+pub const ResolvedApiContract = struct {
+    path: []const u8,
+    source: ApiContractSource,
+};
+
 /// Parses codegen CLI options and triggers project generation.
 pub fn run(
     arena: std.mem.Allocator,
@@ -43,12 +55,15 @@ pub fn run(
     }
 
     const root_abs = try path_util.resolveAbsolute(arena, io, project_root);
-    const api_path = if (api_override) |value|
-        try path_util.resolveAbsolute(arena, io, value)
-    else
-        try path_util.join(arena, root_abs, "ziggy.api.json");
+    const contract = (try resolveApiContract(arena, io, stderr, root_abs, api_override)) orelse {
+        try stderr.print(
+            "error: no API contract found in '{s}' (expected ziggy.api.zig or ziggy.api.json)\n",
+            .{root_abs},
+        );
+        return error.InvalidArguments;
+    };
 
-    try generateProject(arena, io, stderr, stdout, root_abs, api_path);
+    try generateProject(arena, io, stderr, stdout, root_abs, contract.path);
 }
 
 /// Writes usage help for the codegen command.
@@ -57,12 +72,48 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Codegen:\n" ++
             "  ziggy codegen [project_root] [--api <path>]\n" ++
+            "  # default contract lookup: ziggy.api.zig -> ziggy.api.json\n" ++
             "  # current targets: zig, swift, kotlin\n",
     );
     try writer.print("  # reserved target: typescript ({s})\n\n", .{if (ts_supported) "enabled" else "planned"});
 }
 
-/// Generates Zig/Swift/Kotlin API bindings from `ziggy.api.json`.
+/// Resolves API contract path from explicit override or project defaults.
+pub fn resolveApiContract(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    project_root: []const u8,
+    api_override: ?[]const u8,
+) !?ResolvedApiContract {
+    if (api_override) |raw| {
+        const path = try path_util.resolveAbsolute(arena, io, raw);
+        if (!fs_util.pathExists(io, path)) {
+            try stderr.print("error: API contract does not exist: {s}\n", .{path});
+            return error.InvalidArguments;
+        }
+        const source = apiSourceFromPath(path) catch {
+            try stderr.print("error: unsupported API contract extension: {s}\n", .{path});
+            try stderr.writeAll("hint: use `.zig` or `.json`\n");
+            return error.InvalidArguments;
+        };
+        return .{ .path = path, .source = source };
+    }
+
+    const zig_path = try path_util.join(arena, project_root, "ziggy.api.zig");
+    if (fs_util.pathExists(io, zig_path)) {
+        return .{ .path = zig_path, .source = .zig };
+    }
+
+    const json_path = try path_util.join(arena, project_root, "ziggy.api.json");
+    if (fs_util.pathExists(io, json_path)) {
+        return .{ .path = json_path, .source = .json };
+    }
+
+    return null;
+}
+
+/// Generates Zig/Swift/Kotlin API bindings from `ziggy.api.zig` or `ziggy.api.json`.
 pub fn generateProject(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -71,12 +122,21 @@ pub fn generateProject(
     project_root: []const u8,
     api_path: []const u8,
 ) !void {
+    const source = apiSourceFromPath(api_path) catch {
+        try stderr.print("error: unsupported API contract extension: {s}\n", .{api_path});
+        try stderr.writeAll("hint: use `.zig` or `.json`\n");
+        return error.CodegenFailed;
+    };
+
     const text = std.Io.Dir.cwd().readFileAlloc(io, api_path, arena, .limited(1024 * 1024)) catch |err| {
         try stderr.print("error: failed to read API contract '{s}': {s}\n", .{ api_path, @errorName(err) });
         return error.CodegenFailed;
     };
 
-    const spec = parseApiSpec(arena, text) catch |err| {
+    const spec = switch (source) {
+        .json => parseApiSpecFromJson(arena, text),
+        .zig => parseApiSpecFromZig(arena, text),
+    } catch |err| {
         try stderr.print("error: invalid API contract '{s}': {s}\n", .{ api_path, @errorName(err) });
         return error.CodegenFailed;
     };
@@ -102,7 +162,12 @@ pub fn generateProject(
     try fs_util.writeFileAtomically(io, swift_file, swift_out);
     try fs_util.writeFileAtomically(io, kotlin_file, kotlin_out);
 
-    try stdout.print("generated API bindings\n- {s}\n- {s}\n- {s}\n", .{ zig_file, swift_file, kotlin_file });
+    try stdout.print("generated API bindings ({s})\n- {s}\n- {s}\n- {s}\n", .{
+        if (source == .zig) "zig contract" else "json contract",
+        zig_file,
+        swift_file,
+        kotlin_file,
+    });
     try stdout.flush();
 }
 
@@ -130,7 +195,108 @@ const ApiSpec = struct {
     events: []ApiEvent,
 };
 
-fn parseApiSpec(arena: std.mem.Allocator, text: []const u8) !ApiSpec {
+fn apiSourceFromPath(path: []const u8) !ApiContractSource {
+    if (std.mem.endsWith(u8, path, ".zig")) return .zig;
+    if (std.mem.endsWith(u8, path, ".json")) return .json;
+    return error.InvalidContract;
+}
+
+fn parseApiSpecFromZig(arena: std.mem.Allocator, text: []const u8) !ApiSpec {
+    var namespace: ?[]u8 = null;
+    var methods = std.ArrayList(ApiMethod).empty;
+    var events = std.ArrayList(ApiEvent).empty;
+
+    errdefer {
+        if (namespace) |value| arena.free(value);
+        for (methods.items) |method| arena.free(method.name);
+        methods.deinit(arena);
+        for (events.items) |event| arena.free(event.name);
+        events.deinit(arena);
+    }
+
+    const Section = enum { none, methods, events };
+    var section: Section = .none;
+
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, " \t\r");
+        if (line.len == 0) continue;
+        if (std.mem.startsWith(u8, line, "//")) continue;
+
+        if (std.mem.startsWith(u8, line, "pub const namespace = ")) {
+            const value = try extractQuotedField(arena, line, "pub const namespace = \"");
+            if (namespace) |old| arena.free(old);
+            namespace = value;
+            continue;
+        }
+
+        if (std.mem.startsWith(u8, line, "pub const methods = .{")) {
+            section = .methods;
+            continue;
+        }
+        if (std.mem.startsWith(u8, line, "pub const events = .{")) {
+            section = .events;
+            continue;
+        }
+        if (std.mem.eql(u8, line, "};")) {
+            section = .none;
+            continue;
+        }
+        if (!std.mem.startsWith(u8, line, ".{")) continue;
+
+        switch (section) {
+            .methods => {
+                const name = try extractQuotedField(arena, line, ".name = \"");
+                const input = try parseTypeToken(try extractEnumToken(line, ".input = ."));
+                const output = try parseTypeToken(try extractEnumToken(line, ".output = ."));
+                try methods.append(arena, .{ .name = name, .input = input, .output = output });
+            },
+            .events => {
+                const name = try extractQuotedField(arena, line, ".name = \"");
+                const payload = try parseTypeToken(try extractEnumToken(line, ".payload = ."));
+                try events.append(arena, .{ .name = name, .payload = payload });
+            },
+            .none => {},
+        }
+    }
+
+    return .{
+        .namespace = namespace orelse return error.InvalidContract,
+        .methods = try methods.toOwnedSlice(arena),
+        .events = try events.toOwnedSlice(arena),
+    };
+}
+
+fn extractQuotedField(arena: std.mem.Allocator, line: []const u8, prefix: []const u8) ![]u8 {
+    const start = std.mem.indexOf(u8, line, prefix) orelse return error.InvalidContract;
+    const rest = line[start + prefix.len ..];
+    const end = std.mem.indexOfScalar(u8, rest, '"') orelse return error.InvalidContract;
+    if (end == 0) return error.InvalidContract;
+    return arena.dupe(u8, rest[0..end]);
+}
+
+fn extractEnumToken(line: []const u8, marker: []const u8) ![]const u8 {
+    const start = std.mem.indexOf(u8, line, marker) orelse return error.InvalidContract;
+    const rest = line[start + marker.len ..];
+
+    var end: usize = 0;
+    while (end < rest.len) : (end += 1) {
+        const ch = rest[end];
+        if (!(std.ascii.isAlphabetic(ch) or std.ascii.isDigit(ch) or ch == '_')) break;
+    }
+    if (end == 0) return error.InvalidContract;
+    return rest[0..end];
+}
+
+fn parseTypeToken(token: []const u8) !ApiType {
+    if (std.mem.eql(u8, token, "string")) return .string;
+    if (std.mem.eql(u8, token, "int")) return .int;
+    if (std.mem.eql(u8, token, "bool")) return .bool;
+    if (std.mem.eql(u8, token, "void")) return .void;
+    return error.InvalidContract;
+}
+
+fn parseApiSpecFromJson(arena: std.mem.Allocator, text: []const u8) !ApiSpec {
     const parsed = try std.json.parseFromSlice(std.json.Value, arena, text, .{});
     defer parsed.deinit();
 
@@ -191,11 +357,7 @@ fn dupRequiredString(
 fn parseTypeField(object: std.json.ObjectMap, field: []const u8) !ApiType {
     const value = object.get(field) orelse return error.InvalidContract;
     if (value != .string) return error.InvalidContract;
-    if (std.mem.eql(u8, value.string, "string")) return .string;
-    if (std.mem.eql(u8, value.string, "int")) return .int;
-    if (std.mem.eql(u8, value.string, "bool")) return .bool;
-    if (std.mem.eql(u8, value.string, "void")) return .void;
-    return error.InvalidContract;
+    return parseTypeToken(value.string);
 }
 
 fn renderZigApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {

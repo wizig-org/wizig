@@ -1,6 +1,6 @@
 # API Reference
 
-Auto-generated on 2026-02-28 01:45:16Z.
+Auto-generated on 2026-02-28 02:19:49Z.
 
 ## Source Files
 
@@ -36,3 +36,4 @@ Auto-generated on 2026-02-28 01:45:16Z.
 - [`src/main`](src/main.md)
 - [`src/root`](src/root.md)
 - [`templates/app/lib/main`](templates/app/lib/main.md)
+- [`templates/app/ziggy.api`](templates/app/ziggy.api.md)

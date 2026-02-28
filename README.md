@@ -1,70 +1,98 @@
 # Ziggy
 
-Ziggy is a mobile-first framework architecture with Zig core logic and native host UIs.
+Ziggy is a mobile-first framework for building iOS and Android apps with:
+
+- Native host UIs (`SwiftUI`, `Jetpack Compose`)
+- Shared Zig runtime and domain logic
+- Typed host-to-Zig bridge generation
+- Static plugin registration
+
+## Design Summary
+
+Ziggy uses a hybrid architecture:
+
+- Keep UI and platform APIs native.
+- Keep shared business/runtime logic in Zig.
+- Generate typed bridge clients from a single contract (`ziggy.api.zig`).
 
 ## Developer Requirements
 
 - Zig `0.15.1`
 - Xcode `26+` with command line tools (`xcodebuild`, `xcrun`)
+- XcodeGen
 - Java `21`
 - Gradle `9.3.1`
-- XcodeGen
 - Android SDK tools (`adb`, emulator, platform SDKs)
+- Python `3.10+` + `markdown` package for docs build
 
-Homebrew install baseline:
+Homebrew baseline:
 
 ```sh
-brew install gradle openjdk@21 xcodegen
+brew install gradle openjdk@21 xcodegen python
 brew install --cask android-platform-tools android-commandlinetools
+python3 -m pip install --upgrade markdown
 ```
 
-Detailed setup notes: `docs/development-requirements.md`.
+Detailed setup: `docs/content/development-requirements.md`.
 
-## Core Commands
+## Build
 
 ```sh
 zig build
 zig build test
 ```
 
-## Plugin Registry
+## Scaffold App
+
+```sh
+zig build run -- create MyApp /tmp/MyApp --sdk-root /Users/arata/Developer/zig/ziggy
+```
+
+This creates a portable project with app-local `.ziggy/sdk`, `.ziggy/runtime`, and `.ziggy/generated` directories.
+
+## Run App
+
+```sh
+zig build run -- run /tmp/MyApp --once
+```
+
+## Codegen
+
+```sh
+zig build run -- codegen /tmp/MyApp
+```
+
+Contract lookup precedence:
+
+1. `--api <path>`
+2. `ziggy.api.zig`
+3. `ziggy.api.json`
+
+## Plugins
 
 ```sh
 zig build run -- plugin validate examples/plugin-hello/ziggy-plugin.json
 zig build run -- plugin sync .
 ```
 
-## App Scaffolding
+## Diagnostics
 
 ```sh
-zig build run -- create MyApp examples/app/MyApp
-zig build run -- create MyApp examples/app/MyApp --platforms ios,android,macos --sdk-root .
-```
-
-## Run Apps
-
-```sh
-# Unified host/device selection from project root
-zig build run -- run examples/app/ZiggyExample --once
-```
-
-## Codegen And Diagnostics
-
-```sh
-zig build run -- codegen examples/app/ZiggyExample
 zig build run -- doctor
 ```
 
 ## Documentation
 
 ```sh
-python3 scripts/docs_build.py
+zig build docs
 ```
 
-Generates API reference markdown from Zig doc comments and renders a static site to `docs/site/`.
+- Manual docs source: `docs/content/`
+- Auto-generated API reference: `docs/content/reference/`
+- Built site output: `docs/site/`
 
 ## FFI Runtime Notes
 
-- Build host FFI artifacts with `zig build`.
-- Shared library output is installed under `zig-out/lib` (for example `zig-out/lib/libziggyffi.dylib` on macOS).
-- Swift/Kotlin runtimes read `ZIGGY_FFI_LIB` to locate the library if needed.
+- FFI artifacts are produced by `zig build`.
+- Shared library installs to `zig-out/lib` (for example `libziggyffi.dylib` on macOS).
+- Host runtimes can use `ZIGGY_FFI_LIB` to override runtime library path.

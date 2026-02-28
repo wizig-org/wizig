@@ -1,41 +1,82 @@
 # Bridge And Codegen
 
-## Contract File
+## Contract Sources
 
-The typed boundary is defined by `ziggy.api.json` in app root.
+Ziggy supports two contract sources:
 
-Minimal shape:
+1. `ziggy.api.zig` (preferred)
+2. `ziggy.api.json` (compatibility fallback)
 
-```json
-{
-  "namespace": "app",
-  "methods": [
-    { "name": "echo", "input": "string", "output": "string" }
-  ],
-  "events": [
-    { "name": "ready", "payload": "string" }
-  ]
-}
+Contract resolution order for `ziggy codegen` and `ziggy run`:
+
+1. explicit `--api <path>`
+2. `<project>/ziggy.api.zig`
+3. `<project>/ziggy.api.json`
+
+## Zig Contract Shape
+
+Minimal Zig contract:
+
+```zig
+pub const namespace = "dev.ziggy.app";
+
+pub const methods = .{
+    .{ .name = "echo", .input = .string, .output = .string },
+    .{ .name = "increment", .input = .int, .output = .int },
+};
+
+pub const events = .{
+    .{ .name = "log", .payload = .string },
+};
 ```
 
-## Generated Artifacts
+Supported scalar tags today:
 
-`ziggy codegen` emits:
+- `.string`
+- `.int`
+- `.bool`
+- `.void`
+
+## Generated Targets
+
+Running `ziggy codegen <project_root>` emits:
 
 - Zig: `.ziggy/generated/zig/ZiggyGeneratedApi.zig`
 - Swift: `.ziggy/generated/swift/ZiggyGeneratedApi.swift`
 - Kotlin: `.ziggy/generated/kotlin/dev/ziggy/generated/ZiggyGeneratedApi.kt`
 
-## Type Safety
+Generated outputs contain:
 
-All generated client surfaces share the same source contract, which gives:
+- Method clients matching contract signatures.
+- Event sink protocol/interface declarations.
+- Event emit helpers bound to those sink surfaces.
 
-- Stable method names/arity
-- Stable payload types
-- Early compile-time errors in host code when contract changes
+## Host Integration
 
-## Operational Notes
+### iOS
 
-- `ziggy create` runs initial codegen before host generation.
-- `ziggy run` reruns codegen preflight automatically.
-- iOS host regeneration is performed before build to include newly generated Swift files.
+- App target sources include `../.ziggy/generated/swift`.
+- App code can instantiate `ZiggyGeneratedApi` directly.
+- `ziggy run` regenerates code first, then builds.
+
+### Android
+
+- App module includes generated Kotlin source directory under `main` source set.
+- App code imports `dev.ziggy.generated.ZiggyGeneratedApi`.
+- `ziggy run` regenerates code first, then builds.
+
+## Operational Rules
+
+- Treat generated files as build artifacts; do not hand-edit.
+- Regenerate after contract changes.
+- Keep contract identifiers stable where possible; rename migrations require host refactors.
+
+## Error Handling
+
+Common command errors:
+
+- Missing contract file.
+- Unsupported contract extension.
+- Invalid contract field/type token.
+
+The codegen command prints explicit path and parser failure category to aid debugging.
