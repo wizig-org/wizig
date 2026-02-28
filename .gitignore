@@ -4,6 +4,7 @@ zig-out/
 **/.gradle/
 **/local.properties
 DerivedData/
+.DS_Store
 # Prerequisites
 *.d
 
