@@ -24,8 +24,7 @@ Behavior:
 
 1. Resolves SDK/runtime/templates roots.
 2. Creates app structure (`lib/`, hosts, `.wizig/`, config files).
-3. Writes `wizig.api.zig` contract.
-4. Runs initial `wizig codegen`.
+3. Runs initial `wizig codegen` from discovered `lib/**/*.zig`.
 5. Generates iOS/Android host projects.
 
 Examples:
@@ -44,7 +43,7 @@ wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-inter
 
 Behavior:
 
-1. Performs codegen preflight from contract.
+1. Performs codegen preflight from discovered `lib/**/*.zig` APIs (contract optional).
 2. Discovers iOS and Android run targets.
 3. Prompts for target selection unless non-interactive.
 4. Delegates to platform-specific build/install/launch.
@@ -69,12 +68,15 @@ Contract resolution:
 1. `--api <path>`
 2. `<project>/wizig.api.zig`
 3. `<project>/wizig.api.json`
+4. fallback: discovery-only mode from `lib/**/*.zig`
 
 Outputs:
 
 - `.wizig/generated/zig/WizigGeneratedApi.zig`
 - `.wizig/generated/swift/WizigGeneratedApi.swift`
-- `.wizig/generated/kotlin/dev/wizig/generated/WizigGeneratedApi.kt`
+- `.wizig/generated/kotlin/dev/wizig/WizigGeneratedApi.kt`
+- `.wizig/sdk/ios/Sources/Wizig/WizigGeneratedApi.swift`
+- `.wizig/sdk/android/src/main/kotlin/dev/wizig/WizigGeneratedApi.kt`
 
 Examples:
 

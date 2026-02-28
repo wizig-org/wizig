@@ -14,7 +14,7 @@ Wizig is optimized for three constraints:
    - iOS: SwiftUI app target.
    - Android: Compose app module.
 2. **Generated bridge layer**
-   - Generated clients/events in Swift, Kotlin, Zig from one contract.
+   - Generated clients/events in Swift, Kotlin, Zig from `lib/**/*.zig` discovery (+ optional contract overrides).
 3. **FFI/runtime layer**
    - `ffi/src/root.zig` exports C ABI symbols.
    - `core/src/runtime.zig` provides runtime primitives.
@@ -33,7 +33,7 @@ Wizig is optimized for three constraints:
 - `.wizig/generated/` generated bridge + registrants.
 - `plugins/` local plugin packages.
 - `wizig.yaml` app configuration.
-- `wizig.api.zig` API contract.
+- `wizig.api.zig` / `wizig.api.json` optional contract overrides.
 
 Vendoring `.wizig/` assets is deliberate: projects remain portable and do not depend on Wizig repository-relative paths.
 
@@ -53,7 +53,7 @@ Resolution validates required markers and reports attempted roots when lookup fa
 `wizig run` uses one unified flow:
 
 1. Resolve project root and available hosts.
-2. Run codegen preflight (`wizig.api.zig`, fallback `wizig.api.json`).
+2. Run codegen preflight (`lib/**/*.zig` discovery, optional `wizig.api.*` override).
 3. Discover runnable iOS/Android targets.
 4. Select target (interactive or non-interactive).
 5. Delegate to platform build/install/launch flow.
@@ -61,11 +61,11 @@ Resolution validates required markers and reports attempted roots when lookup fa
 
 ## Type-Safety Boundary
 
-Type safety is generated from the contract into all target languages:
+Type safety is generated from discovered Zig APIs into all target languages:
 
 - Host call signatures are generated, not handwritten.
 - Event sink interfaces are generated, not handwritten.
-- Contract edits fail fast during compile if host code drifts.
+- API drift fails fast during generated binding validation/compile steps.
 
 The transport boundary still uses C ABI for runtime interoperability, but application-facing APIs stay typed.
 

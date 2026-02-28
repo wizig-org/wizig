@@ -138,9 +138,13 @@ fn maybeRunCodegenForLegacy(
     host_project_dir: []const u8,
 ) !void {
     const app_root = std.fs.path.dirname(host_project_dir) orelse host_project_dir;
-    const contract = (try codegen_cmd.resolveApiContract(arena, io, stderr, app_root, null)) orelse return;
-    codegen_cmd.generateProject(arena, io, stderr, stdout, app_root, contract.path) catch |err| {
-        try stderr.print("error: failed to generate API bindings from '{s}': {s}\n", .{ contract.path, @errorName(err) });
+    const contract = try codegen_cmd.resolveApiContract(arena, io, stderr, app_root, null);
+    codegen_cmd.generateProject(arena, io, stderr, stdout, app_root, if (contract) |resolved| resolved.path else null) catch |err| {
+        if (contract) |resolved| {
+            try stderr.print("error: failed to generate API bindings from '{s}': {s}\n", .{ resolved.path, @errorName(err) });
+        } else {
+            try stderr.print("error: failed to generate API bindings from discovered lib methods: {s}\n", .{@errorName(err)});
+        }
         try stderr.flush();
         return error.RunFailed;
     };

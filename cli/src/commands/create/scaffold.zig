@@ -105,7 +105,6 @@ pub fn createApp(
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/.gitignore", try joinPath(arena, destination_dir, ".gitignore"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/README.md", try joinPath(arena, destination_dir, "README.md"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/wizig.yaml", try joinPath(arena, destination_dir, "wizig.yaml"), &template_tokens);
-    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/wizig.api.zig", try joinPath(arena, destination_dir, "wizig.api.zig"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/lib/main.zig", try joinPath(arena, lib_dir, "main.zig"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/plugins/README.md", try joinPath(arena, plugins_dir, "README.md"), &template_tokens);
 
@@ -142,8 +141,7 @@ pub fn createApp(
         );
     }
 
-    const api_path = try joinPath(arena, destination_dir, "wizig.api.zig");
-    codegen_cmd.generateProject(arena, io, stderr, stdout, destination_dir, api_path) catch |err| {
+    codegen_cmd.generateProject(arena, io, stderr, stdout, destination_dir, null) catch |err| {
         try stderr.print("error: failed to run initial codegen: {s}\n", .{@errorName(err)});
         try stderr.flush();
         return error.CreateFailed;

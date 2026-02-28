@@ -25,15 +25,6 @@ app_dir="$workdir/MultiFileApiApp"
 info "[multifile-api-resolution] creating fixture app"
 "$WIZIG_BIN" create MultiFileApiApp "$app_dir" --platforms ios --sdk-root "$packaged_root"
 
-cat > "$app_dir/wizig.api.zig" <<'EOF'
-pub const namespace = "dev.wizig.multifileapiapp";
-pub const methods = .{
-    .{ .name = "echo", .input = .string, .output = .string },
-    .{ .name = "fromFeature", .input = .string, .output = .string },
-};
-pub const events = .{};
-EOF
-
 cat > "$app_dir/lib/feature.zig" <<'EOF'
 const std = @import("std");
 

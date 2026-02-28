@@ -555,19 +555,19 @@ fn runCodegenPreflight(
     project_root: []const u8,
     log_lines: *std.ArrayList(u8),
 ) !void {
-    const contract = (try codegen_cmd.resolveApiContract(arena, io, stderr, project_root, null)) orelse {
-        try appendLogLine(arena, log_lines, "codegen=skipped:no_api_contract\n", .{});
-        return;
-    };
-
-    const contract_text = std.Io.Dir.cwd().readFileAlloc(io, contract.path, arena, .limited(1024 * 1024)) catch |err| {
-        try appendLogLine(arena, log_lines, "codegen=failed:read_contract:{s}\n", .{@errorName(err)});
-        try stderr.print("error: failed to read API contract '{s}': {s}\n", .{ contract.path, @errorName(err) });
-        try stderr.flush();
-        return error.RunFailed;
-    };
+    const contract = try codegen_cmd.resolveApiContract(arena, io, stderr, project_root, null);
+    const contract_path = if (contract) |resolved| resolved.path else "__auto_discovery__";
+    const contract_text = if (contract) |resolved|
+        std.Io.Dir.cwd().readFileAlloc(io, resolved.path, arena, .limited(1024 * 1024)) catch |err| {
+            try appendLogLine(arena, log_lines, "codegen=failed:read_contract:{s}\n", .{@errorName(err)});
+            try stderr.print("error: failed to read API contract '{s}': {s}\n", .{ resolved.path, @errorName(err) });
+            try stderr.flush();
+            return error.RunFailed;
+        }
+    else
+        "";
     const lib_source_paths = try collectLibZigSourcePaths(arena, io, project_root);
-    const fingerprint = try computeCodegenFingerprint(arena, io, project_root, contract.path, contract_text, lib_source_paths);
+    const fingerprint = try computeCodegenFingerprint(arena, io, project_root, contract_path, contract_text, lib_source_paths);
     const cache_path = try std.fmt.allocPrint(
         arena,
         "{s}{s}.wizig{s}cache{s}codegen.sha256",
@@ -589,9 +589,13 @@ fn runCodegenPreflight(
     try stdout.writeAll("running codegen...\n");
     try stdout.flush();
 
-    codegen_cmd.generateProject(arena, io, stderr, stdout, project_root, contract.path) catch |err| {
+    codegen_cmd.generateProject(arena, io, stderr, stdout, project_root, if (contract) |resolved| resolved.path else null) catch |err| {
         try appendLogLine(arena, log_lines, "codegen=failed:{s}\n", .{@errorName(err)});
-        try stderr.print("error: failed to generate API bindings from '{s}': {s}\n", .{ contract.path, @errorName(err) });
+        if (contract) |resolved| {
+            try stderr.print("error: failed to generate API bindings from '{s}': {s}\n", .{ resolved.path, @errorName(err) });
+        } else {
+            try stderr.print("error: failed to generate API bindings from discovered lib methods: {s}\n", .{@errorName(err)});
+        }
         try stderr.flush();
         return error.RunFailed;
     };
@@ -600,7 +604,7 @@ fn runCodegenPreflight(
     try writeFileAtomically(io, cache_path, fingerprint);
 }
 
-const codegen_fingerprint_version = "wizig-codegen-v5";
+const codegen_fingerprint_version = "wizig-codegen-v6";
 
 fn computeCodegenFingerprint(
     arena: Allocator,
@@ -642,7 +646,7 @@ fn requiredCodegenOutputsExist(io: std.Io, project_root: []const u8) bool {
         ".wizig/generated/zig/WizigGeneratedFfiRoot.zig",
         "lib/WizigGeneratedAppModule.zig",
         ".wizig/generated/swift/WizigGeneratedApi.swift",
-        ".wizig/generated/kotlin/dev/wizig/generated/WizigGeneratedApi.kt",
+        ".wizig/generated/kotlin/dev/wizig/WizigGeneratedApi.kt",
         ".wizig/generated/android/jni/WizigGeneratedApiBridge.c",
         ".wizig/generated/android/jni/CMakeLists.txt",
     };

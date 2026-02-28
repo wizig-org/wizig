@@ -35,12 +35,13 @@ WIZIG_IDE_TEMPLATES_DO_NOT_USE="/path/that/does/not/exist" \
 
 require_file "$app_dir/.wizig/sdk/ios/Package.swift"
 require_file "$app_dir/.wizig/runtime/ffi/src/root.zig"
-require_file "$app_dir/wizig.api.zig"
 require_file "$app_dir/ios/SelfContainedApp.xcodeproj/project.pbxproj"
 require_file "$app_dir/ios/SelfContainedApp/Generated/WizigGeneratedApi.swift"
 require_file "$app_dir/android/app/build.gradle.kts"
 require_file "$app_dir/lib/WizigGeneratedAppModule.zig"
-require_file "$app_dir/.wizig/generated/kotlin/dev/wizig/generated/WizigGeneratedApi.kt"
+require_file "$app_dir/.wizig/generated/kotlin/dev/wizig/WizigGeneratedApi.kt"
+require_file "$app_dir/.wizig/sdk/ios/Sources/Wizig/WizigGeneratedApi.swift"
+require_file "$app_dir/.wizig/sdk/android/src/main/kotlin/dev/wizig/WizigGeneratedApi.kt"
 require_file "$app_dir/.wizig/generated/android/jniLibs/.gitkeep"
 require_file "$app_dir/android/gradlew"
 
@@ -54,6 +55,8 @@ grep -Fq "minSdk = 26" "$app_dir/android/app/build.gradle.kts" \
   || fail "Android minSdk is not normalized to 26"
 grep -Fq 'jniLibs.srcDir(rootProject.file("../.wizig/generated/android/jniLibs"))' "$app_dir/android/app/build.gradle.kts" \
   || fail "Android jniLibs sourceSet is not wired to .wizig/generated/android/jniLibs"
+grep -Fq 'kotlin.directories.add(rootProject.file("../.wizig/sdk/android/src/main/kotlin").path)' "$app_dir/android/app/build.gradle.kts" \
+  || fail "Android Kotlin sourceSet is not wired to .wizig/sdk/android/src/main/kotlin"
 if grep -Fq "{APP_NAME}" "$app_dir/android/app/src/main/java/dev/wizig/selfcontainedapp/MainActivity.kt"; then
   fail "Android MainActivity still contains unresolved {APP_NAME} token"
 fi

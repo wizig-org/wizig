@@ -9,4 +9,3 @@ paths:
   runtime: .wizig/runtime
   generated: .wizig/generated
   plugins: plugins
-api: wizig.api.zig

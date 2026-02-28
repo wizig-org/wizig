@@ -55,15 +55,8 @@ pub fn run(
     }
 
     const root_abs = try path_util.resolveAbsolute(arena, io, project_root);
-    const contract = (try resolveApiContract(arena, io, stderr, root_abs, api_override)) orelse {
-        try stderr.print(
-            "error: no API contract found in '{s}' (expected wizig.api.zig or wizig.api.json)\n",
-            .{root_abs},
-        );
-        return error.InvalidArguments;
-    };
-
-    try generateProject(arena, io, stderr, stdout, root_abs, contract.path);
+    const contract = try resolveApiContract(arena, io, stderr, root_abs, api_override);
+    try generateProject(arena, io, stderr, stdout, root_abs, if (contract) |resolved| resolved.path else null);
 }
 
 /// Writes usage help for the codegen command.
@@ -72,7 +65,7 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Codegen:\n" ++
             "  wizig codegen [project_root] [--api <path>]\n" ++
-            "  # default contract lookup: wizig.api.zig -> wizig.api.json\n" ++
+            "  # default contract lookup: wizig.api.zig -> wizig.api.json (optional)\n" ++
             "  # current targets: zig, swift, kotlin\n",
     );
     try writer.print("  # reserved target: typescript ({s})\n\n", .{if (ts_supported) "enabled" else "planned"});
@@ -113,40 +106,47 @@ pub fn resolveApiContract(
     return null;
 }
 
-/// Generates Zig/Swift/Kotlin API bindings from `wizig.api.zig` or `wizig.api.json`.
+/// Generates Zig/Swift/Kotlin API bindings from optional contract + `lib/**/*.zig` discovery.
 pub fn generateProject(
     arena: std.mem.Allocator,
     io: std.Io,
     stderr: *Io.Writer,
     stdout: *Io.Writer,
     project_root: []const u8,
-    api_path: []const u8,
+    api_path: ?[]const u8,
 ) !void {
-    const source = apiSourceFromPath(api_path) catch {
-        try stderr.print("error: unsupported API contract extension: {s}\n", .{api_path});
-        try stderr.writeAll("hint: use `.zig` or `.json`\n");
-        return error.CodegenFailed;
-    };
+    const maybe_source: ?ApiContractSource = if (api_path) |path| blk: {
+        const source = apiSourceFromPath(path) catch {
+            try stderr.print("error: unsupported API contract extension: {s}\n", .{path});
+            try stderr.writeAll("hint: use `.zig` or `.json`\n");
+            return error.CodegenFailed;
+        };
+        break :blk source;
+    } else null;
 
-    const text = std.Io.Dir.cwd().readFileAlloc(io, api_path, arena, .limited(1024 * 1024)) catch |err| {
-        try stderr.print("error: failed to read API contract '{s}': {s}\n", .{ api_path, @errorName(err) });
-        return error.CodegenFailed;
-    };
+    const base_spec = if (api_path) |path| blk: {
+        const source = maybe_source.?;
+        const text = std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(1024 * 1024)) catch |err| {
+            try stderr.print("error: failed to read API contract '{s}': {s}\n", .{ path, @errorName(err) });
+            return error.CodegenFailed;
+        };
 
-    const base_spec = switch (source) {
-        .json => parseApiSpecFromJson(arena, text),
-        .zig => parseApiSpecFromZig(arena, text),
-    } catch |err| {
-        try stderr.print("error: invalid API contract '{s}': {s}\n", .{ api_path, @errorName(err) });
-        return error.CodegenFailed;
-    };
+        break :blk switch (source) {
+            .json => parseApiSpecFromJson(arena, text),
+            .zig => parseApiSpecFromZig(arena, text),
+        } catch |err| {
+            try stderr.print("error: invalid API contract '{s}': {s}\n", .{ path, @errorName(err) });
+            return error.CodegenFailed;
+        };
+    } else try defaultApiSpecForProject(arena, project_root);
+
     const discovered_methods = try discoverLibApiMethods(arena, io, project_root);
     const spec = try mergeSpecWithDiscoveredMethods(arena, base_spec, discovered_methods);
 
     const generated_root = try path_util.join(arena, project_root, ".wizig/generated");
     const zig_dir = try path_util.join(arena, generated_root, "zig");
     const swift_dir = try path_util.join(arena, generated_root, "swift");
-    const kotlin_dir = try path_util.join(arena, generated_root, "kotlin/dev/wizig/generated");
+    const kotlin_dir = try path_util.join(arena, generated_root, "kotlin/dev/wizig");
     const android_jni_dir = try path_util.join(arena, generated_root, "android/jni");
     const app_module_imports = try collectLibModuleImports(arena, io, project_root);
 
@@ -171,6 +171,8 @@ pub fn generateProject(
     const android_jni_bridge_file = try path_util.join(arena, android_jni_dir, "WizigGeneratedApiBridge.c");
     const android_jni_cmake_file = try path_util.join(arena, android_jni_dir, "CMakeLists.txt");
     const ios_mirror_swift_file = try resolveIosMirrorSwiftFile(arena, io, project_root);
+    const sdk_swift_file = try resolveSdkSwiftApiFile(arena, io, project_root);
+    const sdk_kotlin_file = try resolveSdkKotlinApiFile(arena, io, project_root);
 
     const zig_changed = try fs_util.writeFileIfChanged(arena, io, zig_file, zig_out);
     const zig_ffi_changed = try fs_util.writeFileIfChanged(arena, io, zig_ffi_root_file, zig_ffi_root_out);
@@ -183,10 +185,18 @@ pub fn generateProject(
         try fs_util.writeFileIfChanged(arena, io, mirror_path, swift_out)
     else
         false;
+    const sdk_swift_changed = if (sdk_swift_file) |sdk_path|
+        try fs_util.writeFileIfChanged(arena, io, sdk_path, swift_out)
+    else
+        false;
+    const sdk_kotlin_changed = if (sdk_kotlin_file) |sdk_path|
+        try fs_util.writeFileIfChanged(arena, io, sdk_path, kotlin_out)
+    else
+        false;
 
-    if (zig_changed or zig_ffi_changed or zig_app_module_changed or swift_changed or kotlin_changed or android_jni_bridge_changed or android_jni_cmake_changed or ios_mirror_changed) {
+    if (zig_changed or zig_ffi_changed or zig_app_module_changed or swift_changed or kotlin_changed or android_jni_bridge_changed or android_jni_cmake_changed or ios_mirror_changed or sdk_swift_changed or sdk_kotlin_changed) {
         try stdout.print("generated API bindings ({s})\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}", .{
-            if (source == .zig) "zig contract" else "json contract",
+            if (maybe_source) |source| if (source == .zig) "zig contract + discovery" else "json contract + discovery" else "auto-discovery",
             zig_file,
             zig_ffi_root_file,
             zig_app_module_file,
@@ -198,13 +208,32 @@ pub fn generateProject(
         if (ios_mirror_swift_file) |mirror_path| {
             try stdout.print("\n- {s}", .{mirror_path});
         }
+        if (sdk_swift_file) |sdk_path| {
+            try stdout.print("\n- {s}", .{sdk_path});
+        }
+        if (sdk_kotlin_file) |sdk_path| {
+            try stdout.print("\n- {s}", .{sdk_path});
+        }
         try stdout.writeAll("\n");
     } else {
         try stdout.print("API bindings unchanged ({s})\n", .{
-            if (source == .zig) "zig contract" else "json contract",
+            if (maybe_source) |source| if (source == .zig) "zig contract + discovery" else "json contract + discovery" else "auto-discovery",
         });
     }
     try stdout.flush();
+}
+
+fn defaultApiSpecForProject(arena: std.mem.Allocator, project_root: []const u8) !ApiSpec {
+    const tail = std.fs.path.basename(project_root);
+    const candidate = if (tail.len > 0) tail else "app";
+    const namespace = try std.fmt.allocPrint(arena, "dev.wizig.{s}", .{candidate});
+    const empty_methods = try arena.alloc(ApiMethod, 0);
+    const empty_events = try arena.alloc(ApiEvent, 0);
+    return .{
+        .namespace = namespace,
+        .methods = empty_methods,
+        .events = empty_events,
+    };
 }
 
 fn resolveIosMirrorSwiftFile(
@@ -238,6 +267,28 @@ fn resolveIosMirrorSwiftFile(
     }
 
     return null;
+}
+
+fn resolveSdkSwiftApiFile(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    project_root: []const u8,
+) !?[]const u8 {
+    const sdk_dir = try path_util.join(arena, project_root, ".wizig/sdk/ios/Sources/Wizig");
+    if (!fs_util.pathExists(io, sdk_dir)) return null;
+    const path = try path_util.join(arena, sdk_dir, "WizigGeneratedApi.swift");
+    return @as(?[]const u8, path);
+}
+
+fn resolveSdkKotlinApiFile(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    project_root: []const u8,
+) !?[]const u8 {
+    const sdk_dir = try path_util.join(arena, project_root, ".wizig/sdk/android/src/main/kotlin/dev/wizig");
+    if (!fs_util.pathExists(io, sdk_dir)) return null;
+    const path = try path_util.join(arena, sdk_dir, "WizigGeneratedApi.kt");
+    return @as(?[]const u8, path);
 }
 
 const ApiType = enum {
@@ -1140,6 +1191,7 @@ fn renderSwiftApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     try out.appendSlice(arena, "    case ffiLibraryLoadFailed(String)\n");
     try out.appendSlice(arena, "    case ffiSymbolMissing(String)\n");
     try out.appendSlice(arena, "    case ffiCallFailed(function: String, status: Int32)\n");
+    try out.appendSlice(arena, "    case bindingValidationFailed(String)\n");
     try out.appendSlice(arena, "    case invalidUtf8(function: String)\n");
     try out.appendSlice(arena, "    case unexpectedNullOutput(function: String)\n\n");
     try out.appendSlice(arena, "    public var description: String {\n");
@@ -1150,6 +1202,8 @@ fn renderSwiftApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     try out.appendSlice(arena, "            return \"missing Wizig FFI symbol: \\(name)\"\n");
     try out.appendSlice(arena, "        case let .ffiCallFailed(function, status):\n");
     try out.appendSlice(arena, "            return \"FFI call failed: \\(function) returned status \\(status)\"\n");
+    try out.appendSlice(arena, "        case let .bindingValidationFailed(reason):\n");
+    try out.appendSlice(arena, "            return \"Wizig generated API binding validation failed: \\(reason)\"\n");
     try out.appendSlice(arena, "        case let .invalidUtf8(function):\n");
     try out.appendSlice(arena, "            return \"\\(function) returned non-UTF-8 output\"\n");
     try out.appendSlice(arena, "        case let .unexpectedNullOutput(function):\n");
@@ -1217,6 +1271,21 @@ fn renderSwiftApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     try out.appendSlice(arena, "    public init(libraryPath: String? = nil, sink: WizigGeneratedEventSink? = nil) throws {\n");
     try out.appendSlice(arena, "        self.ffi = try WizigGeneratedFFI(libraryPath: libraryPath)\n");
     try out.appendSlice(arena, "        self.sink = sink\n");
+    try out.appendSlice(arena, "        try validateBindings()\n");
+    try out.appendSlice(arena, "    }\n\n");
+    try out.appendSlice(arena, "    private func validateBindings() throws {\n");
+    try out.appendSlice(arena, "        let requiredSymbols = [\n");
+    for (spec.methods) |method| {
+        try appendFmt(&out, arena, "            \"wizig_api_{s}\",\n", .{method.name});
+    }
+    try out.appendSlice(arena, "        ]\n");
+    try out.appendSlice(arena, "        for symbol in requiredSymbols {\n");
+    try out.appendSlice(arena, "            do {\n");
+    try out.appendSlice(arena, "                _ = try ffi.loadSymbol(symbol, as: UnsafeMutableRawPointer.self)\n");
+    try out.appendSlice(arena, "            } catch {\n");
+    try out.appendSlice(arena, "                throw WizigGeneratedApiError.bindingValidationFailed(\"\\(symbol): \\(error)\")\n");
+    try out.appendSlice(arena, "            }\n");
+    try out.appendSlice(arena, "        }\n");
     try out.appendSlice(arena, "    }\n\n");
     try out.appendSlice(arena, "    private func ensureStatus(_ status: Int32, function: String) throws {\n");
     try out.appendSlice(arena, "        guard status == WizigGeneratedStatus.ok.rawValue else {\n");
@@ -1434,7 +1503,7 @@ fn renderKotlinApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     errdefer out.deinit(arena);
 
     try out.appendSlice(arena, "// Code generated by `wizig codegen`. DO NOT EDIT.\n");
-    try out.appendSlice(arena, "package dev.wizig.generated\n\n");
+    try out.appendSlice(arena, "package dev.wizig\n\n");
 
     try out.appendSlice(arena, "interface WizigGeneratedEventSink {\n");
     for (spec.events) |event| {
@@ -1447,6 +1516,7 @@ fn renderKotlinApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     try out.appendSlice(arena, "        System.loadLibrary(\"wizigffi\")\n");
     try out.appendSlice(arena, "        System.loadLibrary(\"wizigjni\")\n");
     try out.appendSlice(arena, "    }\n\n");
+    try out.appendSlice(arena, "    @JvmStatic external fun wizig_validate_bindings()\n");
     for (spec.methods) |method| {
         const ffi_name = try std.fmt.allocPrint(arena, "wizig_api_{s}", .{method.name});
         if (method.input == .void) {
@@ -1467,6 +1537,7 @@ fn renderKotlinApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     try out.appendSlice(arena, ") {\n");
     try out.appendSlice(arena, "    init {\n");
     try out.appendSlice(arena, "        WizigGeneratedNativeBridge\n");
+    try out.appendSlice(arena, "        WizigGeneratedNativeBridge.wizig_validate_bindings()\n");
     try out.appendSlice(arena, "    }\n\n");
     try out.appendSlice(arena, "    fun setEventSink(next: WizigGeneratedEventSink?) {\n");
     try out.appendSlice(arena, "        sink = next\n");
@@ -1515,7 +1586,8 @@ fn renderAndroidJniBridge(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     try out.appendSlice(arena, "#include <stdbool.h>\n");
     try out.appendSlice(arena, "#include <stdlib.h>\n");
     try out.appendSlice(arena, "#include <string.h>\n");
-    try out.appendSlice(arena, "#include <stdio.h>\n\n");
+    try out.appendSlice(arena, "#include <stdio.h>\n");
+    try out.appendSlice(arena, "#include <dlfcn.h>\n\n");
     try out.appendSlice(arena, "extern void wizig_bytes_free(uint8_t* ptr, size_t len);\n");
     for (spec.methods) |method| {
         const ffi_name = try std.fmt.allocPrint(arena, "wizig_api_{s}", .{method.name});
@@ -1582,13 +1654,38 @@ fn renderAndroidJniBridge(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     try out.appendSlice(arena, "    return result;\n");
     try out.appendSlice(arena, "}\n\n");
 
+    try out.appendSlice(arena, "static int ensure_symbol(JNIEnv* env, const char* symbol_name) {\n");
+    try out.appendSlice(arena, "    void* symbol = dlsym(RTLD_DEFAULT, symbol_name);\n");
+    try out.appendSlice(arena, "    if (symbol != NULL) return 1;\n");
+    try out.appendSlice(arena, "    jclass cls = (*env)->FindClass(env, \"java/lang/IllegalStateException\");\n");
+    try out.appendSlice(arena, "    if (cls == NULL) return 0;\n");
+    try out.appendSlice(arena, "    char message[256];\n");
+    try out.appendSlice(arena, "    snprintf(message, sizeof(message), \"missing Wizig FFI symbol: %s\", symbol_name);\n");
+    try out.appendSlice(arena, "    (*env)->ThrowNew(env, cls, message);\n");
+    try out.appendSlice(arena, "    return 0;\n");
+    try out.appendSlice(arena, "}\n\n");
+
+    const validate_jni_name = try jniEscape(arena, "wizig_validate_bindings");
+    try appendFmt(
+        &out,
+        arena,
+        "JNIEXPORT void JNICALL Java_dev_wizig_WizigGeneratedNativeBridge_{s}(JNIEnv* env, jclass clazz) {{\n",
+        .{validate_jni_name},
+    );
+    try out.appendSlice(arena, "    (void)clazz;\n");
+    try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_bytes_free\")) return;\n");
+    for (spec.methods) |method| {
+        try appendFmt(&out, arena, "    if (!ensure_symbol(env, \"wizig_api_{s}\")) return;\n", .{method.name});
+    }
+    try out.appendSlice(arena, "}\n\n");
+
     for (spec.methods) |method| {
         const ffi_name = try std.fmt.allocPrint(arena, "wizig_api_{s}", .{method.name});
         const jni_name = try jniEscape(arena, ffi_name);
         try appendFmt(
             &out,
             arena,
-            "JNIEXPORT {s} JNICALL Java_dev_wizig_generated_WizigGeneratedNativeBridge_{s}(JNIEnv* env, jclass clazz",
+            "JNIEXPORT {s} JNICALL Java_dev_wizig_WizigGeneratedNativeBridge_{s}(JNIEnv* env, jclass clazz",
             .{ jniCType(method.output), jni_name },
         );
         switch (method.input) {
@@ -1715,7 +1812,7 @@ fn renderAndroidJniCmake(arena: std.mem.Allocator) ![]u8 {
             "    IMPORTED_LOCATION \"${{CMAKE_CURRENT_LIST_DIR}}/../jniLibs/${{ANDROID_ABI}}/libwizigffi.so\"\n" ++
             ")\n\n" ++
             "add_library(wizigjni SHARED WizigGeneratedApiBridge.c)\n" ++
-            "target_link_libraries(wizigjni wizigffi log)\n",
+            "target_link_libraries(wizigjni wizigffi log dl)\n",
         .{},
     );
 }

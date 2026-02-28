@@ -1,19 +1,22 @@
 # Bridge And Codegen
 
-## Contract Sources
+## Discovery Sources
 
-Wizig supports two contract sources:
+Wizig generates host-callable APIs from `pub fn` declarations across `lib/**/*.zig`.
 
-1. `wizig.api.zig` (preferred)
-2. `wizig.api.json` (compatibility fallback)
+Optional contract files are still supported for explicit overrides and events:
 
-Contract resolution order for `wizig codegen` and `wizig run`:
+1. `wizig.api.zig`
+2. `wizig.api.json`
+
+Resolution order for `wizig codegen` and `wizig run`:
 
 1. explicit `--api <path>`
 2. `<project>/wizig.api.zig`
 3. `<project>/wizig.api.json`
+4. fallback to discovery-only mode
 
-## Zig Contract Shape
+## Optional Zig Contract Shape
 
 Minimal Zig contract:
 
@@ -43,7 +46,10 @@ Running `wizig codegen <project_root>` emits:
 
 - Zig: `.wizig/generated/zig/WizigGeneratedApi.zig`
 - Swift: `.wizig/generated/swift/WizigGeneratedApi.swift`
-- Kotlin: `.wizig/generated/kotlin/dev/wizig/generated/WizigGeneratedApi.kt`
+- Kotlin: `.wizig/generated/kotlin/dev/wizig/WizigGeneratedApi.kt`
+- SDK mirrors:
+  - `.wizig/sdk/ios/Sources/Wizig/WizigGeneratedApi.swift`
+  - `.wizig/sdk/android/src/main/kotlin/dev/wizig/WizigGeneratedApi.kt`
 
 Generated outputs contain:
 
@@ -55,14 +61,14 @@ Generated outputs contain:
 
 ### iOS
 
-- App target sources include `../.wizig/generated/swift`.
-- App code can instantiate `WizigGeneratedApi` directly.
+- App imports `Wizig` from `.wizig/sdk/ios`.
+- `WizigGeneratedApi` is part of the `Wizig` module.
 - `wizig run` regenerates code first, then builds.
 
 ### Android
 
-- App module includes generated Kotlin source directory under `main` source set.
-- App code imports `dev.wizig.generated.WizigGeneratedApi`.
+- App module includes both `.wizig/sdk/android/src/main/kotlin` and `.wizig/generated/kotlin`.
+- App code imports `dev.wizig.WizigGeneratedApi`.
 - `wizig run` regenerates code first, then builds.
 
 ## Operational Rules
@@ -75,8 +81,8 @@ Generated outputs contain:
 
 Common command errors:
 
-- Missing contract file.
 - Unsupported contract extension.
-- Invalid contract field/type token.
+- Invalid contract field/type token (when using explicit contracts).
+- Missing/mismatched generated FFI symbols (validated at API init).
 
 The codegen command prints explicit path and parser failure category to aid debugging.

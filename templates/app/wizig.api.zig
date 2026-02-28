@@ -1,6 +1,7 @@
-//! Zig-first API contract for Wizig codegen.
+//! Optional Zig API contract overrides for Wizig codegen.
 //!
-//! Edit this file to define the typed host <-> Zig surface.
+//! Discovery from `lib/**/*.zig` works without this file.
+//! Edit this file only when you need explicit method/event declarations.
 //! Supported scalar tags today: `.string`, `.int`, `.bool`, `.void`.
 
 /// Logical namespace used by generated bindings.

@@ -6,7 +6,7 @@ The framework is built around four hard rules:
 
 - Native hosts are first-class and production-default.
 - Cross-platform behavior lives in Zig.
-- Host-to-Zig calls are generated from a typed contract.
+- Host-to-Zig calls are generated from discovered Zig APIs (with optional contract overrides).
 - Application scaffolds are app-local and portable (`.wizig/` vendored assets).
 
 ## What You Get
@@ -18,7 +18,7 @@ When you scaffold an app with `wizig create`, Wizig generates:
 - `.wizig/sdk/` host runtime wrappers.
 - `.wizig/runtime/` Zig runtime/FFI glue.
 - `.wizig/generated/` generated bridge and plugin registrants.
-- `wizig.api.zig` typed bridge contract.
+- optional `wizig.api.zig` / `wizig.api.json` contract overrides.
 
 This structure is intentionally self-contained so projects work outside the Wizig repository.
 

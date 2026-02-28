@@ -13,7 +13,7 @@ Wizig uses a hybrid architecture:
 
 - Keep UI and platform APIs native.
 - Keep shared business/runtime logic in Zig.
-- Generate typed bridge clients from a single contract (`wizig.api.zig`).
+- Generate typed bridge clients from discovered `lib/**/*.zig` APIs (optional contract overrides).
 
 ## Developer Requirements
 
@@ -63,11 +63,17 @@ zig build run -- run /tmp/MyApp --once
 zig build run -- codegen /tmp/MyApp
 ```
 
-Contract lookup precedence:
+Codegen discovery precedence:
 
 1. `--api <path>`
 2. `wizig.api.zig`
 3. `wizig.api.json`
+4. fallback: auto-discover `pub fn` API surface from `lib/**/*.zig`
+
+Generated Swift/Kotlin APIs are mirrored into app-local SDK imports:
+
+- `.wizig/sdk/ios/Sources/Wizig/WizigGeneratedApi.swift`
+- `.wizig/sdk/android/src/main/kotlin/dev/wizig/WizigGeneratedApi.kt`
 
 ## Plugins
 

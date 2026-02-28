@@ -39,30 +39,20 @@ Expected output structure:
 - `/tmp/MyApp/.wizig/sdk`
 - `/tmp/MyApp/.wizig/runtime`
 - `/tmp/MyApp/.wizig/generated`
-- `/tmp/MyApp/wizig.api.zig`
 
-## Define API Contract
+## Define Zig API Surface
 
-The bridge contract defaults to `wizig.api.zig`:
+Declare host-callable functions as `pub fn` in `lib/**/*.zig`. Example (`lib/main.zig`):
 
 ```zig
-pub const namespace = "dev.wizig.myapp";
+const std = @import("std");
 
-pub const methods = .{
-    .{ .name = "echo", .input = .string, .output = .string },
-};
-
-pub const events = .{
-    .{ .name = "log", .payload = .string },
-};
+pub fn echo(input: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    return std.fmt.allocPrint(allocator, "echo:{s}", .{input});
+}
 ```
 
-Supported scalar tags:
-
-- `.string`
-- `.int`
-- `.bool`
-- `.void`
+Optional: add `wizig.api.zig` or `wizig.api.json` when you need explicit contract overrides/events.
 
 ## Run Codegen
 
@@ -76,7 +66,9 @@ Generated files:
 
 - `/tmp/MyApp/.wizig/generated/zig/WizigGeneratedApi.zig`
 - `/tmp/MyApp/.wizig/generated/swift/WizigGeneratedApi.swift`
-- `/tmp/MyApp/.wizig/generated/kotlin/dev/wizig/generated/WizigGeneratedApi.kt`
+- `/tmp/MyApp/.wizig/generated/kotlin/dev/wizig/WizigGeneratedApi.kt`
+- `/tmp/MyApp/.wizig/sdk/ios/Sources/Wizig/WizigGeneratedApi.swift`
+- `/tmp/MyApp/.wizig/sdk/android/src/main/kotlin/dev/wizig/WizigGeneratedApi.kt`
 
 ## Run App
 
@@ -98,7 +90,7 @@ If scaffold/build fails:
 
 1. Run `./zig-out/bin/wizig doctor --sdk-root /Users/arata/Developer/zig/wizig`.
 2. Confirm `.wizig/generated/swift/WizigGeneratedApi.swift` exists before iOS build.
-3. Confirm `.wizig/generated/kotlin/dev/wizig/generated/WizigGeneratedApi.kt` exists before Android build.
+3. Confirm `.wizig/generated/kotlin/dev/wizig/WizigGeneratedApi.kt` exists before Android build.
 4. Regenerate iOS project if needed: `cd /tmp/MyApp/ios && xcodegen generate`.
 
 ## Build Documentation

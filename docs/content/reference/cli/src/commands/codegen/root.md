@@ -60,7 +60,7 @@ pub fn resolveApiContract(
 
 ### `generateProject` (fn)
 
-Generates Zig/Swift/Kotlin API bindings from `wizig.api.zig` or `wizig.api.json`.
+Generates Zig/Swift/Kotlin API bindings from optional contract + `lib/**/*.zig` discovery.
 
 ```zig
 pub fn generateProject(
@@ -69,6 +69,6 @@ pub fn generateProject(
     stderr: *Io.Writer,
     stdout: *Io.Writer,
     project_root: []const u8,
-    api_path: []const u8,
+    api_path: ?[]const u8,
 ) !void {
 ```
