@@ -2,7 +2,7 @@
 
 ## Goals
 
-Ziggy is optimized for three constraints:
+Wizig is optimized for three constraints:
 
 - Keep platform UX native and first-class.
 - Share runtime/domain logic across hosts with Zig.
@@ -23,41 +23,41 @@ Ziggy is optimized for three constraints:
 
 ## Scaffold Layout
 
-`ziggy create` produces:
+`wizig create` produces:
 
 - `lib/` app logic.
 - `ios/` iOS host project.
 - `android/` Android host project.
-- `.ziggy/sdk/` vendored host SDK wrappers.
-- `.ziggy/runtime/` vendored runtime sources.
-- `.ziggy/generated/` generated bridge + registrants.
+- `.wizig/sdk/` vendored host SDK wrappers.
+- `.wizig/runtime/` vendored runtime sources.
+- `.wizig/generated/` generated bridge + registrants.
 - `plugins/` local plugin packages.
-- `ziggy.yaml` app configuration.
-- `ziggy.api.zig` API contract.
+- `wizig.yaml` app configuration.
+- `wizig.api.zig` API contract.
 
-Vendoring `.ziggy/` assets is deliberate: projects remain portable and do not depend on Ziggy repository-relative paths.
+Vendoring `.wizig/` assets is deliberate: projects remain portable and do not depend on Wizig repository-relative paths.
 
 ## SDK Resolution
 
-Ziggy resolves SDK roots with strict precedence:
+Wizig resolves SDK roots with strict precedence:
 
 1. CLI flag `--sdk-root`
-2. env `ZIGGY_SDK_ROOT`
-3. install-relative bundles (`../share/ziggy`)
+2. env `WIZIG_SDK_ROOT`
+3. install-relative bundles (`../share/wizig`)
 4. development workspace fallback markers
 
 Resolution validates required markers and reports attempted roots when lookup fails.
 
 ## Run Pipeline
 
-`ziggy run` uses one unified flow:
+`wizig run` uses one unified flow:
 
 1. Resolve project root and available hosts.
-2. Run codegen preflight (`ziggy.api.zig`, fallback `ziggy.api.json`).
+2. Run codegen preflight (`wizig.api.zig`, fallback `wizig.api.json`).
 3. Discover runnable iOS/Android targets.
 4. Select target (interactive or non-interactive).
 5. Delegate to platform build/install/launch flow.
-6. Write run log to `.ziggy/logs/run.log`.
+6. Write run log to `.wizig/logs/run.log`.
 
 ## Type-Safety Boundary
 

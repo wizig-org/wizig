@@ -1,6 +1,6 @@
 # `cli/src/support/fs.zig`
 
-Filesystem helpers used by Ziggy CLI commands.
+Filesystem helpers used by Wizig CLI commands.
 
 ## Public API
 

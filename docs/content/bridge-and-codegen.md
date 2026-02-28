@@ -2,23 +2,23 @@
 
 ## Contract Sources
 
-Ziggy supports two contract sources:
+Wizig supports two contract sources:
 
-1. `ziggy.api.zig` (preferred)
-2. `ziggy.api.json` (compatibility fallback)
+1. `wizig.api.zig` (preferred)
+2. `wizig.api.json` (compatibility fallback)
 
-Contract resolution order for `ziggy codegen` and `ziggy run`:
+Contract resolution order for `wizig codegen` and `wizig run`:
 
 1. explicit `--api <path>`
-2. `<project>/ziggy.api.zig`
-3. `<project>/ziggy.api.json`
+2. `<project>/wizig.api.zig`
+3. `<project>/wizig.api.json`
 
 ## Zig Contract Shape
 
 Minimal Zig contract:
 
 ```zig
-pub const namespace = "dev.ziggy.app";
+pub const namespace = "dev.wizig.app";
 
 pub const methods = .{
     .{ .name = "echo", .input = .string, .output = .string },
@@ -39,11 +39,11 @@ Supported scalar tags today:
 
 ## Generated Targets
 
-Running `ziggy codegen <project_root>` emits:
+Running `wizig codegen <project_root>` emits:
 
-- Zig: `.ziggy/generated/zig/ZiggyGeneratedApi.zig`
-- Swift: `.ziggy/generated/swift/ZiggyGeneratedApi.swift`
-- Kotlin: `.ziggy/generated/kotlin/dev/ziggy/generated/ZiggyGeneratedApi.kt`
+- Zig: `.wizig/generated/zig/WizigGeneratedApi.zig`
+- Swift: `.wizig/generated/swift/WizigGeneratedApi.swift`
+- Kotlin: `.wizig/generated/kotlin/dev/wizig/generated/WizigGeneratedApi.kt`
 
 Generated outputs contain:
 
@@ -55,15 +55,15 @@ Generated outputs contain:
 
 ### iOS
 
-- App target sources include `../.ziggy/generated/swift`.
-- App code can instantiate `ZiggyGeneratedApi` directly.
-- `ziggy run` regenerates code first, then builds.
+- App target sources include `../.wizig/generated/swift`.
+- App code can instantiate `WizigGeneratedApi` directly.
+- `wizig run` regenerates code first, then builds.
 
 ### Android
 
 - App module includes generated Kotlin source directory under `main` source set.
-- App code imports `dev.ziggy.generated.ZiggyGeneratedApi`.
-- `ziggy run` regenerates code first, then builds.
+- App code imports `dev.wizig.generated.WizigGeneratedApi`.
+- `wizig run` regenerates code first, then builds.
 
 ## Operational Rules
 

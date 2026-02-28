@@ -1,6 +1,6 @@
-# `templates/app/ziggy.api.zig`
+# `templates/app/wizig.api.zig`
 
-Zig-first API contract for Ziggy codegen.
+Zig-first API contract for Wizig codegen.
 
 Edit this file to define the typed host <-> Zig surface.
 Supported scalar tags today: `.string`, `.int`, `.bool`, `.void`.

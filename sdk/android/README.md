@@ -1,10 +1,10 @@
-# Ziggy Android SDK (Stub)
+# Wizig Android SDK (Stub)
 
-This module will wrap JNI bindings to Ziggy FFI shared libraries and expose Kotlin APIs.
+This module will wrap JNI bindings to Wizig FFI shared libraries and expose Kotlin APIs.
 
 Planned components:
 
-- `ZiggyRuntime` Kotlin class
+- `WizigRuntime` Kotlin class
 - generated plugin registrant integration
 - Maven-native plugin adapters
 
@@ -16,4 +16,4 @@ Generate registrants:
 zig build run -- plugin sync .
 ```
 
-`ZiggyRuntime` uses JNA for direct FFI calls. Set `ZIGGY_FFI_LIB` to the shared library path/name when running on desktop JVM.
+`WizigRuntime` uses JNA for direct FFI calls. Set `WIZIG_FFI_LIB` to the shared library path/name when running on desktop JVM.

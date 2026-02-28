@@ -1,4 +1,4 @@
-//! `ziggy doctor` diagnostics for host tools and bundled assets.
+//! `wizig doctor` diagnostics for host tools and bundled assets.
 const std = @import("std");
 const Io = std.Io;
 const sdk_locator = @import("../../support/sdk_locator.zig");
@@ -37,7 +37,7 @@ pub fn run(
         return error.InvalidArguments;
     }
 
-    try stdout.writeAll("Ziggy doctor\n\n");
+    try stdout.writeAll("Wizig doctor\n\n");
 
     const tools = [_][]const u8{ "zig", "xcodegen", "xcodebuild", "xcrun", "gradle", "adb" };
     var missing: usize = 0;
@@ -48,7 +48,7 @@ pub fn run(
     }
 
     const resolved = sdk_locator.resolve(arena, io, env_map, stderr, explicit_sdk_root) catch {
-        try stdout.writeAll("\n[missing] Ziggy SDK bundle\n");
+        try stdout.writeAll("\n[missing] Wizig SDK bundle\n");
         return error.DoctorFailed;
     };
 
@@ -68,7 +68,7 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Doctor:\n" ++
-            "  ziggy doctor [--sdk-root <path>]\n" ++
+            "  wizig doctor [--sdk-root <path>]\n" ++
             "\n",
     );
 }

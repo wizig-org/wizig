@@ -1,6 +1,6 @@
 # `cli/src/support/sdk_locator.zig`
 
-SDK/runtime/template locator for portable Ziggy installs.
+SDK/runtime/template locator for portable Wizig installs.
 
 ## Public API
 
@@ -14,7 +14,7 @@ pub const ResolvedSdk = struct {
 
 ### `resolve` (fn)
 
-Resolves Ziggy SDK roots using CLI/env/install/dev fallback precedence.
+Resolves Wizig SDK roots using CLI/env/install/dev fallback precedence.
 
 ```zig
 pub fn resolve(

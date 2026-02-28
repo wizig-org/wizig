@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "id": "dev.ziggy.example",
+  "id": "dev.wizig.example",
   "version": "1.0.0",
   "api_version": 1,
   "capabilities": ["network", "storage"],

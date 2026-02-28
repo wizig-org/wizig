@@ -1,1 +1,1 @@
-# Ziggy Android app ProGuard rules.
+# Wizig Android app ProGuard rules.

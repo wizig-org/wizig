@@ -1,4 +1,4 @@
-//! Ziggy CLI entrypoint and command router.
+//! Wizig CLI entrypoint and command router.
 const std = @import("std");
 const Io = std.Io;
 
@@ -74,13 +74,13 @@ pub fn main(init: std.process.Init) !void {
 
 fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
-        "Ziggy CLI\n\n" ++
+        "Wizig CLI\n\n" ++
             "Usage:\n" ++
-            "  ziggy create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]\n" ++
-            "  ziggy run [project_dir] [options]\n" ++
-            "  ziggy plugin validate|sync|add ...\n" ++
-            "  ziggy codegen [project_root] [--api <path>]\n" ++
-            "  ziggy doctor [--sdk-root <path>]\n\n",
+            "  wizig create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]\n" ++
+            "  wizig run [project_dir] [options]\n" ++
+            "  wizig plugin validate|sync|add ...\n" ++
+            "  wizig codegen [project_root] [--api <path>]\n" ++
+            "  wizig doctor [--sdk-root <path>]\n\n",
     );
 
     try create_cmd.printUsage(writer);
@@ -96,9 +96,9 @@ test "printUsage includes core commands" {
 
     try printUsage(&out_writer.writer);
     const output = out_writer.writer.buffered();
-    try std.testing.expect(std.mem.indexOf(u8, output, "ziggy create") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "ziggy run") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "ziggy plugin") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "ziggy codegen") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "ziggy doctor") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "wizig create") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "wizig run") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "wizig plugin") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "wizig codegen") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "wizig doctor") != null);
 }

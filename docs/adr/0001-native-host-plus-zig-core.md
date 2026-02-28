@@ -4,7 +4,7 @@
 Accepted
 
 ## Context
-Ziggy targets mobile-first development with future web support. A direct cross-platform UI renderer would delay delivery and increase platform risk.
+Wizig targets mobile-first development with future web support. A direct cross-platform UI renderer would delay delivery and increase platform risk.
 
 ## Decision
 Use native UI hosts (SwiftUI, Jetpack Compose) with shared Zig core logic accessed over a stable C ABI.

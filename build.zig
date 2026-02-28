@@ -1,29 +1,29 @@
-//! Ziggy build graph.
+//! Wizig build graph.
 //!
 //! This file defines build/install targets for:
-//! - CLI executable (`ziggy`)
+//! - CLI executable (`wizig`)
 //! - Core and compatibility modules
 //! - FFI static/shared libraries
 //! - Installed SDK/runtime/templates assets
 const std = @import("std");
 
-/// Configures all build steps for Ziggy.
+/// Configures all build steps for Wizig.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const core_module = b.addModule("ziggy_core", .{
+    const core_module = b.addModule("wizig_core", .{
         .root_source_file = b.path("core/src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    _ = b.addModule("ziggy", .{
+    _ = b.addModule("wizig", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "ziggy_core", .module = core_module },
+            .{ .name = "wizig_core", .module = core_module },
         },
     });
 
@@ -32,12 +32,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "ziggy_core", .module = core_module },
+            .{ .name = "wizig_core", .module = core_module },
         },
     });
 
     const exe = b.addExecutable(.{
-        .name = "ziggy",
+        .name = "wizig",
         .root_module = cli_module,
     });
     b.installArtifact(exe);
@@ -45,21 +45,21 @@ pub fn build(b: *std.Build) void {
     const install_sdk = b.addInstallDirectory(.{
         .source_dir = b.path("sdk"),
         .install_dir = .prefix,
-        .install_subdir = "share/ziggy/sdk",
+        .install_subdir = "share/wizig/sdk",
     });
     b.getInstallStep().dependOn(&install_sdk.step);
 
     const install_runtime = b.addInstallDirectory(.{
         .source_dir = b.path("runtime"),
         .install_dir = .prefix,
-        .install_subdir = "share/ziggy/runtime",
+        .install_subdir = "share/wizig/runtime",
     });
     b.getInstallStep().dependOn(&install_runtime.step);
 
     const install_templates = b.addInstallDirectory(.{
         .source_dir = b.path("templates"),
         .install_dir = .prefix,
-        .install_subdir = "share/ziggy/templates",
+        .install_subdir = "share/wizig/templates",
     });
     b.getInstallStep().dependOn(&install_templates.step);
 
@@ -68,27 +68,27 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "ziggy_core", .module = core_module },
+            .{ .name = "wizig_core", .module = core_module },
         },
     });
     const ffi_static_lib = b.addLibrary(.{
         .linkage = .static,
-        .name = "ziggyffi",
+        .name = "wizigffi",
         .root_module = ffi_module,
     });
     b.installArtifact(ffi_static_lib);
 
     const ffi_shared_lib = b.addLibrary(.{
         .linkage = .dynamic,
-        .name = "ziggyffi",
+        .name = "wizigffi",
         .root_module = ffi_module,
     });
     b.installArtifact(ffi_shared_lib);
 
-    const install_header = b.addInstallHeaderFile(b.path("ffi/include/ziggy.h"), "ziggy.h");
+    const install_header = b.addInstallHeaderFile(b.path("ffi/include/wizig.h"), "wizig.h");
     b.getInstallStep().dependOn(&install_header.step);
 
-    const run_step = b.step("run", "Run the Ziggy CLI");
+    const run_step = b.step("run", "Run the Wizig CLI");
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
     run_cmd.step.dependOn(b.getInstallStep());
@@ -96,7 +96,7 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
-    const docs_step = b.step("docs", "Generate Ziggy documentation site");
+    const docs_step = b.step("docs", "Generate Wizig documentation site");
     const docs_cmd = b.addSystemCommand(&.{ "python3", "scripts/docs_build.py" });
     docs_step.dependOn(&docs_cmd.step);
 
@@ -117,7 +117,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "ziggy_core", .module = core_module },
+                .{ .name = "wizig_core", .module = core_module },
             },
         }),
     });
@@ -130,7 +130,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "ziggy_core", .module = core_module },
+                .{ .name = "wizig_core", .module = core_module },
             },
         }),
     });
@@ -143,7 +143,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "ziggy_core", .module = core_module },
+                .{ .name = "wizig_core", .module = core_module },
             },
         }),
     });

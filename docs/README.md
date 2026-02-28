@@ -1,6 +1,6 @@
-# Ziggy Documentation Build
+# Wizig Documentation Build
 
-Ziggy docs are generated from:
+Wizig docs are generated from:
 
 - Manual markdown pages in `docs/content/`
 - Zig source comments (`//!`, `///`) extracted into `docs/content/reference/`

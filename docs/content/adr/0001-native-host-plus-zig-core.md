@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Ziggy targets mobile-first development with future web support. A direct cross-platform UI renderer would delay delivery and increase platform risk.
+Wizig targets mobile-first development with future web support. A direct cross-platform UI renderer would delay delivery and increase platform risk.
 
 ## Decision
 

@@ -233,7 +233,7 @@ test "parse manifest v2" {
     const text =
         \\{
         \\  "schema_version": 2,
-        \\  "id": "dev.ziggy.hello",
+        \\  "id": "dev.wizig.hello",
         \\  "version": "0.1.0",
         \\  "api_version": 1,
         \\  "capabilities": ["log"],
@@ -250,7 +250,7 @@ test "parse manifest v2" {
     defer manifest.deinit(std.testing.allocator);
 
     try std.testing.expectEqual(@as(u32, 2), manifest.schema_version);
-    try std.testing.expectEqualStrings("dev.ziggy.hello", manifest.id);
+    try std.testing.expectEqualStrings("dev.wizig.hello", manifest.id);
     try std.testing.expectEqual(@as(usize, 1), manifest.ios_spm.len);
     try std.testing.expectEqual(@as(usize, 1), manifest.android_maven.len);
     try std.testing.expectEqualStrings("Pkg", manifest.ios_spm[0].product);

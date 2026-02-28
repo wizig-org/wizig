@@ -1,4 +1,4 @@
-//! Template Zig module scaffolded into new Ziggy apps.
+//! Template Zig module scaffolded into new Wizig apps.
 const std = @import("std");
 
 /// Returns the application name configured at scaffold time.

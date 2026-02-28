@@ -1,6 +1,6 @@
 # `ffi/src/root.zig`
 
-C ABI bridge exposing Ziggy runtime functions to native hosts.
+C ABI bridge exposing Wizig runtime functions to native hosts.
 
 ## Public API
 
@@ -12,41 +12,41 @@ Stable status codes returned by exported FFI functions.
 pub const Status = enum(i32) {
 ```
 
-### `ZiggyRuntimeHandle` (const)
+### `WizigRuntimeHandle` (const)
 
 Opaque runtime handle used by C/Swift/Kotlin callers.
 
 ```zig
-pub const ZiggyRuntimeHandle = opaque {};
+pub const WizigRuntimeHandle = opaque {};
 ```
 
-### `ziggy_runtime_new` (export fn)
+### `wizig_runtime_new` (export fn)
 
 Allocates a runtime handle for the provided app name.
 
 ```zig
-pub export fn ziggy_runtime_new(
+pub export fn wizig_runtime_new(
     app_name_ptr: [*]const u8,
     app_name_len: usize,
-    out_handle: ?*?*ZiggyRuntimeHandle,
+    out_handle: ?*?*WizigRuntimeHandle,
 ) i32 {
 ```
 
-### `ziggy_runtime_free` (export fn)
+### `wizig_runtime_free` (export fn)
 
-Destroys a runtime handle previously returned by `ziggy_runtime_new`.
+Destroys a runtime handle previously returned by `wizig_runtime_new`.
 
 ```zig
-pub export fn ziggy_runtime_free(handle: ?*ZiggyRuntimeHandle) void {
+pub export fn wizig_runtime_free(handle: ?*WizigRuntimeHandle) void {
 ```
 
-### `ziggy_runtime_echo` (export fn)
+### `wizig_runtime_echo` (export fn)
 
 Executes runtime echo and returns an owned UTF-8 byte buffer.
 
 ```zig
-pub export fn ziggy_runtime_echo(
-    handle: ?*ZiggyRuntimeHandle,
+pub export fn wizig_runtime_echo(
+    handle: ?*WizigRuntimeHandle,
     input_ptr: [*]const u8,
     input_len: usize,
     out_ptr: ?*?[*]u8,
@@ -54,10 +54,10 @@ pub export fn ziggy_runtime_echo(
 ) i32 {
 ```
 
-### `ziggy_bytes_free` (export fn)
+### `wizig_bytes_free` (export fn)
 
-Frees buffers returned by Ziggy FFI functions.
+Frees buffers returned by Wizig FFI functions.
 
 ```zig
-pub export fn ziggy_bytes_free(ptr: ?[*]u8, len: usize) void {
+pub export fn wizig_bytes_free(ptr: ?[*]u8, len: usize) void {
 ```

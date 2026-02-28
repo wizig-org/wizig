@@ -1,7 +1,7 @@
-//! Compatibility root module that re-exports Ziggy core API.
-const ziggy_core = @import("ziggy_core");
+//! Compatibility root module that re-exports Wizig core API.
+const wizig_core = @import("wizig_core");
 
 /// Runtime instance type.
-pub const Runtime = ziggy_core.Runtime;
+pub const Runtime = wizig_core.Runtime;
 /// Plugin manifest schema type.
-pub const PluginManifest = ziggy_core.PluginManifest;
+pub const PluginManifest = wizig_core.PluginManifest;

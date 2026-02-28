@@ -58,7 +58,7 @@ pub fn run(
         writeFileAtomically(io, log_path, log_lines.items) catch {};
     }
 
-    try appendLogLine(arena, &log_lines, "ziggy run unified\n", .{});
+    try appendLogLine(arena, &log_lines, "wizig run unified\n", .{});
     try appendLogLine(arena, &log_lines, "project_root={s}\n", .{project_root});
     if (parsed.debugger_mode) |mode| {
         try appendLogLine(arena, &log_lines, "debugger={s}\n", .{mode});
@@ -204,7 +204,7 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Unified run options:\n" ++
-            "  ziggy run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once]\n" ++
+            "  wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once]\n" ++
             "\n",
     );
 }
@@ -515,7 +515,7 @@ fn readTrimmedLine(arena: Allocator, io: std.Io) ![]const u8 {
 fn buildLogPath(arena: Allocator, io: std.Io, project_root: []const u8) ![]const u8 {
     const logs_dir = try std.fmt.allocPrint(
         arena,
-        "{s}{s}.ziggy{s}logs",
+        "{s}{s}.wizig{s}logs",
         .{ project_root, std.fs.path.sep_str, std.fs.path.sep_str },
     );
     std.Io.Dir.cwd().createDirPath(io, logs_dir) catch {};
@@ -680,10 +680,10 @@ test "parseUnifiedOptions parses project and flags" {
     defer err_writer.deinit();
 
     const options = try parseUnifiedOptions(
-        &.{ "examples/app/ZiggyExample", "--device", "emulator-5554", "--debugger", "none", "--once" },
+        &.{ "examples/app/WizigExample", "--device", "emulator-5554", "--debugger", "none", "--once" },
         &err_writer.writer,
     );
-    try std.testing.expectEqualStrings("examples/app/ZiggyExample", options.project_root);
+    try std.testing.expectEqualStrings("examples/app/WizigExample", options.project_root);
     try std.testing.expectEqualStrings("emulator-5554", options.device_selector.?);
     try std.testing.expectEqualStrings("none", options.debugger_mode.?);
     try std.testing.expect(options.once);

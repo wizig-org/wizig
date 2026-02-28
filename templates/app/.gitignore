@@ -14,5 +14,5 @@ ios/build/
 ios/DerivedData/
 
 # Generated
-.ziggy/generated/
-.ziggy/plugins/
+.wizig/generated/
+.wizig/plugins/

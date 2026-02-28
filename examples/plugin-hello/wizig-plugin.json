@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "id": "dev.ziggy.hello",
+  "id": "dev.wizig.hello",
   "version": "0.1.0",
   "api_version": 1,
   "capabilities": ["log"],

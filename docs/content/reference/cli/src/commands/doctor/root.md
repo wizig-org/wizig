@@ -1,6 +1,6 @@
 # `cli/src/commands/doctor/root.zig`
 
-`ziggy doctor` diagnostics for host tools and bundled assets.
+`wizig doctor` diagnostics for host tools and bundled assets.
 
 ## Public API
 

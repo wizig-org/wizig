@@ -1,9 +1,9 @@
 # `build.zig`
 
-Ziggy build graph.
+Wizig build graph.
 
 This file defines build/install targets for:
-- CLI executable (`ziggy`)
+- CLI executable (`wizig`)
 - Core and compatibility modules
 - FFI static/shared libraries
 - Installed SDK/runtime/templates assets
@@ -12,7 +12,7 @@ This file defines build/install targets for:
 
 ### `build` (fn)
 
-Configures all build steps for Ziggy.
+Configures all build steps for Wizig.
 
 ```zig
 pub fn build(b: *std.Build) void {

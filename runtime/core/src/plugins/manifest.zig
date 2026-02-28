@@ -191,7 +191,7 @@ fn parseQuotedArray(allocator: std.mem.Allocator, value: []const u8, out: *std.A
 test "parse manifest with native plugin metadata" {
     const gpa = std.testing.allocator;
     const input =
-        \\id = "dev.ziggy.storage"
+        \\id = "dev.wizig.storage"
         \\version = "1.2.0"
         \\api_version = 1
         \\capabilities = ["storage", "network"]
@@ -202,7 +202,7 @@ test "parse manifest with native plugin metadata" {
     var manifest = try PluginManifest.parse(gpa, input);
     defer manifest.deinit(gpa);
 
-    try std.testing.expectEqualStrings("dev.ziggy.storage", manifest.id);
+    try std.testing.expectEqualStrings("dev.wizig.storage", manifest.id);
     try std.testing.expectEqualStrings("1.2.0", manifest.version);
     try std.testing.expectEqual(@as(u32, 1), manifest.api_version);
     try std.testing.expectEqual(@as(usize, 2), manifest.capabilities.len);

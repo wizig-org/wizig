@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Ziggy documentation.
+"""Build Wizig documentation.
 
 Pipeline:
 1) Parse Zig module/declaration docs from source comments (`//!` and `///`).
@@ -279,12 +279,12 @@ def render_page_template(title: str, sidebar_html: str, body_html: str, css_href
 <head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>{title} | Ziggy Docs</title>
+  <title>{title} | Wizig Docs</title>
   <link rel=\"stylesheet\" href=\"{css_href}\">
 </head>
 <body>
   <header class=\"topbar\">
-    <a class=\"brand\" href=\"index.html\">Ziggy Documentation</a>
+    <a class=\"brand\" href=\"index.html\">Wizig Documentation</a>
   </header>
   <div class=\"layout\">
     <aside class=\"sidebar\">{sidebar_html}</aside>
@@ -352,7 +352,7 @@ def build_site() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate and build Ziggy documentation")
+    parser = argparse.ArgumentParser(description="Generate and build Wizig documentation")
     parser.add_argument(
         "--reference-only",
         action="store_true",

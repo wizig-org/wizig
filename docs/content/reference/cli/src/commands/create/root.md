@@ -1,6 +1,6 @@
 # `cli/src/commands/create/root.zig`
 
-`ziggy create` command parser and dispatch.
+`wizig create` command parser and dispatch.
 
 ## Public API
 

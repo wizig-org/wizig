@@ -1,4 +1,4 @@
-package dev.ziggy.ziggyexample.ui.theme
+package dev.wizig.wizigexample.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

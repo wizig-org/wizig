@@ -1,4 +1,4 @@
-package dev.ziggy
+package dev.wizig
 
 import com.sun.jna.Library
 import com.sun.jna.Native
@@ -6,22 +6,22 @@ import com.sun.jna.Pointer
 import com.sun.jna.ptr.LongByReference
 import com.sun.jna.ptr.PointerByReference
 
-class ZiggyFfiException(
+class WizigFfiException(
     val function: String,
     val status: Int,
     message: String? = null,
 ) : RuntimeException(message ?: "$function failed with status $status")
 
-private object ZiggyStatus {
+private object WizigStatus {
     const val OK = 0
     const val INTERNAL_ERROR = 255
 }
 
-private interface ZiggyFfi : Library {
-    fun ziggy_runtime_new(appNamePtr: ByteArray, appNameLen: Long, outHandle: PointerByReference): Int
-    fun ziggy_runtime_free(handle: Pointer?)
+private interface WizigFfi : Library {
+    fun wizig_runtime_new(appNamePtr: ByteArray, appNameLen: Long, outHandle: PointerByReference): Int
+    fun wizig_runtime_free(handle: Pointer?)
 
-    fun ziggy_runtime_echo(
+    fun wizig_runtime_echo(
         handle: Pointer?,
         inputPtr: ByteArray,
         inputLen: Long,
@@ -29,18 +29,18 @@ private interface ZiggyFfi : Library {
         outLen: LongByReference,
     ): Int
 
-    fun ziggy_bytes_free(ptr: Pointer?, len: Long)
+    fun wizig_bytes_free(ptr: Pointer?, len: Long)
 }
 
-class ZiggyRuntime(
+class WizigRuntime(
     val plugins: List<PluginDescriptor> = GeneratedPluginRegistrant.plugins,
-    appName: String = "ziggy-android",
-    libraryName: String = System.getenv("ZIGGY_FFI_LIB") ?: "ziggyffi",
+    appName: String = "wizig-android",
+    libraryName: String = System.getenv("WIZIG_FFI_LIB") ?: "wizigffi",
 ) : AutoCloseable {
-    private var ffi: ZiggyFfi? = null
+    private var ffi: WizigFfi? = null
     private var handle: Pointer? = null
 
-    var lastError: ZiggyFfiException? = null
+    var lastError: WizigFfiException? = null
         private set
 
     val isAvailable: Boolean
@@ -53,26 +53,26 @@ class ZiggyRuntime(
     fun hasPlugin(id: String): Boolean = plugins.any { it.id == id }
 
     fun echo(input: String): String {
-        val ffi = ffi ?: throw (lastError ?: ZiggyFfiException("ziggy_runtime_echo", ZiggyStatus.INTERNAL_ERROR))
-        val handle = handle ?: throw (lastError ?: ZiggyFfiException("ziggy_runtime_echo", ZiggyStatus.INTERNAL_ERROR))
+        val ffi = ffi ?: throw (lastError ?: WizigFfiException("wizig_runtime_echo", WizigStatus.INTERNAL_ERROR))
+        val handle = handle ?: throw (lastError ?: WizigFfiException("wizig_runtime_echo", WizigStatus.INTERNAL_ERROR))
 
         val inputBytes = input.toByteArray(Charsets.UTF_8)
         val outPtr = PointerByReference()
         val outLen = LongByReference()
 
-        val status = ffi.ziggy_runtime_echo(
+        val status = ffi.wizig_runtime_echo(
             handle,
             inputBytes,
             inputBytes.size.toLong(),
             outPtr,
             outLen,
         )
-        ensureStatus("ziggy_runtime_echo", status)
+        ensureStatus("wizig_runtime_echo", status)
 
-        val bytesPtr = outPtr.value ?: throw ZiggyFfiException(
-            function = "ziggy_runtime_echo",
-            status = ZiggyStatus.INTERNAL_ERROR,
-            message = "ziggy_runtime_echo returned null buffer",
+        val bytesPtr = outPtr.value ?: throw WizigFfiException(
+            function = "wizig_runtime_echo",
+            status = WizigStatus.INTERNAL_ERROR,
+            message = "wizig_runtime_echo returned null buffer",
         )
         val bytesLen = outLen.value
 
@@ -80,7 +80,7 @@ class ZiggyRuntime(
             val data = bytesPtr.getByteArray(0, bytesLen.toInt())
             data.toString(Charsets.UTF_8)
         } finally {
-            ffi.ziggy_bytes_free(bytesPtr, bytesLen)
+            ffi.wizig_bytes_free(bytesPtr, bytesLen)
         }
     }
 
@@ -88,7 +88,7 @@ class ZiggyRuntime(
         val ffi = ffi
         val handle = handle
         if (ffi != null && handle != null) {
-            ffi.ziggy_runtime_free(handle)
+            ffi.wizig_runtime_free(handle)
         }
         this.handle = null
     }
@@ -98,24 +98,24 @@ class ZiggyRuntime(
         val outHandle = PointerByReference()
 
         runCatching {
-            val loadedFfi = Native.load(libraryName, ZiggyFfi::class.java)
-            val status = loadedFfi.ziggy_runtime_new(appBytes, appBytes.size.toLong(), outHandle)
-            ensureStatus("ziggy_runtime_new", status)
+            val loadedFfi = Native.load(libraryName, WizigFfi::class.java)
+            val status = loadedFfi.wizig_runtime_new(appBytes, appBytes.size.toLong(), outHandle)
+            ensureStatus("wizig_runtime_new", status)
 
-            val runtimeHandle = outHandle.value ?: throw ZiggyFfiException(
-                function = "ziggy_runtime_new",
-                status = ZiggyStatus.INTERNAL_ERROR,
-                message = "ziggy_runtime_new returned null handle",
+            val runtimeHandle = outHandle.value ?: throw WizigFfiException(
+                function = "wizig_runtime_new",
+                status = WizigStatus.INTERNAL_ERROR,
+                message = "wizig_runtime_new returned null handle",
             )
 
             ffi = loadedFfi
             handle = runtimeHandle
         }.onFailure { throwable ->
             lastError = when (throwable) {
-                is ZiggyFfiException -> throwable
-                else -> ZiggyFfiException(
-                    function = "ziggy_runtime_new",
-                    status = ZiggyStatus.INTERNAL_ERROR,
+                is WizigFfiException -> throwable
+                else -> WizigFfiException(
+                    function = "wizig_runtime_new",
+                    status = WizigStatus.INTERNAL_ERROR,
                     message = throwable.message,
                 )
             }
@@ -123,7 +123,7 @@ class ZiggyRuntime(
     }
 
     private fun ensureStatus(function: String, status: Int) {
-        if (status == ZiggyStatus.OK) return
-        throw ZiggyFfiException(function = function, status = status)
+        if (status == WizigStatus.OK) return
+        throw WizigFfiException(function = function, status = status)
     }
 }

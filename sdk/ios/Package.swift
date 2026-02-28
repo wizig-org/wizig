@@ -2,18 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "Ziggy",
+    name: "Wizig",
     platforms: [
         .iOS(.v16),
         .macOS(.v13),
     ],
     products: [
-        .library(name: "Ziggy", targets: ["Ziggy"]),
+        .library(name: "Wizig", targets: ["Wizig"]),
     ],
     targets: [
         .target(
-            name: "Ziggy",
-            path: "Sources/Ziggy"
+            name: "Wizig",
+            path: "Sources/Wizig"
         ),
     ]
 )

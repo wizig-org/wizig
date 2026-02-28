@@ -1,6 +1,6 @@
 # `core/src/root.zig`
 
-Public Ziggy core API surface re-exported for consumers.
+Public Wizig core API surface re-exported for consumers.
 
 ## Public API
 

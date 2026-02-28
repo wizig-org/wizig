@@ -1,14 +1,14 @@
 import SwiftUI
-import Ziggy
+import Wizig
 
 @main
-struct ZiggyExampleApp: App {
-    private let runtime = ZiggyRuntime(appName: "ZiggyExample")
+struct WizigExampleApp: App {
+    private let runtime = WizigRuntime(appName: "WizigExample")
 
     var body: some Scene {
         WindowGroup {
             VStack(alignment: .leading, spacing: 12) {
-                Text("ZiggyExample")
+                Text("WizigExample")
                     .font(.title2.bold())
                 Text("Registered plugins: \(runtime.plugins.count)")
                 Text("Runtime available: \(runtime.isAvailable ? "yes" : "no")")
@@ -29,7 +29,7 @@ struct ZiggyExampleApp: App {
                     let error = NSError(
                         domain: "com.example.error", code: 1,
                         userInfo: [NSLocalizedDescriptionKey: "This is a test error."])
-                    // nromally cause a iOS swift crash, but ziggy should catch it and print it in the console instead
+                    // nromally cause a iOS swift crash, but wizig should catch it and print it in the console instead
                     fatalError("This is a test error.")
                 }
 

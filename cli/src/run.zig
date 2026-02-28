@@ -23,7 +23,7 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Run:\n" ++
-            "  ziggy run [project_dir] [options]\n" ++
+            "  wizig run [project_dir] [options]\n" ++
             "\n" ++
             "Project-level options:\n" ++
             "  --device <id_or_name>       Select target without prompt\n" ++

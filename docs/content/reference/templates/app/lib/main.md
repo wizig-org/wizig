@@ -1,6 +1,6 @@
 # `templates/app/lib/main.zig`
 
-Template Zig module scaffolded into new Ziggy apps.
+Template Zig module scaffolded into new Wizig apps.
 
 ## Public API
 

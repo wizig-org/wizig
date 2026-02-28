@@ -1,10 +1,10 @@
 # Zig-First Bridge Design
 
-This page explains why Ziggy moved from JSON-first contracts to Zig-first contracts and what this means for native package interop.
+This page explains why Wizig moved from JSON-first contracts to Zig-first contracts and what this means for native package interop.
 
 ## Why Zig-First
 
-A Zig contract (`ziggy.api.zig`) gives better cohesion than a parallel JSON schema:
+A Zig contract (`wizig.api.zig`) gives better cohesion than a parallel JSON schema:
 
 - Contract and runtime are expressed in the same language family.
 - Changes are easier to review in one ecosystem.
@@ -14,10 +14,10 @@ JSON remains supported for compatibility, but new apps should use Zig contracts.
 
 ## Current Contract Model
 
-`ziggy.api.zig` intentionally uses a minimal declaration subset:
+`wizig.api.zig` intentionally uses a minimal declaration subset:
 
 ```zig
-pub const namespace = "dev.ziggy.app";
+pub const namespace = "dev.wizig.app";
 
 pub const methods = .{
     .{ .name = "echo", .input = .string, .output = .string },
@@ -73,15 +73,15 @@ Use a split-responsibility model:
 3. Bridge host and Zig through generated typed APIs/events.
 4. Restrict direct C ABI import to dependencies that explicitly ship C interfaces.
 
-This is reliable across iOS and Android toolchains and aligns with Ziggy plugin v2 static registration.
+This is reliable across iOS and Android toolchains and aligns with Wizig plugin v2 static registration.
 
 ## Migration Guidance
 
 For existing JSON-contract projects:
 
-1. Add `ziggy.api.zig` with equivalent namespace/method/event definitions.
-2. Update `ziggy.yaml` `api:` to `ziggy.api.zig`.
-3. Run `ziggy codegen`.
+1. Add `wizig.api.zig` with equivalent namespace/method/event definitions.
+2. Update `wizig.yaml` `api:` to `wizig.api.zig`.
+3. Run `wizig codegen`.
 4. Remove stale hand-written host wrappers replaced by generated APIs.
 
 If both files exist, Zig contract takes precedence unless `--api` overrides.

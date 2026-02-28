@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.ziggy.ziggyexample"
+    namespace = "dev.wizig.wizigexample"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "dev.ziggy.ziggyexample"
+        applicationId = "dev.wizig.wizigexample"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

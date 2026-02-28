@@ -3,7 +3,7 @@
 ## Top-Level
 
 ```sh
-ziggy <command> [args]
+wizig <command> [args]
 ```
 
 Primary commands:
@@ -14,32 +14,32 @@ Primary commands:
 - `plugin`
 - `doctor`
 
-## `ziggy create`
+## `wizig create`
 
 ```sh
-ziggy create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]
+wizig create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]
 ```
 
 Behavior:
 
 1. Resolves SDK/runtime/templates roots.
-2. Creates app structure (`lib/`, hosts, `.ziggy/`, config files).
-3. Writes `ziggy.api.zig` contract.
-4. Runs initial `ziggy codegen`.
+2. Creates app structure (`lib/`, hosts, `.wizig/`, config files).
+3. Writes `wizig.api.zig` contract.
+4. Runs initial `wizig codegen`.
 5. Generates iOS/Android host projects.
 
 Examples:
 
 ```sh
-ziggy create Runa
-ziggy create Runa /Users/arata/Developer/zig/tests/Runa --sdk-root /Users/arata/Developer/zig/ziggy
-ziggy create Runa /tmp/Runa --platforms ios,android
+wizig create Runa
+wizig create Runa /Users/arata/Developer/zig/tests/Runa --sdk-root /Users/arata/Developer/zig/wizig
+wizig create Runa /tmp/Runa --platforms ios,android
 ```
 
-## `ziggy run`
+## `wizig run`
 
 ```sh
-ziggy run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once]
+wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once]
 ```
 
 Behavior:
@@ -48,55 +48,55 @@ Behavior:
 2. Discovers iOS and Android run targets.
 3. Prompts for target selection unless non-interactive.
 4. Delegates to platform-specific build/install/launch.
-5. Writes run log under `.ziggy/logs/run.log`.
+5. Writes run log under `.wizig/logs/run.log`.
 
 Examples:
 
 ```sh
-ziggy run .
-ziggy run /tmp/Runa --non-interactive --device emulator-5554 --once
-ziggy run /tmp/Runa --non-interactive --device 3BE718C0-8315-4698-8C04-7F62D2EE71C7 --debugger none --once
+wizig run .
+wizig run /tmp/Runa --non-interactive --device emulator-5554 --once
+wizig run /tmp/Runa --non-interactive --device 3BE718C0-8315-4698-8C04-7F62D2EE71C7 --debugger none --once
 ```
 
-## `ziggy codegen`
+## `wizig codegen`
 
 ```sh
-ziggy codegen [project_root] [--api <path>]
+wizig codegen [project_root] [--api <path>]
 ```
 
 Contract resolution:
 
 1. `--api <path>`
-2. `<project>/ziggy.api.zig`
-3. `<project>/ziggy.api.json`
+2. `<project>/wizig.api.zig`
+3. `<project>/wizig.api.json`
 
 Outputs:
 
-- `.ziggy/generated/zig/ZiggyGeneratedApi.zig`
-- `.ziggy/generated/swift/ZiggyGeneratedApi.swift`
-- `.ziggy/generated/kotlin/dev/ziggy/generated/ZiggyGeneratedApi.kt`
+- `.wizig/generated/zig/WizigGeneratedApi.zig`
+- `.wizig/generated/swift/WizigGeneratedApi.swift`
+- `.wizig/generated/kotlin/dev/wizig/generated/WizigGeneratedApi.kt`
 
 Examples:
 
 ```sh
-ziggy codegen .
-ziggy codegen /tmp/Runa --api /tmp/Runa/ziggy.api.zig
+wizig codegen .
+wizig codegen /tmp/Runa --api /tmp/Runa/wizig.api.zig
 ```
 
-## `ziggy plugin`
+## `wizig plugin`
 
 ```sh
-ziggy plugin validate <ziggy-plugin.json>
-ziggy plugin sync <project_root>
-ziggy plugin add <git_or_path>
+wizig plugin validate <wizig-plugin.json>
+wizig plugin sync <project_root>
+wizig plugin add <git_or_path>
 ```
 
 `sync` performs manifest validation, lockfile update, registrant generation, and host managed-section updates.
 
-## `ziggy doctor`
+## `wizig doctor`
 
 ```sh
-ziggy doctor [--sdk-root <path>]
+wizig doctor [--sdk-root <path>]
 ```
 
 Checks:

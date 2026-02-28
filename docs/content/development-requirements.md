@@ -2,7 +2,7 @@
 
 ## Core Toolchains
 
-Ziggy framework development requires:
+Wizig framework development requires:
 
 - Zig `0.15.1`
 - Xcode `26+` and Apple CLT (`xcodebuild`, `xcrun`)
@@ -23,13 +23,13 @@ brew install --cask android-platform-tools android-commandlinetools
 
 - App scaffolds pin Gradle wrapper `9.3.1`.
 - Kotlin/Compose versions are managed by generated version catalog.
-- Generated host bindings are sourced from `.ziggy/generated/kotlin`.
+- Generated host bindings are sourced from `.wizig/generated/kotlin`.
 
 ## iOS Notes
 
 - iOS scaffolds are generated through XcodeGen from `ios/project.yml`.
 - Minimum deployment target is currently `17.0`.
-- Generated host bindings are sourced from `.ziggy/generated/swift`.
+- Generated host bindings are sourced from `.wizig/generated/swift`.
 
 ## Docs Tooling
 

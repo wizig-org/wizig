@@ -1,4 +1,4 @@
-# `examples/app/ZiggyExample/lib/main.zig`
+# `examples/app/WizigExample/lib/main.zig`
 
 Example application Zig logic module.
 

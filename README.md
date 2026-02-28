@@ -1,6 +1,6 @@
-# Ziggy
+# Wizig
 
-Ziggy is a mobile-first framework for building iOS and Android apps with:
+Wizig is a mobile-first framework for building iOS and Android apps with:
 
 - Native host UIs (`SwiftUI`, `Jetpack Compose`)
 - Shared Zig runtime and domain logic
@@ -9,11 +9,11 @@ Ziggy is a mobile-first framework for building iOS and Android apps with:
 
 ## Design Summary
 
-Ziggy uses a hybrid architecture:
+Wizig uses a hybrid architecture:
 
 - Keep UI and platform APIs native.
 - Keep shared business/runtime logic in Zig.
-- Generate typed bridge clients from a single contract (`ziggy.api.zig`).
+- Generate typed bridge clients from a single contract (`wizig.api.zig`).
 
 ## Developer Requirements
 
@@ -45,10 +45,10 @@ zig build test
 ## Scaffold App
 
 ```sh
-zig build run -- create MyApp /tmp/MyApp --sdk-root /Users/arata/Developer/zig/ziggy
+zig build run -- create MyApp /tmp/MyApp --sdk-root /Users/arata/Developer/zig/wizig
 ```
 
-This creates a portable project with app-local `.ziggy/sdk`, `.ziggy/runtime`, and `.ziggy/generated` directories.
+This creates a portable project with app-local `.wizig/sdk`, `.wizig/runtime`, and `.wizig/generated` directories.
 
 ## Run App
 
@@ -65,13 +65,13 @@ zig build run -- codegen /tmp/MyApp
 Contract lookup precedence:
 
 1. `--api <path>`
-2. `ziggy.api.zig`
-3. `ziggy.api.json`
+2. `wizig.api.zig`
+3. `wizig.api.json`
 
 ## Plugins
 
 ```sh
-zig build run -- plugin validate examples/plugin-hello/ziggy-plugin.json
+zig build run -- plugin validate examples/plugin-hello/wizig-plugin.json
 zig build run -- plugin sync .
 ```
 
@@ -94,5 +94,5 @@ zig build docs
 ## FFI Runtime Notes
 
 - FFI artifacts are produced by `zig build`.
-- Shared library installs to `zig-out/lib` (for example `libziggyffi.dylib` on macOS).
-- Host runtimes can use `ZIGGY_FFI_LIB` to override runtime library path.
+- Shared library installs to `zig-out/lib` (for example `libwizigffi.dylib` on macOS).
+- Host runtimes can use `WIZIG_FFI_LIB` to override runtime library path.

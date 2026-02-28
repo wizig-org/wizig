@@ -15,5 +15,5 @@ Generated artifacts:
 
 Platform registrants are generated into app-local generated paths:
 
-- `.ziggy/generated/swift/GeneratedPluginRegistrant.swift`
-- `.ziggy/generated/kotlin/dev/ziggy/GeneratedPluginRegistrant.kt`
+- `.wizig/generated/swift/GeneratedPluginRegistrant.swift`
+- `.wizig/generated/kotlin/dev/wizig/GeneratedPluginRegistrant.kt`

@@ -1,6 +1,6 @@
 # `cli/src/commands/plugin/root.zig`
 
-`ziggy plugin` command handlers for validation, syncing, and adding plugins.
+`wizig plugin` command handlers for validation, syncing, and adding plugins.
 
 ## Public API
 

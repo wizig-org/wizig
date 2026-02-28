@@ -1,6 +1,6 @@
 # API Reference
 
-Auto-generated on 2026-02-28 02:19:49Z.
+Auto-generated on 2026-02-28 02:27:49Z.
 
 ## Source Files
 
@@ -25,7 +25,7 @@ Auto-generated on 2026-02-28 02:19:49Z.
 - [`core/src/plugins/registry_codegen`](core/src/plugins/registry_codegen.md)
 - [`core/src/root`](core/src/root.md)
 - [`core/src/runtime`](core/src/runtime.md)
-- [`examples/app/ZiggyExample/lib/main`](examples/app/ZiggyExample/lib/main.md)
+- [`examples/app/WizigExample/lib/main`](examples/app/WizigExample/lib/main.md)
 - [`ffi/src/root`](ffi/src/root.md)
 - [`plugins/registry/generated_plugins`](plugins/registry/generated_plugins.md)
 - [`runtime/core/src/plugins/manifest`](runtime/core/src/plugins/manifest.md)
@@ -36,4 +36,4 @@ Auto-generated on 2026-02-28 02:19:49Z.
 - [`src/main`](src/main.md)
 - [`src/root`](src/root.md)
 - [`templates/app/lib/main`](templates/app/lib/main.md)
-- [`templates/app/ziggy.api`](templates/app/ziggy.api.md)
+- [`templates/app/wizig.api`](templates/app/wizig.api.md)

@@ -1,6 +1,6 @@
 # Full App Example
 
-This folder demonstrates the Flutter-style Ziggy scaffold where a single app root contains platform hosts:
+This folder demonstrates the Flutter-style Wizig scaffold where a single app root contains platform hosts:
 
 - `ios/`
 - `android/`
@@ -9,12 +9,12 @@ This folder demonstrates the Flutter-style Ziggy scaffold where a single app roo
 Generate/update the sample:
 
 ```sh
-zig build run -- create ZiggyExample examples/app/ZiggyExample
+zig build run -- create WizigExample examples/app/WizigExample
 ```
 
 Run:
 
 ```sh
-zig build run -- run ios examples/app/ZiggyExample/ios
-zig build run -- run android examples/app/ZiggyExample/android
+zig build run -- run ios examples/app/WizigExample/ios
+zig build run -- run android examples/app/WizigExample/android
 ```

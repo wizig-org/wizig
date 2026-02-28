@@ -2,7 +2,7 @@
 const std = @import("std");
 const Io = std.Io;
 
-const ziggy = @import("ziggy");
+const wizig = @import("wizig");
 
 /// Demonstrates basic runtime access and process I/O setup.
 pub fn main(init: std.process.Init) !void {
@@ -28,7 +28,7 @@ pub fn main(init: std.process.Init) !void {
     var stdout_file_writer: Io.File.Writer = .init(.stdout(), io, &stdout_buffer);
     const stdout_writer = &stdout_file_writer.interface;
 
-    try ziggy.printAnotherMessage(stdout_writer);
+    try wizig.printAnotherMessage(stdout_writer);
 
     try stdout_writer.flush(); // Don't forget to flush!
 }

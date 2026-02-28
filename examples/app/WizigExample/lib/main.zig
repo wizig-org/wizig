@@ -3,7 +3,7 @@ const std = @import("std");
 
 /// Returns the logical app name.
 pub fn appName() []const u8 {
-    return "ZiggyExample";
+    return "WizigExample";
 }
 
 test "appName is non-empty" {

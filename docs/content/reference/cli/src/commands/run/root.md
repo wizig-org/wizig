@@ -1,6 +1,6 @@
 # `cli/src/commands/run/root.zig`
 
-`ziggy run` command shim.
+`wizig run` command shim.
 
 ## Public API
 

@@ -1,4 +1,4 @@
-//! `ziggy create` command parser and dispatch.
+//! `wizig create` command parser and dispatch.
 const std = @import("std");
 const Io = std.Io;
 const scaffold = @import("scaffold.zig");
@@ -34,7 +34,7 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Create:\n" ++
-            "  ziggy create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]\n" ++
+            "  wizig create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]\n" ++
             "\n",
     );
 }

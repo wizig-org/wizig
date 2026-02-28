@@ -1,4 +1,4 @@
-package dev.ziggy.ziggyexample
+package dev.wizig.wizigexample
 
 import android.os.Bundle
 import android.util.Log
@@ -21,17 +21,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import dev.ziggy.ziggyexample.ui.theme.ZiggyExampleTheme
+import dev.wizig.wizigexample.ui.theme.WizigExampleTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            ZiggyExampleTheme {
+            WizigExampleTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Greeting(
-                        appName = "ZiggyExample",
+                        appName = "WizigExample",
                         modifier = Modifier.padding(innerPadding),
                     )
                 }
@@ -60,7 +60,7 @@ private fun Greeting(appName: String, modifier: Modifier = Modifier) {
         Button(
             onClick = {
                 clickCount += 1
-                Log.i("ZiggyExample", "Compose button clicked: $clickCount")
+                Log.i("WizigExample", "Compose button clicked: $clickCount")
                 println("Compose button clicked: $clickCount")
             },
         ) {
@@ -72,7 +72,7 @@ private fun Greeting(appName: String, modifier: Modifier = Modifier) {
 @Preview(showBackground = true)
 @Composable
 private fun GreetingPreview() {
-    ZiggyExampleTheme {
-        Greeting(appName = "ZiggyExample")
+    WizigExampleTheme {
+        Greeting(appName = "WizigExample")
     }
 }

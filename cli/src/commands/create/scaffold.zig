@@ -1,4 +1,4 @@
-//! Project scaffolding for `ziggy create`.
+//! Project scaffolding for `wizig create`.
 const std = @import("std");
 const Io = std.Io;
 const fs_util = @import("../../support/fs.zig");
@@ -15,7 +15,7 @@ pub const CreatePlatforms = struct {
     macos: bool = false,
 };
 
-/// Creates a full Ziggy application scaffold at `destination_dir_raw`.
+/// Creates a full Wizig application scaffold at `destination_dir_raw`.
 pub fn createApp(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -48,16 +48,16 @@ pub fn createApp(
         return error.CreateFailed;
     };
 
-    const dot_ziggy_dir = try joinPath(arena, destination_dir, ".ziggy");
+    const dot_wizig_dir = try joinPath(arena, destination_dir, ".wizig");
     const lib_dir = try joinPath(arena, destination_dir, "lib");
     const plugins_dir = try joinPath(arena, destination_dir, "plugins");
-    const app_sdk_dir = try joinPath(arena, dot_ziggy_dir, "sdk");
-    const app_runtime_dir = try joinPath(arena, dot_ziggy_dir, "runtime");
-    const app_generated_dir = try joinPath(arena, dot_ziggy_dir, "generated");
+    const app_sdk_dir = try joinPath(arena, dot_wizig_dir, "sdk");
+    const app_runtime_dir = try joinPath(arena, dot_wizig_dir, "runtime");
+    const app_generated_dir = try joinPath(arena, dot_wizig_dir, "generated");
     const app_generated_swift_dir = try joinPath(arena, app_generated_dir, "swift");
     const app_generated_kotlin_dir = try joinPath(arena, app_generated_dir, "kotlin");
     const app_generated_zig_dir = try joinPath(arena, app_generated_dir, "zig");
-    const app_plugins_meta_dir = try joinPath(arena, dot_ziggy_dir, "plugins");
+    const app_plugins_meta_dir = try joinPath(arena, dot_wizig_dir, "plugins");
 
     for (&[_][]const u8{
         lib_dir,
@@ -81,12 +81,12 @@ pub fn createApp(
     fs_util.removeTreeIfExists(io, app_runtime_dir) catch {};
 
     fs_util.copyTree(arena, io, resolved.sdk_dir, app_sdk_dir) catch |err| {
-        try stderr.print("error: failed to copy SDK into app (.ziggy/sdk): {s}\n", .{@errorName(err)});
+        try stderr.print("error: failed to copy SDK into app (.wizig/sdk): {s}\n", .{@errorName(err)});
         try stderr.flush();
         return error.CreateFailed;
     };
     fs_util.copyTree(arena, io, resolved.runtime_dir, app_runtime_dir) catch |err| {
-        try stderr.print("error: failed to copy runtime into app (.ziggy/runtime): {s}\n", .{@errorName(err)});
+        try stderr.print("error: failed to copy runtime into app (.wizig/runtime): {s}\n", .{@errorName(err)});
         try stderr.flush();
         return error.CreateFailed;
     };
@@ -99,12 +99,12 @@ pub fn createApp(
 
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/.gitignore", try joinPath(arena, destination_dir, ".gitignore"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/README.md", try joinPath(arena, destination_dir, "README.md"), &template_tokens);
-    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/ziggy.yaml", try joinPath(arena, destination_dir, "ziggy.yaml"), &template_tokens);
-    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/ziggy.api.zig", try joinPath(arena, destination_dir, "ziggy.api.zig"), &template_tokens);
+    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/wizig.yaml", try joinPath(arena, destination_dir, "wizig.yaml"), &template_tokens);
+    try renderTemplateToPath(arena, io, resolved.templates_dir, "app/wizig.api.zig", try joinPath(arena, destination_dir, "wizig.api.zig"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/lib/main.zig", try joinPath(arena, lib_dir, "main.zig"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/plugins/README.md", try joinPath(arena, plugins_dir, "README.md"), &template_tokens);
 
-    const api_path = try joinPath(arena, destination_dir, "ziggy.api.zig");
+    const api_path = try joinPath(arena, destination_dir, "wizig.api.zig");
     codegen_cmd.generateProject(arena, io, stderr, stdout, destination_dir, api_path) catch |err| {
         try stderr.print("error: failed to run initial codegen: {s}\n", .{@errorName(err)});
         try stderr.flush();
@@ -130,11 +130,11 @@ pub fn createApp(
         try writeFileAtomically(
             io,
             macos_readme_path,
-            "# macOS (placeholder)\n\nDesktop scaffolding will be added in a future Ziggy release.\n",
+            "# macOS (placeholder)\n\nDesktop scaffolding will be added in a future Wizig release.\n",
         );
     }
 
-    try stdout.print("created Ziggy app '{s}' at '{s}'\n", .{ app_name, destination_dir });
+    try stdout.print("created Wizig app '{s}' at '{s}'\n", .{ app_name, destination_dir });
     try stdout.flush();
 }
 
@@ -227,13 +227,13 @@ pub fn createAndroid(
     };
 
     const package_segment = try sanitizePackageSegment(arena, app_name);
-    const package_name = try std.fmt.allocPrint(arena, "dev.ziggy.{s}", .{package_segment});
+    const package_name = try std.fmt.allocPrint(arena, "dev.wizig.{s}", .{package_segment});
     const package_path = try packageNameToPath(arena, package_name);
 
-    std.Io.Dir.cwd().createDirPath(io, "/tmp/ziggy-gradle-home") catch {};
+    std.Io.Dir.cwd().createDirPath(io, "/tmp/wizig-gradle-home") catch {};
     var environ_map = try parent_environ_map.clone(arena);
     defer environ_map.deinit();
-    try environ_map.put("GRADLE_USER_HOME", "/tmp/ziggy-gradle-home");
+    try environ_map.put("GRADLE_USER_HOME", "/tmp/wizig-gradle-home");
 
     runCommand(arena, io, stderr, destination_dir, &.{
         "gradle",
@@ -389,7 +389,7 @@ pub fn createAndroid(
             "\n" ++
             "    sourceSets {{\n" ++
             "        getByName(\"main\") {{\n" ++
-            "            kotlin.directories.add(rootProject.file(\"../.ziggy/generated/kotlin\").path)\n" ++
+            "            kotlin.directories.add(rootProject.file(\"../.wizig/generated/kotlin\").path)\n" ++
             "        }}\n" ++
             "    }}\n" ++
             "}}\n" ++
@@ -491,7 +491,7 @@ pub fn createAndroid(
             "import androidx.compose.ui.Modifier\n" ++
             "import androidx.compose.ui.tooling.preview.Preview\n" ++
             "import androidx.compose.ui.unit.dp\n" ++
-            "import dev.ziggy.generated.ZiggyGeneratedApi\n" ++
+            "import dev.wizig.generated.WizigGeneratedApi\n" ++
             "import {s}.ui.theme.{s}Theme\n" ++
             "\n" ++
             "class MainActivity : ComponentActivity() {{\n" ++
@@ -513,7 +513,7 @@ pub fn createAndroid(
             "\n" ++
             "@Composable\n" ++
             "private fun Greeting(appName: String, modifier: Modifier = Modifier) {{\n" ++
-            "    val api = remember {{ ZiggyGeneratedApi() }}\n" ++
+            "    val api = remember {{ WizigGeneratedApi() }}\n" ++
             "    var clickCount by remember {{ mutableStateOf(0) }}\n" ++
             "    val echoed = remember {{ api.echo(\"hello\") }}\n" ++
             "    Column(\n" ++
@@ -751,7 +751,7 @@ pub fn createAndroid(
             std.fs.path.sep_str,
         },
     );
-    try writeFileAtomically(io, proguard_path, "# Ziggy Android app ProGuard rules.\n");
+    try writeFileAtomically(io, proguard_path, "# Wizig Android app ProGuard rules.\n");
 
     const sdk_dir = parent_environ_map.get("ANDROID_SDK_ROOT") orelse parent_environ_map.get("ANDROID_HOME");
     if (sdk_dir) |sdk| {
@@ -948,7 +948,7 @@ fn toSwiftTypeName(allocator: std.mem.Allocator, raw_name: []const u8) ![]u8 {
     }
 
     if (out.items.len == 0) {
-        try out.appendSlice(allocator, "ZiggyApp");
+        try out.appendSlice(allocator, "WizigApp");
     }
 
     return out.toOwnedSlice(allocator);
@@ -967,7 +967,7 @@ test "sanitizePackageSegment produces valid lowercase token" {
 }
 
 test "packageNameToPath converts dots to separators" {
-    const got = try packageNameToPath(std.testing.allocator, "dev.ziggy.demo");
+    const got = try packageNameToPath(std.testing.allocator, "dev.wizig.demo");
     defer std.testing.allocator.free(got);
     try std.testing.expect(std.mem.indexOfScalar(u8, got, '.') == null);
     try std.testing.expect(std.mem.indexOfScalar(u8, got, std.fs.path.sep) != null);
@@ -980,7 +980,7 @@ test "toSwiftTypeName strips separators and capitalizes words" {
 }
 
 test "escapeLocalPropertiesValue escapes backslashes" {
-    const got = try escapeLocalPropertiesValue(std.testing.allocator, "C:\\Users\\ziggy\\sdk");
+    const got = try escapeLocalPropertiesValue(std.testing.allocator, "C:\\Users\\wizig\\sdk");
     defer std.testing.allocator.free(got);
-    try std.testing.expectEqualStrings("C:\\\\Users\\\\ziggy\\\\sdk", got);
+    try std.testing.expectEqualStrings("C:\\\\Users\\\\wizig\\\\sdk", got);
 }

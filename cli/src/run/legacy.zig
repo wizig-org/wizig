@@ -100,8 +100,8 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Run:\n" ++
-            "  ziggy run ios <project_dir> [options]\n" ++
-            "  ziggy run android <project_dir> [options]\n" ++
+            "  wizig run ios <project_dir> [options]\n" ++
+            "  wizig run android <project_dir> [options]\n" ++
             "\n" ++
             "Shared options:\n" ++
             "  --device <id_or_name>       Select target without prompt (Android AVD: avd:<name>)\n" ++
@@ -292,7 +292,7 @@ fn runIos(
     ) catch {};
 
     const destination = try std.fmt.allocPrint(arena, "id={s}", .{selected.udid});
-    const derived_data = try std.fmt.allocPrint(arena, "/tmp/ziggy-derived-{s}", .{scheme});
+    const derived_data = try std.fmt.allocPrint(arena, "/tmp/wizig-derived-{s}", .{scheme});
 
     try stdout.writeAll("building iOS app...\n");
     try stdout.flush();
@@ -351,7 +351,7 @@ fn runIos(
     });
     const app_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ target_build_dir, wrapper_name });
 
-    const workspace_root = try resolveZiggyWorkspaceRoot(arena, io, parent_environ_map, options.project_dir, stderr);
+    const workspace_root = try resolveWizigWorkspaceRoot(arena, io, parent_environ_map, options.project_dir, stderr);
     const simulator_ffi_path = try buildIosSimulatorFfiLibrary(arena, io, stderr, workspace_root);
     const runtime_ffi_path = try bundleIosFfiLibraryForSimulator(arena, io, stderr, app_path, simulator_ffi_path);
 
@@ -375,8 +375,8 @@ fn runIos(
     var launch_env = try parent_environ_map.clone(arena);
     defer launch_env.deinit();
 
-    try launch_env.put("ZIGGY_FFI_LIB", runtime_ffi_path);
-    try launch_env.put("SIMCTL_CHILD_ZIGGY_FFI_LIB", runtime_ffi_path);
+    try launch_env.put("WIZIG_FFI_LIB", runtime_ffi_path);
+    try launch_env.put("SIMCTL_CHILD_WIZIG_FFI_LIB", runtime_ffi_path);
     try launch_env.put("SIMCTL_CHILD_NSUnbufferedIO", "YES");
     try launch_env.put("SIMCTL_CHILD_CFLOG_FORCE_STDERR", "YES");
     try launch_env.put("SIMCTL_CHILD_OS_ACTIVITY_MODE", "disable");
@@ -416,7 +416,7 @@ fn runIos(
     switch (debugger_mode) {
         .lldb => {
             const attach_command = try std.fmt.allocPrint(arena, "process attach --pid {d}", .{pid});
-            try stdout.writeAll("attaching lldb (exit lldb to stop ziggy run)...\n");
+            try stdout.writeAll("attaching lldb (exit lldb to stop wizig run)...\n");
             try stdout.flush();
             try runInheritChecked(
                 io,
@@ -479,10 +479,10 @@ fn runAndroid(
     try stdout.print("selected Android target: {s} [{s}]\n", .{ selected.model, selected.serial });
     try stdout.flush();
 
-    std.Io.Dir.cwd().createDirPath(io, "/tmp/ziggy-gradle-home") catch {};
+    std.Io.Dir.cwd().createDirPath(io, "/tmp/wizig-gradle-home") catch {};
     var gradle_env = try parent_environ_map.clone(arena);
     defer gradle_env.deinit();
-    try gradle_env.put("GRADLE_USER_HOME", "/tmp/ziggy-gradle-home");
+    try gradle_env.put("GRADLE_USER_HOME", "/tmp/wizig-gradle-home");
 
     const gradle_wrapper_path = try joinPath(arena, options.project_dir, "gradlew");
     const gradle_wrapper_jar_path = try std.fmt.allocPrint(
@@ -1416,7 +1416,7 @@ fn launchIosAppWithConsoleRetry(
     return error.RunFailed;
 }
 
-fn resolveZiggyWorkspaceRoot(
+fn resolveWizigWorkspaceRoot(
     arena: Allocator,
     io: std.Io,
     parent_environ_map: *const std.process.Environ.Map,
@@ -1427,7 +1427,7 @@ fn resolveZiggyWorkspaceRoot(
         return runtime_root;
     }
 
-    if (parent_environ_map.get("ZIGGY_SDK_ROOT")) |raw_root| {
+    if (parent_environ_map.get("WIZIG_SDK_ROOT")) |raw_root| {
         const resolved = if (std.fs.path.isAbsolute(raw_root))
             try arena.dupe(u8, raw_root)
         else blk: {
@@ -1442,7 +1442,7 @@ fn resolveZiggyWorkspaceRoot(
         if (pathExists(io, marker)) return resolved;
     }
 
-    if (try extractZiggyWorkspaceFromProjectYml(arena, io, project_dir)) |root| {
+    if (try extractWizigWorkspaceFromProjectYml(arena, io, project_dir)) |root| {
         return root;
     }
 
@@ -1455,7 +1455,7 @@ fn resolveZiggyWorkspaceRoot(
     if (pathExists(io, cwd_marker)) return cwd;
 
     try stderr.writeAll(
-        "error: unable to resolve Ziggy runtime root; expected app-local .ziggy/runtime or set ZIGGY_SDK_ROOT\n",
+        "error: unable to resolve Wizig runtime root; expected app-local .wizig/runtime or set WIZIG_SDK_ROOT\n",
     );
     return error.RunFailed;
 }
@@ -1465,11 +1465,11 @@ fn resolveAppLocalRuntimeRoot(
     io: std.Io,
     project_dir: []const u8,
 ) !?[]const u8 {
-    const direct = try std.fs.path.resolve(arena, &.{ project_dir, ".ziggy", "runtime" });
+    const direct = try std.fs.path.resolve(arena, &.{ project_dir, ".wizig", "runtime" });
     if (runtimeRootLooksValid(arena, io, direct)) return direct;
 
     const parent = std.fs.path.dirname(project_dir) orelse return null;
-    const parent_candidate = try std.fs.path.resolve(arena, &.{ parent, ".ziggy", "runtime" });
+    const parent_candidate = try std.fs.path.resolve(arena, &.{ parent, ".wizig", "runtime" });
     if (runtimeRootLooksValid(arena, io, parent_candidate)) return parent_candidate;
 
     return null;
@@ -1493,7 +1493,7 @@ fn runtimeRootLooksValid(
     return pathExists(io, marker_core) and pathExists(io, marker_ffi);
 }
 
-fn extractZiggyWorkspaceFromProjectYml(
+fn extractWizigWorkspaceFromProjectYml(
     arena: Allocator,
     io: std.Io,
     project_dir: []const u8,
@@ -1567,10 +1567,10 @@ fn buildIosSimulatorFfiLibrary(
         return error.RunFailed;
     }
 
-    const out_dir = "/tmp/ziggy-ffi-iossim";
+    const out_dir = "/tmp/wizig-ffi-iossim";
     std.Io.Dir.cwd().createDirPath(io, out_dir) catch {};
 
-    const out_path = try std.fmt.allocPrint(arena, "{s}{s}ziggyffi", .{ out_dir, std.fs.path.sep_str });
+    const out_path = try std.fmt.allocPrint(arena, "{s}{s}wizigffi", .{ out_dir, std.fs.path.sep_str });
     const emit_arg = try std.fmt.allocPrint(arena, "-femit-bin={s}", .{out_path});
 
     _ = try runCaptureChecked(
@@ -1584,14 +1584,14 @@ fn buildIosSimulatorFfiLibrary(
             "-target",
             "aarch64-ios-simulator",
             "--dep",
-            "ziggy_core",
+            "wizig_core",
             "-Mroot=ffi/src/root.zig",
-            "-Mziggy_core=core/src/root.zig",
+            "-Mwizig_core=core/src/root.zig",
             "--name",
-            "ziggyffi",
+            "wizigffi",
             "-dynamic",
             "-install_name",
-            "@rpath/libziggyffi.dylib",
+            "@rpath/libwizigffi.dylib",
             "--sysroot",
             sdk_path,
             "-L/usr/lib",
@@ -1601,7 +1601,7 @@ fn buildIosSimulatorFfiLibrary(
         },
         null,
         stderr,
-        "build iOS simulator Ziggy FFI library",
+        "build iOS simulator Wizig FFI library",
     );
 
     return out_path;
@@ -1617,8 +1617,8 @@ fn bundleIosFfiLibraryForSimulator(
     const frameworks_dir = try std.fmt.allocPrint(arena, "{s}{s}Frameworks", .{ app_path, std.fs.path.sep_str });
     std.Io.Dir.cwd().createDirPath(io, frameworks_dir) catch {};
 
-    const app_bundle_ffi = try std.fmt.allocPrint(arena, "{s}{s}ziggyffi", .{ app_path, std.fs.path.sep_str });
-    const frameworks_ffi = try std.fmt.allocPrint(arena, "{s}{s}ziggyffi", .{ frameworks_dir, std.fs.path.sep_str });
+    const app_bundle_ffi = try std.fmt.allocPrint(arena, "{s}{s}wizigffi", .{ app_path, std.fs.path.sep_str });
+    const frameworks_ffi = try std.fmt.allocPrint(arena, "{s}{s}wizigffi", .{ frameworks_dir, std.fs.path.sep_str });
 
     _ = try runCaptureChecked(
         arena,
@@ -1627,7 +1627,7 @@ fn bundleIosFfiLibraryForSimulator(
         &.{ "cp", host_ffi_path, app_bundle_ffi },
         null,
         stderr,
-        "copy Ziggy FFI into iOS app bundle",
+        "copy Wizig FFI into iOS app bundle",
     );
     _ = try runCaptureChecked(
         arena,
@@ -1636,10 +1636,10 @@ fn bundleIosFfiLibraryForSimulator(
         &.{ "cp", host_ffi_path, frameworks_ffi },
         null,
         stderr,
-        "copy Ziggy FFI into iOS app Frameworks",
+        "copy Wizig FFI into iOS app Frameworks",
     );
 
-    return "@executable_path/Frameworks/ziggyffi";
+    return "@executable_path/Frameworks/wizigffi";
 }
 
 fn resolveIosFfiLibraryPath(
@@ -1647,7 +1647,7 @@ fn resolveIosFfiLibraryPath(
     io: std.Io,
     parent_environ_map: *const std.process.Environ.Map,
 ) !?[]const u8 {
-    if (parent_environ_map.get("ZIGGY_FFI_LIB")) |raw_path| {
+    if (parent_environ_map.get("WIZIG_FFI_LIB")) |raw_path| {
         if (std.fs.path.isAbsolute(raw_path)) {
             if (pathExists(io, raw_path)) return try arena.dupe(u8, raw_path);
         } else {
@@ -1658,7 +1658,7 @@ fn resolveIosFfiLibraryPath(
     }
 
     const cwd = try std.process.currentPathAlloc(io, arena);
-    const guessed = try std.fs.path.resolve(arena, &.{ cwd, "zig-out", "lib", "libziggyffi.dylib" });
+    const guessed = try std.fs.path.resolve(arena, &.{ cwd, "zig-out", "lib", "libwizigffi.dylib" });
     if (pathExists(io, guessed)) return guessed;
     return null;
 }
@@ -2113,7 +2113,7 @@ test "parseRunOptions parses shared and platform flags" {
 
     const options = try parseRunOptions(&.{
         "android",
-        "examples/android/ZiggyExample",
+        "examples/android/WizigExample",
         "--device",
         "emulator-5554",
         "--module",
@@ -2124,7 +2124,7 @@ test "parseRunOptions parses shared and platform flags" {
     }, &err_writer.writer);
 
     try std.testing.expectEqual(Platform.android, options.platform);
-    try std.testing.expectEqualStrings("examples/android/ZiggyExample", options.project_dir);
+    try std.testing.expectEqualStrings("examples/android/WizigExample", options.project_dir);
     try std.testing.expectEqualStrings("emulator-5554", options.device_selector.?);
     try std.testing.expectEqual(DebuggerMode.none, options.debugger);
     try std.testing.expect(options.once);
@@ -2138,7 +2138,7 @@ test "parseRunOptions rejects mixed platform flags" {
         error.RunFailed,
         parseRunOptions(&.{
             "ios",
-            "examples/ios/ZiggyExample",
+            "examples/ios/WizigExample",
             "--module",
             "custom-module",
         }, &err_writer.writer),
@@ -2166,34 +2166,34 @@ test "parseAaptBadging extracts app id and launch activity" {
     var app_id: ?[]const u8 = null;
     var activity: ?[]const u8 = null;
     parseAaptBadging(
-        "package: name='dev.ziggy.demo' versionCode='1' versionName='1.0'\n" ++
-            "launchable-activity: name='dev.ziggy.demo.MainActivity' label='' icon=''\n",
+        "package: name='dev.wizig.demo' versionCode='1' versionName='1.0'\n" ++
+            "launchable-activity: name='dev.wizig.demo.MainActivity' label='' icon=''\n",
         &app_id,
         &activity,
     );
-    try std.testing.expectEqualStrings("dev.ziggy.demo", app_id.?);
-    try std.testing.expectEqualStrings("dev.ziggy.demo.MainActivity", activity.?);
+    try std.testing.expectEqualStrings("dev.wizig.demo", app_id.?);
+    try std.testing.expectEqualStrings("dev.wizig.demo.MainActivity", activity.?);
 }
 
 test "extractBuildSetting parses xcodebuild output line" {
     const setting = extractBuildSetting(
         "Build settings for action build and target Demo:\n" ++
             "    TARGET_BUILD_DIR = /tmp/demo\n" ++
-            "    PRODUCT_BUNDLE_IDENTIFIER = dev.ziggy.demo\n",
+            "    PRODUCT_BUNDLE_IDENTIFIER = dev.wizig.demo\n",
         "PRODUCT_BUNDLE_IDENTIFIER",
     );
     try std.testing.expect(setting != null);
-    try std.testing.expectEqualStrings("dev.ziggy.demo", setting.?);
+    try std.testing.expectEqualStrings("dev.wizig.demo", setting.?);
 }
 
 test "extractXmlAttribute parses manifest package and activity" {
     const manifest =
-        "<manifest package=\"dev.ziggy.sample\">\n" ++
+        "<manifest package=\"dev.wizig.sample\">\n" ++
         "  <application>\n" ++
         "    <activity android:name=\".MainActivity\" android:exported=\"true\" />\n" ++
         "  </application>\n" ++
         "</manifest>\n";
-    try std.testing.expectEqualStrings("dev.ziggy.sample", extractXmlAttribute(manifest, "manifest", "package").?);
+    try std.testing.expectEqualStrings("dev.wizig.sample", extractXmlAttribute(manifest, "manifest", "package").?);
     try std.testing.expectEqualStrings(".MainActivity", extractXmlAttribute(manifest, "activity", "android:name").?);
 }
 
@@ -2222,7 +2222,7 @@ test "chooseAndroidTarget selects avd by selector" {
 test "isTransientIosLaunchFailure detects flaky launch output" {
     try std.testing.expect(isTransientIosLaunchFailure(
         "",
-        "An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=3):\nApplication launch for 'dev.ziggy.example' did not return a process handle nor launch error. No such process\n",
+        "An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=3):\nApplication launch for 'dev.wizig.example' did not return a process handle nor launch error. No such process\n",
     ));
     try std.testing.expect(!isTransientIosLaunchFailure("", "Missing bundle identifier"));
 }
@@ -2296,7 +2296,7 @@ test "extractInlineField parses destination id from xcodebuild output" {
 }
 
 test "parseLaunchPid extracts simulator pid" {
-    const pid = parseLaunchPid("dev.ziggy.example.ios: 75668");
+    const pid = parseLaunchPid("dev.wizig.example.ios: 75668");
     try std.testing.expect(pid != null);
     try std.testing.expectEqual(@as(u32, 75668), pid.?);
 }
@@ -2319,16 +2319,16 @@ test "resolveIosFfiLibraryPath prefers env path when it exists" {
     const io = std.testing.io;
 
     try tmp.dir.writeFile(io, .{
-        .sub_path = "libziggyffi.dylib",
+        .sub_path = "libwizigffi.dylib",
         .data = "",
     });
 
     const tmp_root = try std.fmt.allocPrint(arena, ".zig-cache/tmp/{s}", .{tmp.sub_path});
-    const ffi_path = try std.fmt.allocPrint(arena, "{s}{s}libziggyffi.dylib", .{ tmp_root, std.fs.path.sep_str });
+    const ffi_path = try std.fmt.allocPrint(arena, "{s}{s}libwizigffi.dylib", .{ tmp_root, std.fs.path.sep_str });
 
     var env = std.process.Environ.Map.init(arena);
     defer env.deinit();
-    try env.put("ZIGGY_FFI_LIB", ffi_path);
+    try env.put("WIZIG_FFI_LIB", ffi_path);
 
     const cwd = try std.process.currentPathAlloc(io, arena);
     const expected = try std.fs.path.resolve(arena, &.{ cwd, ffi_path });

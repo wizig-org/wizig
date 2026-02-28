@@ -1,6 +1,6 @@
 # Docs Pipeline
 
-Ziggy documentation is generated with a Python pipeline and rendered as static HTML.
+Wizig documentation is generated with a Python pipeline and rendered as static HTML.
 
 ## Tooling
 

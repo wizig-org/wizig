@@ -1,5 +1,5 @@
-name: ZiggyExample
-description: Ziggy application scaffold.
+name: WizigExample
+description: Wizig application scaffold.
 platforms:
   - ios
   - android

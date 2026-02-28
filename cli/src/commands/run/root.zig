@@ -1,4 +1,4 @@
-//! `ziggy run` command shim.
+//! `wizig run` command shim.
 const std = @import("std");
 const Io = std.Io;
 const run_impl = @import("../../run.zig");

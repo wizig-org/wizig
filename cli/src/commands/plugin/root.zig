@@ -1,7 +1,7 @@
-//! `ziggy plugin` command handlers for validation, syncing, and adding plugins.
+//! `wizig plugin` command handlers for validation, syncing, and adding plugins.
 const std = @import("std");
 const Io = std.Io;
-const ziggy_core = @import("ziggy_core");
+const wizig_core = @import("wizig_core");
 const fs_util = @import("../../support/fs.zig");
 const path_util = @import("../../support/path.zig");
 const process_util = @import("../../support/process.zig");
@@ -21,7 +21,7 @@ pub fn run(
 
     if (std.mem.eql(u8, args[0], "validate")) {
         if (args.len != 2) {
-            try stderr.writeAll("error: plugin validate expects <ziggy-plugin.json>\n");
+            try stderr.writeAll("error: plugin validate expects <wizig-plugin.json>\n");
             return error.InvalidArguments;
         }
         return validate(arena, io, stderr, stdout, args[1]);
@@ -53,9 +53,9 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Plugin:\n" ++
-            "  ziggy plugin validate <ziggy-plugin.json>\n" ++
-            "  ziggy plugin sync [project_root]\n" ++
-            "  ziggy plugin add <git_or_path> [project_root]\n" ++
+            "  wizig plugin validate <wizig-plugin.json>\n" ++
+            "  wizig plugin sync [project_root]\n" ++
+            "  wizig plugin add <git_or_path> [project_root]\n" ++
             "\n",
     );
 }
@@ -72,7 +72,7 @@ fn validate(
         return error.PluginFailed;
     };
 
-    var manifest = ziggy_core.PluginManifest.parse(arena, manifest_text) catch |err| {
+    var manifest = wizig_core.PluginManifest.parse(arena, manifest_text) catch |err| {
         try stderr.print("error: invalid plugin manifest '{s}': {s}\n", .{ file_path, @errorName(err) });
         return error.PluginFailed;
     };
@@ -94,35 +94,35 @@ fn sync(
 ) !void {
     const project_root = try path_util.resolveAbsolute(arena, io, project_root_raw);
     const plugin_root = try path_util.join(arena, project_root, "plugins");
-    const registry_dir = try path_util.join(arena, project_root, ".ziggy/plugins");
-    const generated_dir = try path_util.join(arena, project_root, ".ziggy/generated");
+    const registry_dir = try path_util.join(arena, project_root, ".wizig/plugins");
+    const generated_dir = try path_util.join(arena, project_root, ".wizig/generated");
     const swift_dir = try path_util.join(arena, generated_dir, "swift");
-    const kotlin_dir = try path_util.join(arena, generated_dir, "kotlin/dev/ziggy");
+    const kotlin_dir = try path_util.join(arena, generated_dir, "kotlin/dev/wizig");
     const zig_dir = try path_util.join(arena, generated_dir, "zig");
 
     for (&[_][]const u8{ registry_dir, swift_dir, kotlin_dir, zig_dir }) |dir_path| {
         try fs_util.ensureDir(io, dir_path);
     }
 
-    var registry = ziggy_core.collectPluginRegistry(arena, io, plugin_root) catch |err| {
+    var registry = wizig_core.collectPluginRegistry(arena, io, plugin_root) catch |err| {
         try stderr.print("error: failed to collect plugins from '{s}': {s}\n", .{ plugin_root, @errorName(err) });
         return error.PluginFailed;
     };
     defer registry.deinit(arena);
 
-    const lockfile = ziggy_core.renderPluginLockfile(arena, registry.records) catch |err| {
+    const lockfile = wizig_core.renderPluginLockfile(arena, registry.records) catch |err| {
         try stderr.print("error: failed to render lockfile: {s}\n", .{@errorName(err)});
         return error.PluginFailed;
     };
-    const zig_registrant = ziggy_core.renderZigRegistrant(arena, registry.records) catch |err| {
+    const zig_registrant = wizig_core.renderZigRegistrant(arena, registry.records) catch |err| {
         try stderr.print("error: failed to render Zig registrant: {s}\n", .{@errorName(err)});
         return error.PluginFailed;
     };
-    const swift_registrant = ziggy_core.renderSwiftRegistrant(arena, registry.records) catch |err| {
+    const swift_registrant = wizig_core.renderSwiftRegistrant(arena, registry.records) catch |err| {
         try stderr.print("error: failed to render Swift registrant: {s}\n", .{@errorName(err)});
         return error.PluginFailed;
     };
-    const kotlin_registrant = ziggy_core.renderKotlinRegistrant(arena, registry.records) catch |err| {
+    const kotlin_registrant = wizig_core.renderKotlinRegistrant(arena, registry.records) catch |err| {
         try stderr.print("error: failed to render Kotlin registrant: {s}\n", .{@errorName(err)});
         return error.PluginFailed;
     };
@@ -131,17 +131,17 @@ fn sync(
     const zig_path = try path_util.join(arena, zig_dir, "generated_plugins.zig");
     const swift_path = try path_util.join(arena, swift_dir, "GeneratedPluginRegistrant.swift");
     const kotlin_path = try path_util.join(arena, kotlin_dir, "GeneratedPluginRegistrant.kt");
-    const sdk_swift_path = try path_util.join(arena, project_root, ".ziggy/sdk/ios/Sources/Ziggy/GeneratedPluginRegistrant.swift");
-    const sdk_kotlin_path = try path_util.join(arena, project_root, ".ziggy/sdk/android/src/main/kotlin/dev/ziggy/GeneratedPluginRegistrant.kt");
+    const sdk_swift_path = try path_util.join(arena, project_root, ".wizig/sdk/ios/Sources/Wizig/GeneratedPluginRegistrant.swift");
+    const sdk_kotlin_path = try path_util.join(arena, project_root, ".wizig/sdk/android/src/main/kotlin/dev/wizig/GeneratedPluginRegistrant.kt");
 
     try fs_util.writeFileAtomically(io, lockfile_path, lockfile);
     try fs_util.writeFileAtomically(io, zig_path, zig_registrant);
     try fs_util.writeFileAtomically(io, swift_path, swift_registrant);
     try fs_util.writeFileAtomically(io, kotlin_path, kotlin_registrant);
-    if (fs_util.pathExists(io, try path_util.join(arena, project_root, ".ziggy/sdk/ios/Sources/Ziggy"))) {
+    if (fs_util.pathExists(io, try path_util.join(arena, project_root, ".wizig/sdk/ios/Sources/Wizig"))) {
         try fs_util.writeFileAtomically(io, sdk_swift_path, swift_registrant);
     }
-    if (fs_util.pathExists(io, try path_util.join(arena, project_root, ".ziggy/sdk/android/src/main/kotlin/dev/ziggy"))) {
+    if (fs_util.pathExists(io, try path_util.join(arena, project_root, ".wizig/sdk/android/src/main/kotlin/dev/wizig"))) {
         try fs_util.writeFileAtomically(io, sdk_kotlin_path, kotlin_registrant);
     }
 
@@ -192,9 +192,9 @@ fn add(
     fs_util.removeTreeIfExists(io, destination) catch {};
     try fs_util.copyTree(arena, io, src_abs, destination);
 
-    const manifest_path = try path_util.join(arena, destination, "ziggy-plugin.json");
+    const manifest_path = try path_util.join(arena, destination, "wizig-plugin.json");
     if (!fs_util.pathExists(io, manifest_path)) {
-        try stderr.print("error: added plugin has no ziggy-plugin.json at '{s}'\n", .{manifest_path});
+        try stderr.print("error: added plugin has no wizig-plugin.json at '{s}'\n", .{manifest_path});
         return error.PluginFailed;
     }
 
@@ -206,7 +206,7 @@ fn updateManagedPluginSections(
     arena: std.mem.Allocator,
     io: std.Io,
     project_root: []const u8,
-    records: []const ziggy_core.PluginRecord,
+    records: []const wizig_core.PluginRecord,
 ) !void {
     const ios_project_yml = try path_util.join(arena, project_root, "ios/project.yml");
     const android_app_build = try path_util.join(arena, project_root, "android/app/build.gradle.kts");
@@ -214,7 +214,7 @@ fn updateManagedPluginSections(
     if (fs_util.pathExists(io, ios_project_yml)) {
         var lines = std.ArrayList(u8).empty;
         defer lines.deinit(arena);
-        try lines.appendSlice(arena, "# ZIGGY_MANAGED_PLUGINS_BEGIN\n");
+        try lines.appendSlice(arena, "# WIZIG_MANAGED_PLUGINS_BEGIN\n");
         for (records) |record| {
             for (record.manifest.ios_spm) |dep| {
                 try lines.appendSlice(arena, "# SPM: ");
@@ -226,14 +226,14 @@ fn updateManagedPluginSections(
                 try lines.appendSlice(arena, "\n");
             }
         }
-        try lines.appendSlice(arena, "# ZIGGY_MANAGED_PLUGINS_END\n");
-        try injectManagedBlock(arena, io, ios_project_yml, "# ZIGGY_MANAGED_PLUGINS_BEGIN", "# ZIGGY_MANAGED_PLUGINS_END", lines.items);
+        try lines.appendSlice(arena, "# WIZIG_MANAGED_PLUGINS_END\n");
+        try injectManagedBlock(arena, io, ios_project_yml, "# WIZIG_MANAGED_PLUGINS_BEGIN", "# WIZIG_MANAGED_PLUGINS_END", lines.items);
     }
 
     if (fs_util.pathExists(io, android_app_build)) {
         var lines = std.ArrayList(u8).empty;
         defer lines.deinit(arena);
-        try lines.appendSlice(arena, "// ZIGGY_MANAGED_PLUGINS_BEGIN\n");
+        try lines.appendSlice(arena, "// WIZIG_MANAGED_PLUGINS_BEGIN\n");
         for (records) |record| {
             for (record.manifest.android_maven) |dep| {
                 try lines.appendSlice(arena, "// MAVEN: ");
@@ -247,8 +247,8 @@ fn updateManagedPluginSections(
                 try lines.appendSlice(arena, "\n");
             }
         }
-        try lines.appendSlice(arena, "// ZIGGY_MANAGED_PLUGINS_END\n");
-        try injectManagedBlock(arena, io, android_app_build, "// ZIGGY_MANAGED_PLUGINS_BEGIN", "// ZIGGY_MANAGED_PLUGINS_END", lines.items);
+        try lines.appendSlice(arena, "// WIZIG_MANAGED_PLUGINS_END\n");
+        try injectManagedBlock(arena, io, android_app_build, "// WIZIG_MANAGED_PLUGINS_BEGIN", "// WIZIG_MANAGED_PLUGINS_END", lines.items);
     }
 }
 

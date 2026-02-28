@@ -1,6 +1,6 @@
 # `cli/src/commands/codegen/root.zig`
 
-`ziggy codegen` command and typed API binding generators.
+`wizig codegen` command and typed API binding generators.
 
 ## Public API
 
@@ -58,7 +58,7 @@ pub fn resolveApiContract(
 
 ### `generateProject` (fn)
 
-Generates Zig/Swift/Kotlin API bindings from `ziggy.api.zig` or `ziggy.api.json`.
+Generates Zig/Swift/Kotlin API bindings from `wizig.api.zig` or `wizig.api.json`.
 
 ```zig
 pub fn generateProject(

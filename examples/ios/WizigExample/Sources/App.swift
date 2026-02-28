@@ -1,14 +1,14 @@
 import SwiftUI
-import Ziggy
+import Wizig
 
 @main
-struct ZiggyExampleApp: App {
-    private let runtime = ZiggyRuntime(appName: "ZiggyExample")
+struct WizigExampleApp: App {
+    private let runtime = WizigRuntime(appName: "WizigExample")
 
     var body: some Scene {
         WindowGroup {
             VStack(alignment: .leading, spacing: 12) {
-                Text("ZiggyExample")
+                Text("WizigExample")
                     .font(.title2.bold())
                 Text("Registered plugins: \(runtime.plugins.count)")
                 Text("Runtime available: \(runtime.isAvailable ? "yes" : "no")")

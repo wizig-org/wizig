@@ -1,4 +1,4 @@
-//! SDK/runtime/template locator for portable Ziggy installs.
+//! SDK/runtime/template locator for portable Wizig installs.
 const std = @import("std");
 const Io = std.Io;
 const fs_util = @import("fs.zig");
@@ -12,7 +12,7 @@ pub const ResolvedSdk = struct {
     templates_dir: []const u8,
 };
 
-/// Resolves Ziggy SDK roots using CLI/env/install/dev fallback precedence.
+/// Resolves Wizig SDK roots using CLI/env/install/dev fallback precedence.
 pub fn resolve(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -31,7 +31,7 @@ pub fn resolve(
         }
     }
 
-    if (env_map.get("ZIGGY_SDK_ROOT")) |raw| {
+    if (env_map.get("WIZIG_SDK_ROOT")) |raw| {
         const candidate = try path_util.resolveAbsolute(arena, io, raw);
         try attempts.append(arena, candidate);
         if (isValidRoot(arena, io, candidate)) {
@@ -42,13 +42,13 @@ pub fn resolve(
     if (std.process.executablePathAlloc(io, arena)) |exe_path| {
         const exe_dir = try path_util.parentDirAlloc(arena, exe_path);
 
-        const bundled_share = try std.fs.path.resolve(arena, &.{ exe_dir, "..", "share", "ziggy" });
+        const bundled_share = try std.fs.path.resolve(arena, &.{ exe_dir, "..", "share", "wizig" });
         try attempts.append(arena, bundled_share);
         if (isValidRoot(arena, io, bundled_share)) {
             return buildResolved(arena, bundled_share);
         }
 
-        const bundled_resources = try std.fs.path.resolve(arena, &.{ exe_dir, "..", "Resources", "ziggy" });
+        const bundled_resources = try std.fs.path.resolve(arena, &.{ exe_dir, "..", "Resources", "wizig" });
         try attempts.append(arena, bundled_resources);
         if (isValidRoot(arena, io, bundled_resources)) {
             return buildResolved(arena, bundled_resources);
@@ -67,12 +67,12 @@ pub fn resolve(
         probe = try arena.dupe(u8, parent);
     }
 
-    try stderr.writeAll("error: unable to resolve Ziggy SDK root\n");
+    try stderr.writeAll("error: unable to resolve Wizig SDK root\n");
     for (attempts.items) |attempt| {
         try stderr.print("  attempted: {s}\n", .{attempt});
     }
     try stderr.writeAll(
-        "hint: pass --sdk-root <ziggy_root> or set ZIGGY_SDK_ROOT; expected markers under root: sdk/, runtime/, templates/\n",
+        "hint: pass --sdk-root <wizig_root> or set WIZIG_SDK_ROOT; expected markers under root: sdk/, runtime/, templates/\n",
     );
     return error.NotFound;
 }
@@ -91,7 +91,7 @@ fn buildResolved(arena: std.mem.Allocator, root: []const u8) !ResolvedSdk {
 
 fn isValidRoot(arena: std.mem.Allocator, io: std.Io, root: []const u8) bool {
     const marker_a = path_util.join(arena, root, "sdk/ios/Package.swift") catch return false;
-    const marker_b = path_util.join(arena, root, "sdk/android/src/main/kotlin/dev/ziggy/ZiggyRuntime.kt") catch return false;
+    const marker_b = path_util.join(arena, root, "sdk/android/src/main/kotlin/dev/wizig/WizigRuntime.kt") catch return false;
     const marker_c = path_util.join(arena, root, "runtime/ffi/src/root.zig") catch return false;
     const marker_d = path_util.join(arena, root, "runtime/core/src/root.zig") catch return false;
     const marker_e = path_util.join(arena, root, "templates/app/README.md") catch return false;

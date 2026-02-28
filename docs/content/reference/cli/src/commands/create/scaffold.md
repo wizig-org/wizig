@@ -1,6 +1,6 @@
 # `cli/src/commands/create/scaffold.zig`
 
-Project scaffolding for `ziggy create`.
+Project scaffolding for `wizig create`.
 
 ## Public API
 
@@ -22,7 +22,7 @@ pub const CreatePlatforms = struct {
 
 ### `createApp` (fn)
 
-Creates a full Ziggy application scaffold at `destination_dir_raw`.
+Creates a full Wizig application scaffold at `destination_dir_raw`.
 
 ```zig
 pub fn createApp(

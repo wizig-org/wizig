@@ -1,4 +1,4 @@
-//! Public Ziggy core API surface re-exported for consumers.
+//! Public Wizig core API surface re-exported for consumers.
 /// Runtime instance used by host bridges.
 pub const Runtime = @import("runtime.zig").Runtime;
 /// Plugin manifest schema representation.

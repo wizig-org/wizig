@@ -1,6 +1,6 @@
 # `src/root.zig`
 
-Compatibility root module that re-exports Ziggy core API.
+Compatibility root module that re-exports Wizig core API.
 
 ## Public API
 
@@ -9,7 +9,7 @@ Compatibility root module that re-exports Ziggy core API.
 Runtime instance type.
 
 ```zig
-pub const Runtime = ziggy_core.Runtime;
+pub const Runtime = wizig_core.Runtime;
 ```
 
 ### `PluginManifest` (const)
@@ -17,5 +17,5 @@ pub const Runtime = ziggy_core.Runtime;
 Plugin manifest schema type.
 
 ```zig
-pub const PluginManifest = ziggy_core.PluginManifest;
+pub const PluginManifest = wizig_core.PluginManifest;
 ```

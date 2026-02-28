@@ -1,6 +1,6 @@
 //! Runtime-packaged C ABI bridge used in generated app projects.
 const std = @import("std");
-const ziggy_core = @import("ziggy_core");
+const wizig_core = @import("wizig_core");
 
 /// Stable status codes returned by exported FFI functions.
 pub const Status = enum(i32) {
@@ -12,31 +12,31 @@ pub const Status = enum(i32) {
 };
 
 /// Opaque runtime handle used by C/Swift/Kotlin callers.
-pub const ZiggyRuntimeHandle = opaque {};
+pub const WizigRuntimeHandle = opaque {};
 
 const allocator = std.heap.page_allocator;
 
 const RuntimeBox = struct {
-    runtime: ziggy_core.Runtime,
+    runtime: wizig_core.Runtime,
 };
 
 fn statusCode(status: Status) i32 {
     return @intFromEnum(status);
 }
 
-fn toBox(handle: *ZiggyRuntimeHandle) *RuntimeBox {
+fn toBox(handle: *WizigRuntimeHandle) *RuntimeBox {
     return @ptrCast(@alignCast(handle));
 }
 
-fn toHandle(box: *RuntimeBox) *ZiggyRuntimeHandle {
+fn toHandle(box: *RuntimeBox) *WizigRuntimeHandle {
     return @ptrCast(box);
 }
 
 /// Allocates a runtime handle for the provided app name.
-pub export fn ziggy_runtime_new(
+pub export fn wizig_runtime_new(
     app_name_ptr: [*]const u8,
     app_name_len: usize,
-    out_handle: ?*?*ZiggyRuntimeHandle,
+    out_handle: ?*?*WizigRuntimeHandle,
 ) i32 {
     if (out_handle == null) return statusCode(.null_argument);
     const output = out_handle.?;
@@ -48,7 +48,7 @@ pub export fn ziggy_runtime_new(
     const box = allocator.create(RuntimeBox) catch return statusCode(.out_of_memory);
     errdefer allocator.destroy(box);
 
-    box.runtime = ziggy_core.Runtime.init(allocator, app_name) catch |err| switch (err) {
+    box.runtime = wizig_core.Runtime.init(allocator, app_name) catch |err| switch (err) {
         error.OutOfMemory => return statusCode(.out_of_memory),
     };
 
@@ -56,8 +56,8 @@ pub export fn ziggy_runtime_new(
     return statusCode(.ok);
 }
 
-/// Destroys a runtime handle previously returned by `ziggy_runtime_new`.
-pub export fn ziggy_runtime_free(handle: ?*ZiggyRuntimeHandle) void {
+/// Destroys a runtime handle previously returned by `wizig_runtime_new`.
+pub export fn wizig_runtime_free(handle: ?*WizigRuntimeHandle) void {
     if (handle == null) return;
 
     const box = toBox(handle.?);
@@ -66,8 +66,8 @@ pub export fn ziggy_runtime_free(handle: ?*ZiggyRuntimeHandle) void {
 }
 
 /// Executes runtime echo and returns an owned UTF-8 byte buffer.
-pub export fn ziggy_runtime_echo(
-    handle: ?*ZiggyRuntimeHandle,
+pub export fn wizig_runtime_echo(
+    handle: ?*WizigRuntimeHandle,
     input_ptr: [*]const u8,
     input_len: usize,
     out_ptr: ?*?[*]u8,
@@ -94,24 +94,24 @@ pub export fn ziggy_runtime_echo(
     return statusCode(.ok);
 }
 
-/// Frees buffers returned by Ziggy FFI functions.
-pub export fn ziggy_bytes_free(ptr: ?[*]u8, len: usize) void {
+/// Frees buffers returned by Wizig FFI functions.
+pub export fn wizig_bytes_free(ptr: ?[*]u8, len: usize) void {
     if (ptr == null) return;
     allocator.free(ptr.?[0..len]);
 }
 
 test "ffi runtime round trip" {
-    var handle: ?*ZiggyRuntimeHandle = null;
-    try std.testing.expectEqual(statusCode(.ok), ziggy_runtime_new("demo".ptr, "demo".len, &handle));
-    defer ziggy_runtime_free(handle);
+    var handle: ?*WizigRuntimeHandle = null;
+    try std.testing.expectEqual(statusCode(.ok), wizig_runtime_new("demo".ptr, "demo".len, &handle));
+    defer wizig_runtime_free(handle);
 
     var output_ptr: ?[*]u8 = null;
     var output_len: usize = 0;
     try std.testing.expectEqual(
         statusCode(.ok),
-        ziggy_runtime_echo(handle, "hello".ptr, "hello".len, &output_ptr, &output_len),
+        wizig_runtime_echo(handle, "hello".ptr, "hello".len, &output_ptr, &output_len),
     );
-    defer ziggy_bytes_free(output_ptr, output_len);
+    defer wizig_bytes_free(output_ptr, output_len);
 
     try std.testing.expect(output_ptr != null);
     try std.testing.expectEqualStrings("demo:hello", output_ptr.?[0..output_len]);

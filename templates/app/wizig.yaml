@@ -1,12 +1,12 @@
 schema_version: 2
 name: {{APP_NAME}}
-description: Ziggy application scaffold.
+description: Wizig application scaffold.
 platforms:
   - ios
   - android
 paths:
-  sdk: .ziggy/sdk
-  runtime: .ziggy/runtime
-  generated: .ziggy/generated
+  sdk: .wizig/sdk
+  runtime: .wizig/runtime
+  generated: .wizig/generated
   plugins: plugins
-api: ziggy.api.zig
+api: wizig.api.zig

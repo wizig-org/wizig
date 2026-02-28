@@ -1,6 +1,6 @@
 # Plugin System
 
-Ziggy plugin v2 is static and build-time driven.
+Wizig plugin v2 is static and build-time driven.
 
 There is no runtime dynamic plugin loading in this phase.
 
@@ -12,7 +12,7 @@ There is no runtime dynamic plugin loading in this phase.
 
 ## Manifest
 
-Each plugin declares `ziggy-plugin.json` with identity, compatibility, and native dependency descriptors.
+Each plugin declares `wizig-plugin.json` with identity, compatibility, and native dependency descriptors.
 
 Typical fields:
 
@@ -26,19 +26,19 @@ Typical fields:
 Use:
 
 ```sh
-ziggy plugin validate plugins/my-plugin/ziggy-plugin.json
+wizig plugin validate plugins/my-plugin/wizig-plugin.json
 ```
 
 to verify schema and constraints in isolation.
 
 ## Sync Flow
 
-`ziggy plugin sync <project_root>` executes:
+`wizig plugin sync <project_root>` executes:
 
 1. Scan `plugins/` for manifests.
 2. Parse and validate descriptors.
-3. Write deterministic lockfile under `.ziggy/plugins/`.
-4. Generate static registrants in `.ziggy/generated/{zig,swift,kotlin}`.
+3. Write deterministic lockfile under `.wizig/plugins/`.
+4. Generate static registrants in `.wizig/generated/{zig,swift,kotlin}`.
 5. Apply managed host integration updates.
 
 ## Generated Registrants
@@ -54,13 +54,13 @@ The generated registrants are authoritative. Do not hand-edit generated files.
 Use:
 
 ```sh
-ziggy plugin add <git_or_path>
+wizig plugin add <git_or_path>
 ```
 
 Then run:
 
 ```sh
-ziggy plugin sync <project_root>
+wizig plugin sync <project_root>
 ```
 
 to lock and generate integration outputs.

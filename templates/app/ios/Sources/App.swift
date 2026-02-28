@@ -1,10 +1,10 @@
 import SwiftUI
-import Ziggy
+import Wizig
 
 @main
 struct {{APP_TYPE_NAME}}App: App {
-    private let runtime = ZiggyRuntime(appName: "{{APP_NAME}}")
-    private let api = ZiggyGeneratedApi()
+    private let runtime = WizigRuntime(appName: "{{APP_NAME}}")
+    private let api = WizigGeneratedApi()
 
     var body: some Scene {
         WindowGroup {

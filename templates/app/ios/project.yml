@@ -1,12 +1,12 @@
 name: {{APP_NAME}}
 options:
-  bundleIdPrefix: dev.ziggy.app
+  bundleIdPrefix: dev.wizig.app
 settings:
   base:
     SWIFT_VERSION: 6.0
 packages:
-  Ziggy:
-    path: ../.ziggy/sdk/ios
+  Wizig:
+    path: ../.wizig/sdk/ios
 targets:
   {{APP_NAME}}:
     type: application
@@ -14,12 +14,12 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - Sources
-      - ../.ziggy/generated/swift
+      - ../.wizig/generated/swift
     dependencies:
-      - package: Ziggy
+      - package: Wizig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.ziggy.app.{{APP_IDENTIFIER}}
+        PRODUCT_BUNDLE_IDENTIFIER: dev.wizig.app.{{APP_IDENTIFIER}}
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES

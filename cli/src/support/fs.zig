@@ -1,4 +1,4 @@
-//! Filesystem helpers used by Ziggy CLI commands.
+//! Filesystem helpers used by Wizig CLI commands.
 const std = @import("std");
 const path_util = @import("path.zig");
 

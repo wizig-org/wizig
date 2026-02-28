@@ -1,3 +1,3 @@
 # Plugins
 
-Add plugin manifests under subdirectories, then run `ziggy plugin sync <plugin_root>`.
+Add plugin manifests under subdirectories, then run `wizig plugin sync <plugin_root>`.

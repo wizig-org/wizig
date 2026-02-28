@@ -1,6 +1,6 @@
 # Development Requirements
 
-Ziggy framework/tooling development requires:
+Wizig framework/tooling development requires:
 
 - Zig `0.15.1`
 - Xcode `26+` and Apple command line tools (`xcodebuild`, `xcrun`)

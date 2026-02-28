@@ -1,6 +1,6 @@
 # `cli/src/main.zig`
 
-Ziggy CLI entrypoint and command router.
+Wizig CLI entrypoint and command router.
 
 ## Public API
 

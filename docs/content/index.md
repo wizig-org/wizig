@@ -1,30 +1,30 @@
-# Ziggy Documentation
+# Wizig Documentation
 
-Ziggy is a mobile application framework that keeps product UI native (`SwiftUI`/`Jetpack Compose`) while sharing core runtime and domain logic in Zig.
+Wizig is a mobile application framework that keeps product UI native (`SwiftUI`/`Jetpack Compose`) while sharing core runtime and domain logic in Zig.
 
 The framework is built around four hard rules:
 
 - Native hosts are first-class and production-default.
 - Cross-platform behavior lives in Zig.
 - Host-to-Zig calls are generated from a typed contract.
-- Application scaffolds are app-local and portable (`.ziggy/` vendored assets).
+- Application scaffolds are app-local and portable (`.wizig/` vendored assets).
 
 ## What You Get
 
-When you scaffold an app with `ziggy create`, Ziggy generates:
+When you scaffold an app with `wizig create`, Wizig generates:
 
 - `ios/` and `android/` host apps.
 - `lib/` Zig application logic.
-- `.ziggy/sdk/` host runtime wrappers.
-- `.ziggy/runtime/` Zig runtime/FFI glue.
-- `.ziggy/generated/` generated bridge and plugin registrants.
-- `ziggy.api.zig` typed bridge contract.
+- `.wizig/sdk/` host runtime wrappers.
+- `.wizig/runtime/` Zig runtime/FFI glue.
+- `.wizig/generated/` generated bridge and plugin registrants.
+- `wizig.api.zig` typed bridge contract.
 
-This structure is intentionally self-contained so projects work outside the Ziggy repository.
+This structure is intentionally self-contained so projects work outside the Wizig repository.
 
 ## Reading Path
 
-If you are new to Ziggy, read in this order:
+If you are new to Wizig, read in this order:
 
 1. [Getting Started](getting-started.md)
 2. [Architecture](architecture.md)
@@ -44,7 +44,7 @@ High-level design rationale is tracked in ADRs:
 
 ## Documentation Build
 
-Ziggy ships a built-in docs pipeline:
+Wizig ships a built-in docs pipeline:
 
 ```sh
 zig build docs

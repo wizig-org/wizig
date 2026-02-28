@@ -1,4 +1,4 @@
-package dev.ziggy.ziggyexample.ui.theme
+package dev.wizig.wizigexample.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -23,7 +23,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
-fun ZiggyExampleTheme(
+fun WizigExampleTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit,
