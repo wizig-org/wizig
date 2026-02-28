@@ -1,0 +1,36 @@
+name: wizig-ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-test-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install docs dependency
+        run: python3 -m pip install --upgrade markdown
+
+      - name: Unit and integration tests
+        run: zig build test
+
+      - name: End-to-end pipeline
+        run: zig build e2e
+
+      - name: Docs determinism
+        run: python3 scripts/docs_build.py --check

@@ -1,5 +1,7 @@
 # `src/root.zig`
 
+_Language: Zig_
+
 Compatibility root module that re-exports Wizig core API.
 
 ## Public API

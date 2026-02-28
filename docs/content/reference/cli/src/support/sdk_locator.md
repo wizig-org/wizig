@@ -1,5 +1,7 @@
 # `cli/src/support/sdk_locator.zig`
 
+_Language: Zig_
+
 SDK/runtime/template locator for portable Wizig installs.
 
 ## Public API

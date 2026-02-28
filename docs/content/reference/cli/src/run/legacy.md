@@ -1,5 +1,7 @@
 # `cli/src/run/legacy.zig`
 
+_Language: Zig_
+
 Platform-specific run pipeline used by unified run selection.
 
 ## Public API

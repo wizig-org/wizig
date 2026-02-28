@@ -1,5 +1,7 @@
 # `runtime/core/src/root.zig`
 
+_Language: Zig_
+
 Runtime-packaged core API surface shipped into generated apps.
 
 ## Public API

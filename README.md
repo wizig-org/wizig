@@ -19,7 +19,7 @@ Wizig uses a hybrid architecture:
 
 - Zig `0.15.1`
 - Xcode `26+` with command line tools (`xcodebuild`, `xcrun`)
-- XcodeGen
+- XcodeGen (optional, only for legacy `--regenerate-host` flows)
 - Java `21`
 - Gradle `9.3.1`
 - Android SDK tools (`adb`, emulator, platform SDKs)
@@ -40,6 +40,7 @@ Detailed setup: `docs/content/development-requirements.md`.
 ```sh
 zig build
 zig build test
+zig build e2e
 ```
 
 ## Scaffold App
@@ -85,10 +86,11 @@ zig build run -- doctor
 
 ```sh
 zig build docs
+python3 scripts/docs_build.py --check
 ```
 
 - Manual docs source: `docs/content/`
-- Auto-generated API reference: `docs/content/reference/`
+- Auto-generated API reference (Zig + Swift + Kotlin): `docs/content/reference/`
 - Built site output: `docs/site/`
 
 ## FFI Runtime Notes

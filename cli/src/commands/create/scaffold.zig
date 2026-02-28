@@ -2,7 +2,6 @@
 const std = @import("std");
 const Io = std.Io;
 const fs_util = @import("../../support/fs.zig");
-const process_util = @import("../../support/process.zig");
 const sdk_locator = @import("../../support/sdk_locator.zig");
 const codegen_cmd = @import("../codegen/root.zig");
 
@@ -26,6 +25,7 @@ pub fn createApp(
     destination_dir_raw: []const u8,
     platforms: CreatePlatforms,
     explicit_sdk_root: ?[]const u8,
+    force_host_overwrite: bool,
 ) !void {
     if (!hasAnyPlatform(platforms)) {
         try stderr.writeAll("error: at least one platform must be selected\n");
@@ -57,6 +57,8 @@ pub fn createApp(
     const app_generated_swift_dir = try joinPath(arena, app_generated_dir, "swift");
     const app_generated_kotlin_dir = try joinPath(arena, app_generated_dir, "kotlin");
     const app_generated_zig_dir = try joinPath(arena, app_generated_dir, "zig");
+    const app_generated_android_dir = try joinPath(arena, app_generated_dir, "android");
+    const app_generated_android_jnilibs_dir = try joinPath(arena, app_generated_android_dir, "jniLibs");
     const app_plugins_meta_dir = try joinPath(arena, dot_wizig_dir, "plugins");
 
     for (&[_][]const u8{
@@ -68,6 +70,8 @@ pub fn createApp(
         app_generated_swift_dir,
         app_generated_kotlin_dir,
         app_generated_zig_dir,
+        app_generated_android_dir,
+        app_generated_android_jnilibs_dir,
         app_plugins_meta_dir,
     }) |dir_path| {
         std.Io.Dir.cwd().createDirPath(io, dir_path) catch |err| {
@@ -76,6 +80,7 @@ pub fn createApp(
             return error.CreateFailed;
         };
     }
+    try writeFileAtomically(io, try joinPath(arena, app_generated_android_jnilibs_dir, ".gitkeep"), "");
 
     fs_util.removeTreeIfExists(io, app_sdk_dir) catch {};
     fs_util.removeTreeIfExists(io, app_runtime_dir) catch {};
@@ -104,20 +109,23 @@ pub fn createApp(
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/lib/main.zig", try joinPath(arena, lib_dir, "main.zig"), &template_tokens);
     try renderTemplateToPath(arena, io, resolved.templates_dir, "app/plugins/README.md", try joinPath(arena, plugins_dir, "README.md"), &template_tokens);
 
-    const api_path = try joinPath(arena, destination_dir, "wizig.api.zig");
-    codegen_cmd.generateProject(arena, io, stderr, stdout, destination_dir, api_path) catch |err| {
-        try stderr.print("error: failed to run initial codegen: {s}\n", .{@errorName(err)});
-        try stderr.flush();
-        return error.CreateFailed;
-    };
-
     if (platforms.ios) {
         const ios_dir = try joinPath(arena, destination_dir, "ios");
-        createIos(arena, io, stderr, stdout, resolved.templates_dir, app_name, ios_dir) catch return error.CreateFailed;
+        createIos(arena, io, stderr, stdout, resolved.templates_dir, app_name, ios_dir, force_host_overwrite) catch return error.CreateFailed;
     }
     if (platforms.android) {
         const android_dir = try joinPath(arena, destination_dir, "android");
-        createAndroid(arena, io, parent_environ_map, stderr, stdout, app_name, android_dir) catch return error.CreateFailed;
+        createAndroid(
+            arena,
+            io,
+            parent_environ_map,
+            stderr,
+            stdout,
+            resolved.templates_dir,
+            app_name,
+            android_dir,
+            force_host_overwrite,
+        ) catch return error.CreateFailed;
     }
     if (platforms.macos) {
         const macos_dir = try joinPath(arena, destination_dir, "macos");
@@ -134,11 +142,18 @@ pub fn createApp(
         );
     }
 
+    const api_path = try joinPath(arena, destination_dir, "wizig.api.zig");
+    codegen_cmd.generateProject(arena, io, stderr, stdout, destination_dir, api_path) catch |err| {
+        try stderr.print("error: failed to run initial codegen: {s}\n", .{@errorName(err)});
+        try stderr.flush();
+        return error.CreateFailed;
+    };
+
     try stdout.print("created Wizig app '{s}' at '{s}'\n", .{ app_name, destination_dir });
     try stdout.flush();
 }
 
-/// Creates the iOS host scaffold and optionally runs `xcodegen generate`.
+/// Creates the iOS host scaffold from bundled templates.
 pub fn createIos(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -147,6 +162,7 @@ pub fn createIos(
     templates_root: []const u8,
     app_name_raw: []const u8,
     destination_dir_raw: []const u8,
+    force_host_overwrite: bool,
 ) !void {
     const app_name = try sanitizeProjectName(arena, app_name_raw);
     const destination_dir = destination_dir_raw;
@@ -157,34 +173,30 @@ pub fn createIos(
         return error.CreateFailed;
     };
 
-    const sources_dir = try joinPath(arena, destination_dir, "Sources");
-    std.Io.Dir.cwd().createDirPath(io, sources_dir) catch |err| {
-        try stderr.print("error: failed to create sources dir '{s}': {s}\n", .{ sources_dir, @errorName(err) });
-        try stderr.flush();
-        return error.CreateFailed;
-    };
-
     const tokens = [_]fs_util.RenderToken{
         .{ .key = "APP_NAME", .value = app_name },
         .{ .key = "APP_IDENTIFIER", .value = try toIdentifierLower(arena, app_name) },
         .{ .key = "APP_TYPE_NAME", .value = try toSwiftTypeName(arena, app_name) },
+        .{ .key = "ANDROID_PACKAGE", .value = "" },
     };
 
-    const project_yml_path = try joinPath(arena, destination_dir, "project.yml");
-    const app_swift_path = try joinPath(arena, sources_dir, "App.swift");
-
-    try renderTemplateToPath(arena, io, templates_root, "app/ios/project.yml", project_yml_path, &tokens);
-    try renderTemplateToPath(arena, io, templates_root, "app/ios/Sources/App.swift", app_swift_path, &tokens);
-
-    if (process_util.commandExists(arena, io, "xcodegen")) {
-        _ = process_util.runChecked(arena, io, stderr, destination_dir, &.{ "xcodegen", "generate" }, null, "generate iOS project") catch |err| {
-            try stderr.print("warning: xcodegen failed: {s}\n", .{@errorName(err)});
-            try stderr.flush();
-        };
-    } else {
-        try stderr.writeAll("warning: xcodegen not found; run `xcodegen generate` inside ios/ when installed\n");
+    const template_dir = try joinPath(arena, templates_root, "app/ios");
+    const path_tokens = [_]PathToken{
+        .{ .key = "__APP_NAME__", .value = app_name },
+    };
+    copyTemplateTreeRendered(
+        arena,
+        io,
+        template_dir,
+        destination_dir,
+        &tokens,
+        &path_tokens,
+        force_host_overwrite,
+    ) catch |err| {
+        try stderr.print("error: failed to scaffold iOS host from templates: {s}\n", .{@errorName(err)});
         try stderr.flush();
-    }
+        return error.CreateFailed;
+    };
 
     try stdout.print("created iOS app '{s}' at '{s}'\n", .{ app_name, destination_dir });
     try stdout.print(
@@ -213,12 +225,19 @@ pub fn createAndroid(
     parent_environ_map: *const std.process.Environ.Map,
     stderr: *Io.Writer,
     stdout: *Io.Writer,
+    templates_root: []const u8,
     app_name_raw: []const u8,
     destination_dir_raw: []const u8,
+    force_host_overwrite: bool,
 ) !void {
     const app_name = try sanitizeProjectName(arena, app_name_raw);
     const app_type_name = try toSwiftTypeName(arena, app_name);
+    const app_identifier = try toIdentifierLower(arena, app_name);
     const destination_dir = destination_dir_raw;
+    const package_segment = try sanitizePackageSegment(arena, app_name);
+    const package_name = try std.fmt.allocPrint(arena, "dev.wizig.{s}", .{package_segment});
+    const package_path = try packageNameToPath(arena, package_name);
+    const package_path_forward = try toForwardSlashes(arena, package_path);
 
     std.Io.Dir.cwd().createDirPath(io, destination_dir) catch |err| {
         try stderr.print("error: failed to create destination '{s}': {s}\n", .{ destination_dir, @errorName(err) });
@@ -226,545 +245,170 @@ pub fn createAndroid(
         return error.CreateFailed;
     };
 
-    const package_segment = try sanitizePackageSegment(arena, app_name);
-    const package_name = try std.fmt.allocPrint(arena, "dev.wizig.{s}", .{package_segment});
-    const package_path = try packageNameToPath(arena, package_name);
+    const tokens = [_]fs_util.RenderToken{
+        .{ .key = "APP_NAME", .value = app_name },
+        .{ .key = "APP_IDENTIFIER", .value = app_identifier },
+        .{ .key = "APP_TYPE_NAME", .value = app_type_name },
+        .{ .key = "ANDROID_PACKAGE", .value = package_name },
+    };
+    const path_tokens = [_]PathToken{
+        .{ .key = "__ANDROID_PACKAGE_PATH__", .value = package_path_forward },
+    };
 
-    std.Io.Dir.cwd().createDirPath(io, "/tmp/wizig-gradle-home") catch {};
-    var environ_map = try parent_environ_map.clone(arena);
-    defer environ_map.deinit();
-    try environ_map.put("GRADLE_USER_HOME", "/tmp/wizig-gradle-home");
-
-    runCommand(arena, io, stderr, destination_dir, &.{
-        "gradle",
-        "init",
-        "--type",
-        "basic",
-        "--dsl",
-        "kotlin",
-        "--project-name",
-        app_name,
-        "--use-defaults",
-        "--overwrite",
-    }, &environ_map) catch |err| {
-        try stderr.print("error: failed to initialize Gradle project: {s}\n", .{@errorName(err)});
+    const template_dir = try joinPath(arena, templates_root, "app/android");
+    copyTemplateTreeRendered(
+        arena,
+        io,
+        template_dir,
+        destination_dir,
+        &tokens,
+        &path_tokens,
+        force_host_overwrite,
+    ) catch |err| {
+        try stderr.print("error: failed to scaffold Android host from templates: {s}\n", .{@errorName(err)});
         try stderr.flush();
         return error.CreateFailed;
     };
-
-    runCommand(arena, io, stderr, destination_dir, &.{
-        "gradle",
-        "wrapper",
-        "--gradle-version",
-        "9.3.1",
-        "--distribution-type",
-        "all",
-    }, &environ_map) catch |err| {
-        try stderr.print("error: failed to configure Gradle wrapper: {s}\n", .{@errorName(err)});
-        try stderr.flush();
-        return error.CreateFailed;
-    };
-
-    const settings_path = try joinPath(arena, destination_dir, "settings.gradle.kts");
-    const settings_contents = try std.fmt.allocPrint(
-        arena,
-        "pluginManagement {{\n" ++
-            "    repositories {{\n" ++
-            "        google()\n" ++
-            "        mavenCentral()\n" ++
-            "        gradlePluginPortal()\n" ++
-            "    }}\n" ++
-            "}}\n" ++
-            "\n" ++
-            "dependencyResolutionManagement {{\n" ++
-            "    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)\n" ++
-            "    repositories {{\n" ++
-            "        google()\n" ++
-            "        mavenCentral()\n" ++
-            "    }}\n" ++
-            "}}\n" ++
-            "\n" ++
-            "rootProject.name = \"{s}\"\n" ++
-            "include(\":app\")\n",
-        .{app_name},
-    );
-    try writeFileAtomically(io, settings_path, settings_contents);
-
-    const root_build_path = try joinPath(arena, destination_dir, "build.gradle.kts");
-    const root_build_contents =
-        "plugins {\n" ++
-        "    alias(libs.plugins.android.application) apply false\n" ++
-        "    alias(libs.plugins.kotlin.compose) apply false\n" ++
-        "}\n";
-    try writeFileAtomically(io, root_build_path, root_build_contents);
-
-    const gradle_properties_path = try joinPath(arena, destination_dir, "gradle.properties");
-    const gradle_properties_contents =
-        "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8\n" ++
-        "org.gradle.parallel=true\n" ++
-        "android.useAndroidX=true\n" ++
-        "kotlin.code.style=official\n" ++
-        "org.gradle.configuration-cache=true\n";
-    try writeFileAtomically(io, gradle_properties_path, gradle_properties_contents);
-
-    const version_catalog_path = try joinPath(arena, destination_dir, "gradle/libs.versions.toml");
-    const version_catalog_contents =
-        "[versions]\n" ++
-        "agp = \"9.0.0\"\n" ++
-        "kotlin = \"2.2.21\"\n" ++
-        "androidx-core-ktx = \"1.15.0\"\n" ++
-        "androidx-lifecycle-runtime-ktx = \"2.8.7\"\n" ++
-        "androidx-activity-compose = \"1.9.3\"\n" ++
-        "androidx-compose-bom = \"2024.10.01\"\n" ++
-        "junit = \"4.13.2\"\n" ++
-        "androidx-junit = \"1.2.1\"\n" ++
-        "espresso-core = \"3.6.1\"\n" ++
-        "\n" ++
-        "[libraries]\n" ++
-        "androidx-core-ktx = { module = \"androidx.core:core-ktx\", version.ref = \"androidx-core-ktx\" }\n" ++
-        "androidx-lifecycle-runtime-ktx = { module = \"androidx.lifecycle:lifecycle-runtime-ktx\", version.ref = \"androidx-lifecycle-runtime-ktx\" }\n" ++
-        "androidx-activity-compose = { module = \"androidx.activity:activity-compose\", version.ref = \"androidx-activity-compose\" }\n" ++
-        "androidx-compose-bom = { module = \"androidx.compose:compose-bom\", version.ref = \"androidx-compose-bom\" }\n" ++
-        "androidx-ui = { module = \"androidx.compose.ui:ui\" }\n" ++
-        "androidx-ui-graphics = { module = \"androidx.compose.ui:ui-graphics\" }\n" ++
-        "androidx-ui-tooling = { module = \"androidx.compose.ui:ui-tooling\" }\n" ++
-        "androidx-ui-tooling-preview = { module = \"androidx.compose.ui:ui-tooling-preview\" }\n" ++
-        "androidx-ui-test-manifest = { module = \"androidx.compose.ui:ui-test-manifest\" }\n" ++
-        "androidx-ui-test-junit4 = { module = \"androidx.compose.ui:ui-test-junit4\" }\n" ++
-        "androidx-material3 = { module = \"androidx.compose.material3:material3\" }\n" ++
-        "junit = { module = \"junit:junit\", version.ref = \"junit\" }\n" ++
-        "androidx-junit = { module = \"androidx.test.ext:junit\", version.ref = \"androidx-junit\" }\n" ++
-        "espresso-core = { module = \"androidx.test.espresso:espresso-core\", version.ref = \"espresso-core\" }\n" ++
-        "\n" ++
-        "[plugins]\n" ++
-        "android-application = { id = \"com.android.application\", version.ref = \"agp\" }\n" ++
-        "kotlin-compose = { id = \"org.jetbrains.kotlin.plugin.compose\", version.ref = \"kotlin\" }\n";
-    try writeFileAtomically(io, version_catalog_path, version_catalog_contents);
-
-    const app_build_path = try joinPath(arena, destination_dir, "app/build.gradle.kts");
-    const app_build_contents = try std.fmt.allocPrint(
-        arena,
-        "plugins {{\n" ++
-            "    alias(libs.plugins.android.application)\n" ++
-            "    alias(libs.plugins.kotlin.compose)\n" ++
-            "}}\n" ++
-            "\n" ++
-            "android {{\n" ++
-            "    namespace = \"{s}\"\n" ++
-            "    compileSdk = 36\n" ++
-            "\n" ++
-            "    defaultConfig {{\n" ++
-            "        applicationId = \"{s}\"\n" ++
-            "        minSdk = 24\n" ++
-            "        targetSdk = 36\n" ++
-            "        versionCode = 1\n" ++
-            "        versionName = \"1.0\"\n" ++
-            "        testInstrumentationRunner = \"androidx.test.runner.AndroidJUnitRunner\"\n" ++
-            "    }}\n" ++
-            "\n" ++
-            "    buildTypes {{\n" ++
-            "        release {{\n" ++
-            "            isMinifyEnabled = false\n" ++
-            "            proguardFiles(\n" ++
-            "                getDefaultProguardFile(\"proguard-android-optimize.txt\"),\n" ++
-            "                \"proguard-rules.pro\"\n" ++
-            "            )\n" ++
-            "        }}\n" ++
-            "    }}\n" ++
-            "\n" ++
-            "    compileOptions {{\n" ++
-            "        sourceCompatibility = JavaVersion.VERSION_21\n" ++
-            "        targetCompatibility = JavaVersion.VERSION_21\n" ++
-            "    }}\n" ++
-            "\n" ++
-            "    buildFeatures {{\n" ++
-            "        compose = true\n" ++
-            "    }}\n" ++
-            "\n" ++
-            "    packaging {{\n" ++
-            "        resources {{\n" ++
-            "            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n" ++
-            "        }}\n" ++
-            "    }}\n" ++
-            "\n" ++
-            "    sourceSets {{\n" ++
-            "        getByName(\"main\") {{\n" ++
-            "            kotlin.directories.add(rootProject.file(\"../.wizig/generated/kotlin\").path)\n" ++
-            "        }}\n" ++
-            "    }}\n" ++
-            "}}\n" ++
-            "\n" ++
-            "dependencies {{\n" ++
-            "    implementation(libs.androidx.core.ktx)\n" ++
-            "    implementation(libs.androidx.lifecycle.runtime.ktx)\n" ++
-            "    implementation(libs.androidx.activity.compose)\n" ++
-            "    implementation(platform(libs.androidx.compose.bom))\n" ++
-            "    implementation(libs.androidx.ui)\n" ++
-            "    implementation(libs.androidx.ui.graphics)\n" ++
-            "    implementation(libs.androidx.ui.tooling.preview)\n" ++
-            "    implementation(libs.androidx.material3)\n" ++
-            "\n" ++
-            "    testImplementation(libs.junit)\n" ++
-            "    androidTestImplementation(libs.androidx.junit)\n" ++
-            "    androidTestImplementation(libs.espresso.core)\n" ++
-            "    androidTestImplementation(platform(libs.androidx.compose.bom))\n" ++
-            "    androidTestImplementation(libs.androidx.ui.test.junit4)\n" ++
-            "\n" ++
-            "    debugImplementation(libs.androidx.ui.tooling)\n" ++
-            "    debugImplementation(libs.androidx.ui.test.manifest)\n" ++
-            "}}\n",
-        .{ package_name, package_name },
-    );
-    try writeFileAtomically(io, app_build_path, app_build_contents);
-
-    const manifest_path = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}app{s}src{s}main{s}AndroidManifest.xml",
-        .{
-            destination_dir,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-        },
-    );
-    const manifest_contents = try std.fmt.allocPrint(
-        arena,
-        "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n" ++
-            "\n" ++
-            "    <application\n" ++
-            "        android:allowBackup=\"true\"\n" ++
-            "        android:label=\"@string/app_name\"\n" ++
-            "        android:supportsRtl=\"true\"\n" ++
-            "        android:theme=\"@style/Theme.{s}\">\n" ++
-            "        <activity\n" ++
-            "            android:name=\".MainActivity\"\n" ++
-            "            android:exported=\"true\">\n" ++
-            "            <intent-filter>\n" ++
-            "                <action android:name=\"android.intent.action.MAIN\" />\n" ++
-            "                <category android:name=\"android.intent.category.LAUNCHER\" />\n" ++
-            "            </intent-filter>\n" ++
-            "        </activity>\n" ++
-            "    </application>\n" ++
-            "\n" ++
-            "</manifest>\n",
-        .{app_type_name},
-    );
-    try writeFileAtomically(io, manifest_path, manifest_contents);
-
-    const main_activity_path = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}app{s}src{s}main{s}java{s}{s}{s}MainActivity.kt",
-        .{
-            destination_dir,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            package_path,
-            std.fs.path.sep_str,
-        },
-    );
-    const main_activity_contents = try std.fmt.allocPrint(
-        arena,
-        "package {s}\n" ++
-            "\n" ++
-            "import android.os.Bundle\n" ++
-            "import android.util.Log\n" ++
-            "import androidx.activity.ComponentActivity\n" ++
-            "import androidx.activity.compose.setContent\n" ++
-            "import androidx.activity.enableEdgeToEdge\n" ++
-            "import androidx.compose.foundation.layout.Arrangement\n" ++
-            "import androidx.compose.foundation.layout.Column\n" ++
-            "import androidx.compose.foundation.layout.fillMaxSize\n" ++
-            "import androidx.compose.foundation.layout.padding\n" ++
-            "import androidx.compose.material3.Button\n" ++
-            "import androidx.compose.material3.MaterialTheme\n" ++
-            "import androidx.compose.material3.Scaffold\n" ++
-            "import androidx.compose.material3.Text\n" ++
-            "import androidx.compose.runtime.Composable\n" ++
-            "import androidx.compose.runtime.getValue\n" ++
-            "import androidx.compose.runtime.mutableStateOf\n" ++
-            "import androidx.compose.runtime.remember\n" ++
-            "import androidx.compose.runtime.setValue\n" ++
-            "import androidx.compose.ui.Modifier\n" ++
-            "import androidx.compose.ui.tooling.preview.Preview\n" ++
-            "import androidx.compose.ui.unit.dp\n" ++
-            "import dev.wizig.generated.WizigGeneratedApi\n" ++
-            "import {s}.ui.theme.{s}Theme\n" ++
-            "\n" ++
-            "class MainActivity : ComponentActivity() {{\n" ++
-            "    override fun onCreate(savedInstanceState: Bundle?) {{\n" ++
-            "        super.onCreate(savedInstanceState)\n" ++
-            "        enableEdgeToEdge()\n" ++
-            "        setContent {{\n" ++
-            "            {s}Theme {{\n" ++
-            "                Scaffold(modifier = Modifier.fillMaxSize()) {{ innerPadding ->\n" ++
-            "                    Greeting(\n" ++
-            "                        appName = \"{s}\",\n" ++
-            "                        modifier = Modifier.padding(innerPadding),\n" ++
-            "                    )\n" ++
-            "                }}\n" ++
-            "            }}\n" ++
-            "        }}\n" ++
-            "    }}\n" ++
-            "}}\n" ++
-            "\n" ++
-            "@Composable\n" ++
-            "private fun Greeting(appName: String, modifier: Modifier = Modifier) {{\n" ++
-            "    val api = remember {{ WizigGeneratedApi() }}\n" ++
-            "    var clickCount by remember {{ mutableStateOf(0) }}\n" ++
-            "    val echoed = remember {{ api.echo(\"hello\") }}\n" ++
-            "    Column(\n" ++
-            "        modifier = modifier\n" ++
-            "            .fillMaxSize()\n" ++
-            "            .padding(24.dp),\n" ++
-            "        verticalArrangement = Arrangement.spacedBy(12.dp),\n" ++
-            "    ) {{\n" ++
-            "        Text(\n" ++
-            "            text = \"Hello from $appName\",\n" ++
-            "            style = MaterialTheme.typography.headlineSmall,\n" ++
-            "        )\n" ++
-            "        Text(\n" ++
-            "            text = \"Button clicks: $clickCount\",\n" ++
-            "            style = MaterialTheme.typography.bodyMedium,\n" ++
-            "        )\n" ++
-            "        Text(\n" ++
-            "            text = \"Generated API echo: $echoed\",\n" ++
-            "            style = MaterialTheme.typography.bodySmall,\n" ++
-            "        )\n" ++
-            "        Button(\n" ++
-            "            onClick = {{\n" ++
-            "                clickCount += 1\n" ++
-            "                Log.i(\"{s}\", \"Compose button clicked: $clickCount\")\n" ++
-            "                println(\"Compose button clicked: $clickCount\")\n" ++
-            "            }},\n" ++
-            "        ) {{\n" ++
-            "            Text(\"Click me\")\n" ++
-            "        }}\n" ++
-            "    }}\n" ++
-            "}}\n" ++
-            "\n" ++
-            "@Preview(showBackground = true)\n" ++
-            "@Composable\n" ++
-            "private fun GreetingPreview() {{\n" ++
-            "    {s}Theme {{\n" ++
-            "        Greeting(appName = \"{s}\")\n" ++
-            "    }}\n" ++
-            "}}\n",
-        .{
-            package_name,
-            package_name,
-            app_type_name,
-            app_type_name,
-            app_name,
-            app_name,
-            app_type_name,
-            app_name,
-        },
-    );
-    try writeFileAtomically(io, main_activity_path, main_activity_contents);
-
-    const theme_dir = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}app{s}src{s}main{s}java{s}{s}{s}ui{s}theme",
-        .{
-            destination_dir,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            package_path,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-        },
-    );
-
-    const color_path = try std.fmt.allocPrint(arena, "{s}{s}Color.kt", .{ theme_dir, std.fs.path.sep_str });
-    const color_contents = try std.fmt.allocPrint(
-        arena,
-        "package {s}.ui.theme\n" ++
-            "\n" ++
-            "import androidx.compose.ui.graphics.Color\n" ++
-            "\n" ++
-            "val Purple80 = Color(0xFFD0BCFF)\n" ++
-            "val PurpleGrey80 = Color(0xFFCCC2DC)\n" ++
-            "val Pink80 = Color(0xFFEFB8C8)\n" ++
-            "\n" ++
-            "val Purple40 = Color(0xFF6650A4)\n" ++
-            "val PurpleGrey40 = Color(0xFF625B71)\n" ++
-            "val Pink40 = Color(0xFF7D5260)\n",
-        .{package_name},
-    );
-    try writeFileAtomically(io, color_path, color_contents);
-
-    const type_path = try std.fmt.allocPrint(arena, "{s}{s}Type.kt", .{ theme_dir, std.fs.path.sep_str });
-    const type_contents = try std.fmt.allocPrint(
-        arena,
-        "package {s}.ui.theme\n" ++
-            "\n" ++
-            "import androidx.compose.material3.Typography\n" ++
-            "\n" ++
-            "val Typography = Typography()\n",
-        .{package_name},
-    );
-    try writeFileAtomically(io, type_path, type_contents);
-
-    const theme_path = try std.fmt.allocPrint(arena, "{s}{s}Theme.kt", .{ theme_dir, std.fs.path.sep_str });
-    const theme_contents = try std.fmt.allocPrint(
-        arena,
-        "package {s}.ui.theme\n" ++
-            "\n" ++
-            "import android.os.Build\n" ++
-            "import androidx.compose.foundation.isSystemInDarkTheme\n" ++
-            "import androidx.compose.material3.MaterialTheme\n" ++
-            "import androidx.compose.material3.darkColorScheme\n" ++
-            "import androidx.compose.material3.dynamicDarkColorScheme\n" ++
-            "import androidx.compose.material3.dynamicLightColorScheme\n" ++
-            "import androidx.compose.material3.lightColorScheme\n" ++
-            "import androidx.compose.runtime.Composable\n" ++
-            "import androidx.compose.ui.platform.LocalContext\n" ++
-            "\n" ++
-            "private val DarkColorScheme = darkColorScheme(\n" ++
-            "    primary = Purple80,\n" ++
-            "    secondary = PurpleGrey80,\n" ++
-            "    tertiary = Pink80,\n" ++
-            ")\n" ++
-            "\n" ++
-            "private val LightColorScheme = lightColorScheme(\n" ++
-            "    primary = Purple40,\n" ++
-            "    secondary = PurpleGrey40,\n" ++
-            "    tertiary = Pink40,\n" ++
-            ")\n" ++
-            "\n" ++
-            "@Composable\n" ++
-            "fun {s}Theme(\n" ++
-            "    darkTheme: Boolean = isSystemInDarkTheme(),\n" ++
-            "    dynamicColor: Boolean = true,\n" ++
-            "    content: @Composable () -> Unit,\n" ++
-            ") {{\n" ++
-            "    val colorScheme = when {{\n" ++
-            "        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {{\n" ++
-            "            val context = LocalContext.current\n" ++
-            "            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)\n" ++
-            "        }}\n" ++
-            "\n" ++
-            "        darkTheme -> DarkColorScheme\n" ++
-            "        else -> LightColorScheme\n" ++
-            "    }}\n" ++
-            "\n" ++
-            "    MaterialTheme(\n" ++
-            "        colorScheme = colorScheme,\n" ++
-            "        typography = Typography,\n" ++
-            "        content = content,\n" ++
-            "    )\n" ++
-            "}}\n",
-        .{ package_name, app_type_name },
-    );
-    try writeFileAtomically(io, theme_path, theme_contents);
-
-    const app_test_path = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}app{s}src{s}test{s}java{s}{s}{s}MainActivitySmokeTest.kt",
-        .{
-            destination_dir,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            package_path,
-            std.fs.path.sep_str,
-        },
-    );
-    const app_test_contents = try std.fmt.allocPrint(
-        arena,
-        "package {s}\n" ++
-            "\n" ++
-            "import org.junit.Test\n" ++
-            "import org.junit.Assert.assertTrue\n" ++
-            "\n" ++
-            "class MainActivitySmokeTest {{\n" ++
-            "    @Test\n" ++
-            "    fun packageNameLooksValid() {{\n" ++
-            "        assertTrue(\"{s}\".contains(\".\"))\n" ++
-            "    }}\n" ++
-            "}}\n",
-        .{ package_name, package_name },
-    );
-    try writeFileAtomically(io, app_test_path, app_test_contents);
-
-    const strings_path = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}app{s}src{s}main{s}res{s}values{s}strings.xml",
-        .{
-            destination_dir,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-        },
-    );
-    const strings_contents = try std.fmt.allocPrint(
-        arena,
-        "<resources>\n" ++
-            "    <string name=\"app_name\">{s}</string>\n" ++
-            "</resources>\n",
-        .{app_name},
-    );
-    try writeFileAtomically(io, strings_path, strings_contents);
-
-    const themes_path = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}app{s}src{s}main{s}res{s}values{s}themes.xml",
-        .{
-            destination_dir,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-        },
-    );
-    const themes_contents = try std.fmt.allocPrint(
-        arena,
-        "<resources xmlns:tools=\"http://schemas.android.com/tools\">\n" ++
-            "    <style name=\"Theme.{s}\" parent=\"android:Theme.Material.Light.NoActionBar\">\n" ++
-            "        <item name=\"android:statusBarColor\">@android:color/transparent</item>\n" ++
-            "    </style>\n" ++
-            "</resources>\n",
-        .{app_type_name},
-    );
-    try writeFileAtomically(io, themes_path, themes_contents);
-
-    const proguard_path = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}app{s}proguard-rules.pro",
-        .{
-            destination_dir,
-            std.fs.path.sep_str,
-            std.fs.path.sep_str,
-        },
-    );
-    try writeFileAtomically(io, proguard_path, "# Wizig Android app ProGuard rules.\n");
 
     const sdk_dir = parent_environ_map.get("ANDROID_SDK_ROOT") orelse parent_environ_map.get("ANDROID_HOME");
-    if (sdk_dir) |sdk| {
+    if (sdk_dir != null and (force_host_overwrite or !fs_util.pathExists(io, try joinPath(arena, destination_dir, "local.properties")))) {
         const local_properties_path = try joinPath(arena, destination_dir, "local.properties");
-        const escaped_sdk = try escapeLocalPropertiesValue(arena, sdk);
+        const escaped_sdk = try escapeLocalPropertiesValue(arena, sdk_dir.?);
         const local_properties_contents = try std.fmt.allocPrint(arena, "sdk.dir={s}\n", .{escaped_sdk});
         try writeFileAtomically(io, local_properties_path, local_properties_contents);
+    }
+
+    const gradlew_path = try joinPath(arena, destination_dir, "gradlew");
+    if (fs_util.pathExists(io, gradlew_path)) {
+        runCommand(arena, io, stderr, ".", &.{ "chmod", "+x", gradlew_path }, null) catch {};
     }
 
     try stdout.print("created Android app '{s}' at '{s}'\n", .{ app_name, destination_dir });
     try stdout.print("next: (cd {s} && ./gradlew :app:assembleDebug)\n", .{destination_dir});
     try stdout.flush();
 }
+
+const PathToken = struct {
+    key: []const u8,
+    value: []const u8,
+};
+
+fn copyTemplateTreeRendered(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    src_root: []const u8,
+    dst_root: []const u8,
+    tokens: []const fs_util.RenderToken,
+    path_tokens: []const PathToken,
+    force_overwrite: bool,
+) !void {
+    var src_dir = try std.Io.Dir.cwd().openDir(io, src_root, .{ .iterate = true });
+    defer src_dir.close(io);
+
+    try std.Io.Dir.cwd().createDirPath(io, dst_root);
+    var walker = try src_dir.walk(arena);
+    defer walker.deinit();
+
+    while (try walker.next(io)) |entry| {
+        if (shouldSkipTemplateEntry(entry.path)) continue;
+
+        const rendered_rel = try renderPathTokens(arena, entry.path, path_tokens);
+        const src_path = try joinPath(arena, src_root, entry.path);
+        const dst_path = try joinPath(arena, dst_root, rendered_rel);
+
+        switch (entry.kind) {
+            .directory => try std.Io.Dir.cwd().createDirPath(io, dst_path),
+            .file => {
+                if (!force_overwrite and fs_util.pathExists(io, dst_path)) {
+                    continue;
+                }
+
+                const bytes = try std.Io.Dir.cwd().readFileAlloc(io, src_path, arena, .limited(256 * 1024 * 1024));
+                if (isTemplateTextFile(src_path, bytes)) {
+                    const rendered = try fs_util.renderTemplate(arena, bytes, tokens);
+                    try fs_util.writeFileAtomically(io, dst_path, rendered);
+                } else {
+                    try fs_util.writeFileAtomically(io, dst_path, bytes);
+                }
+            },
+            else => {},
+        }
+    }
+}
+
+fn renderPathTokens(allocator: std.mem.Allocator, raw_path: []const u8, path_tokens: []const PathToken) ![]u8 {
+    var rendered = try allocator.dupe(u8, raw_path);
+    for (path_tokens) |token| {
+        rendered = try replaceAllAlloc(allocator, rendered, token.key, token.value);
+    }
+    return rendered;
+}
+
+fn replaceAllAlloc(allocator: std.mem.Allocator, haystack: []const u8, needle: []const u8, replacement: []const u8) ![]u8 {
+    if (needle.len == 0) return allocator.dupe(u8, haystack);
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+
+    var cursor: usize = 0;
+    while (std.mem.indexOfPos(u8, haystack, cursor, needle)) |idx| {
+        try out.appendSlice(allocator, haystack[cursor..idx]);
+        try out.appendSlice(allocator, replacement);
+        cursor = idx + needle.len;
+    }
+    try out.appendSlice(allocator, haystack[cursor..]);
+    return out.toOwnedSlice(allocator);
+}
+
+fn isTemplateTextFile(path: []const u8, bytes: []const u8) bool {
+    const basename = std.fs.path.basename(path);
+    if (std.mem.eql(u8, basename, "gradlew") or std.mem.eql(u8, basename, "gradlew.bat")) {
+        return true;
+    }
+
+    const ext = std.fs.path.extension(path);
+    for (template_text_extensions) |text_ext| {
+        if (std.mem.eql(u8, ext, text_ext)) return true;
+    }
+
+    if (std.mem.indexOfScalar(u8, bytes, 0) != null) return false;
+    return std.unicode.utf8ValidateSlice(bytes);
+}
+
+fn shouldSkipTemplateEntry(entry_path: []const u8) bool {
+    var it = std.mem.splitAny(u8, entry_path, "/\\");
+    while (it.next()) |segment| {
+        if (segment.len == 0) continue;
+        if (std.mem.eql(u8, segment, "project.yml")) return true;
+        if (std.mem.eql(u8, segment, "Sources")) return true;
+        if (std.mem.eql(u8, segment, ".DS_Store")) return true;
+        if (std.mem.eql(u8, segment, ".gradle")) return true;
+        if (std.mem.eql(u8, segment, ".idea")) return true;
+        if (std.mem.eql(u8, segment, "build")) return true;
+    }
+    return false;
+}
+
+const template_text_extensions = [_][]const u8{
+    ".swift",
+    ".pbxproj",
+    ".plist",
+    ".xcworkspacedata",
+    ".kts",
+    ".gradle",
+    ".xml",
+    ".kt",
+    ".java",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".properties",
+    ".md",
+    ".txt",
+    ".gitignore",
+    ".pro",
+};
 
 fn hasAnyPlatform(platforms: CreatePlatforms) bool {
     return platforms.ios or platforms.android or platforms.macos;

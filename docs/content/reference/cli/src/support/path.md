@@ -1,5 +1,7 @@
 # `cli/src/support/path.zig`
 
+_Language: Zig_
+
 Path helpers shared across CLI commands.
 
 ## Public API

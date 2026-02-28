@@ -1,5 +1,7 @@
 # `src/main.zig`
 
+_Language: Zig_
+
 Example executable entrypoint used for quick sanity checks.
 
 ## Public API

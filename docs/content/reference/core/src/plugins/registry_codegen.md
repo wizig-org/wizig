@@ -1,5 +1,7 @@
 # `core/src/plugins/registry_codegen.zig`
 
+_Language: Zig_
+
 Plugin registry collection and registrant source generation.
 
 ## Public API

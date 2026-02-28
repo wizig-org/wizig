@@ -1,5 +1,7 @@
 # `runtime/core/src/plugins/registry_codegen.zig`
 
+_Language: Zig_
+
 Runtime-packaged plugin registry collection and registrant generators.
 
 ## Public API

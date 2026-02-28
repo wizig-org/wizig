@@ -1,5 +1,7 @@
 # `ffi/src/root.zig`
 
+_Language: Zig_
+
 C ABI bridge exposing Wizig runtime functions to native hosts.
 
 ## Public API

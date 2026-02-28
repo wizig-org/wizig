@@ -1,5 +1,7 @@
 # `core/src/plugins/manifest.zig`
 
+_Language: Zig_
+
 Plugin manifest v2 schema parsing/validation.
 
 ## Public API

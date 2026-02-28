@@ -1,5 +1,7 @@
 # `cli/src/commands/run/root.zig`
 
+_Language: Zig_
+
 `wizig run` command shim.
 
 ## Public API

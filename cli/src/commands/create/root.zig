@@ -27,6 +27,7 @@ pub fn run(
         request.destination_dir,
         request.platforms,
         request.sdk_root,
+        request.force_host_overwrite,
     );
 }
 
@@ -34,7 +35,7 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Create:\n" ++
-            "  wizig create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]\n" ++
+            "  wizig create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>] [--force-host-overwrite]\n" ++
             "\n",
     );
 }
@@ -44,11 +45,12 @@ const CreateRequest = struct {
     destination_dir: []const u8,
     platforms: scaffold.CreatePlatforms,
     sdk_root: ?[]const u8,
+    force_host_overwrite: bool,
 };
 
 fn parseCreateRequest(args: []const []const u8, stderr: *Io.Writer) !CreateRequest {
     if (args.len == 0) {
-        try stderr.writeAll("error: create expects <name> [destination_dir] [--platforms ...] [--sdk-root <path>]\n");
+        try stderr.writeAll("error: create expects <name> [destination_dir] [--platforms ...] [--sdk-root <path>] [--force-host-overwrite]\n");
         return error.InvalidArguments;
     }
 
@@ -64,6 +66,7 @@ fn parseCreateRequest(args: []const []const u8, stderr: *Io.Writer) !CreateReque
 
     var platforms = scaffold.CreatePlatforms{};
     var sdk_root: ?[]const u8 = null;
+    var force_host_overwrite = false;
 
     while (index < args.len) {
         const arg = args[index];
@@ -98,6 +101,12 @@ fn parseCreateRequest(args: []const []const u8, stderr: *Io.Writer) !CreateReque
             continue;
         }
 
+        if (std.mem.eql(u8, arg, "--force-host-overwrite") or std.mem.eql(u8, arg, "--force")) {
+            force_host_overwrite = true;
+            index += 1;
+            continue;
+        }
+
         try stderr.print("error: unknown create option '{s}'\n", .{arg});
         return error.InvalidArguments;
     }
@@ -112,6 +121,7 @@ fn parseCreateRequest(args: []const []const u8, stderr: *Io.Writer) !CreateReque
         .destination_dir = destination_dir,
         .platforms = platforms,
         .sdk_root = sdk_root,
+        .force_host_overwrite = force_host_overwrite,
     };
 }
 
@@ -169,4 +179,24 @@ fn hasAnyCreatePlatform(platforms: scaffold.CreatePlatforms) bool {
 
 fn isOptionArg(arg: []const u8) bool {
     return std.mem.startsWith(u8, arg, "--");
+}
+
+test "parseCreateRequest defaults force_host_overwrite to false" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    const request = try parseCreateRequest(&.{ "DemoApp" }, &err_writer.writer);
+    try std.testing.expectEqualStrings("DemoApp", request.app_name);
+    try std.testing.expect(!request.force_host_overwrite);
+}
+
+test "parseCreateRequest accepts force flags" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    const request = try parseCreateRequest(
+        &.{ "DemoApp", "--platforms", "ios,android", "--force-host-overwrite" },
+        &err_writer.writer,
+    );
+    try std.testing.expect(request.force_host_overwrite);
 }

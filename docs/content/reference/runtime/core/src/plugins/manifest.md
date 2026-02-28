@@ -1,5 +1,7 @@
 # `runtime/core/src/plugins/manifest.zig`
 
+_Language: Zig_
+
 Runtime-packaged plugin manifest parser.
 
 ## Public API

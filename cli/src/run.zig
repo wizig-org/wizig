@@ -30,6 +30,7 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "  --debugger <mode>           Pass through to selected platform\n" ++
             "  --non-interactive           Fail instead of prompting for selection\n" ++
             "  --once                      Launch and return without log/debug loop\n" ++
+            "  --regenerate-host           Regenerate legacy iOS xcodegen hosts from project.yml before run\n" ++
             "\n" ++
             "Project-level behavior:\n" ++
             "  - Detects generated app hosts under <project_dir>/ios and <project_dir>/android\n" ++

@@ -1,5 +1,7 @@
 # `cli/src/commands/codegen/root.zig`
 
+_Language: Zig_
+
 `wizig codegen` command and typed API binding generators.
 
 ## Public API

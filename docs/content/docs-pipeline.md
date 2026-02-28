@@ -24,11 +24,13 @@ python3 scripts/docs_build.py
 
 ## Stages
 
-1. Discover Zig source files.
-2. Extract module docs from `//!` comments.
-3. Extract public declaration docs from `///` comments.
-4. Generate markdown reference pages under `docs/content/reference/`.
-5. Render all markdown to static HTML under `docs/site/`.
+1. Discover source files for Zig (`.zig`), Swift (`.swift`), and Kotlin (`.kt`).
+2. Extract module and declaration docs from language-native comment styles:
+   - Zig: `//!`, `///`
+   - Swift: `///`, `/** ... */`
+   - Kotlin: `/** ... */`
+3. Generate markdown reference pages under `docs/content/reference/`.
+4. Render all markdown to static HTML under `docs/site/`.
 
 ## Modes
 
@@ -43,6 +45,14 @@ Site render only:
 ```sh
 python3 scripts/docs_build.py --site-only
 ```
+
+Determinism + freshness check:
+
+```sh
+python3 scripts/docs_build.py --check
+```
+
+`--check` runs two isolated generations and compares them for deterministic output, then verifies checked-in `docs/content/reference/` freshness. If `docs/site/` exists locally, it also validates site freshness.
 
 ## Inputs And Outputs
 
@@ -59,3 +69,5 @@ For Zig source documentation quality:
 - Use `//!` at file top for module-level context.
 - Use `///` on public declarations with behavior/constraints.
 - Keep comments focused on invariants and contracts, not obvious syntax.
+
+For Swift doc comment formatting, follow [Swift Doc Comments](swift-doc-comments.md).

@@ -16,3 +16,4 @@ ios/DerivedData/
 # Generated
 .wizig/generated/
 .wizig/plugins/
+lib/WizigGeneratedAppModule.zig

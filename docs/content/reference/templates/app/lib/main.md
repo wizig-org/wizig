@@ -1,5 +1,7 @@
 # `templates/app/lib/main.zig`
 
+_Language: Zig_
+
 Template Zig module scaffolded into new Wizig apps.
 
 ## Public API

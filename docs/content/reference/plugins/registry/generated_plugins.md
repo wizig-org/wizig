@@ -1,5 +1,7 @@
 # `plugins/registry/generated_plugins.zig`
 
+_Language: Zig_
+
 Generated static plugin registry used by tooling/runtime integration.
 
 ## Public API

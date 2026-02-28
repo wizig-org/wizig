@@ -2,6 +2,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
+const codegen_cmd = @import("../commands/codegen/root.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -29,6 +30,10 @@ const RunOptions = struct {
     debugger: DebuggerMode = .auto,
     non_interactive: bool = false,
     once: bool = false,
+    regenerate_host: bool = false,
+    // Internal flag used by unified run; not user-facing.
+    skip_device_discovery: bool = false,
+    skip_codegen: bool = false,
 
     // iOS options.
     scheme: ?[]const u8 = null,
@@ -90,6 +95,10 @@ pub fn run(
         try stdout.flush();
     }
 
+    if (!options.skip_codegen) {
+        try maybeRunCodegenForLegacy(arena, io, stderr, stdout, options.project_dir);
+    }
+
     switch (options.platform) {
         .ios => try runIos(arena, io, parent_environ_map, stderr, stdout, options),
         .android => try runAndroid(arena, io, parent_environ_map, stderr, stdout, options),
@@ -108,6 +117,7 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "  --debugger <auto|lldb|jdb|logcat|none>\n" ++
             "  --non-interactive           Fail instead of prompting for selection\n" ++
             "  --once                      Launch and exit without attaching/streaming\n" ++
+            "  --regenerate-host           Regenerate legacy iOS xcodegen hosts from project.yml before run\n" ++
             "\n" ++
             "iOS options:\n" ++
             "  --scheme <scheme>\n" ++
@@ -118,6 +128,22 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "  --app-id <application_id>\n" ++
             "  --activity <activity_or_component>\n",
     );
+}
+
+fn maybeRunCodegenForLegacy(
+    arena: Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    host_project_dir: []const u8,
+) !void {
+    const app_root = std.fs.path.dirname(host_project_dir) orelse host_project_dir;
+    const contract = (try codegen_cmd.resolveApiContract(arena, io, stderr, app_root, null)) orelse return;
+    codegen_cmd.generateProject(arena, io, stderr, stdout, app_root, contract.path) catch |err| {
+        try stderr.print("error: failed to generate API bindings from '{s}': {s}\n", .{ contract.path, @errorName(err) });
+        try stderr.flush();
+        return error.RunFailed;
+    };
 }
 
 fn parseRunOptions(args: []const []const u8, stderr: *Io.Writer) !RunOptions {
@@ -147,6 +173,21 @@ fn parseRunOptions(args: []const []const u8, stderr: *Io.Writer) !RunOptions {
         }
         if (std.mem.eql(u8, arg, "--once")) {
             options.once = true;
+            i += 1;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--regenerate-host")) {
+            options.regenerate_host = true;
+            i += 1;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--__wizig-skip-device-discovery")) {
+            options.skip_device_discovery = true;
+            i += 1;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--__wizig-skip-codegen")) {
+            options.skip_codegen = true;
             i += 1;
             continue;
         }
@@ -200,6 +241,11 @@ fn parseRunOptions(args: []const []const u8, stderr: *Io.Writer) !RunOptions {
         },
     }
 
+    if (options.skip_device_discovery and options.device_selector == null) {
+        try stderr.writeAll("error: --__wizig-skip-device-discovery requires --device\n");
+        return error.RunFailed;
+    }
+
     return options;
 }
 
@@ -229,36 +275,50 @@ fn runIos(
 
     const debugger_mode = try resolveIosDebugger(arena, io, stderr, options.debugger);
 
-    try maybeRegenerateIosProject(arena, io, stderr, stdout, options.project_dir);
+    if (options.regenerate_host) {
+        try maybeRegenerateIosProject(arena, io, stderr, stdout, options.project_dir);
+    }
     const xcode_project = try findXcodeProject(arena, io, stderr, options.project_dir);
     const scheme = options.scheme orelse inferSchemeFromProject(xcode_project) orelse {
         try stderr.writeAll("error: failed to infer iOS scheme, pass --scheme\n");
         return error.RunFailed;
     };
 
-    const all_devices = try discoverIosDevices(arena, io, stderr);
-    if (all_devices.len == 0) {
-        try stderr.writeAll("error: no available iOS simulators found\n");
-        return error.RunFailed;
-    }
-    const supported_ids = try discoverIosSupportedDestinationIds(
-        arena,
-        io,
-        stderr,
-        options.project_dir,
-        xcode_project,
-        scheme,
-    );
-    const devices = if (supported_ids.len == 0)
-        all_devices
-    else
-        try filterIosDevicesBySupportedIds(arena, all_devices, supported_ids);
-    if (devices.len == 0) {
-        try stderr.writeAll("error: no iOS simulators match xcodebuild destinations for this scheme\n");
-        return error.RunFailed;
-    }
+    const selected = if (options.skip_device_discovery)
+        try resolvePreselectedIosDevice(
+            arena,
+            io,
+            stderr,
+            options.project_dir,
+            xcode_project,
+            scheme,
+            options.device_selector,
+        )
+    else blk: {
+        const all_devices = try discoverIosDevices(arena, io, stderr);
+        if (all_devices.len == 0) {
+            try stderr.writeAll("error: no available iOS simulators found\n");
+            return error.RunFailed;
+        }
+        const supported_ids = try discoverIosSupportedDestinationIds(
+            arena,
+            io,
+            stderr,
+            options.project_dir,
+            xcode_project,
+            scheme,
+        );
+        const devices = if (supported_ids.len == 0)
+            all_devices
+        else
+            try filterIosDevicesBySupportedIds(arena, all_devices, supported_ids);
+        if (devices.len == 0) {
+            try stderr.writeAll("error: no iOS simulators match xcodebuild destinations for this scheme\n");
+            return error.RunFailed;
+        }
 
-    const selected = try chooseIosDevice(arena, io, stderr, stdout, devices, options.device_selector, options.non_interactive);
+        break :blk try chooseIosDevice(arena, io, stderr, stdout, devices, options.device_selector, options.non_interactive);
+    };
 
     try stdout.print(
         "selected iOS simulator: {s} [{s}] ({s}, {s})\n",
@@ -351,8 +411,14 @@ fn runIos(
     });
     const app_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ target_build_dir, wrapper_name });
 
-    const workspace_root = try resolveWizigWorkspaceRoot(arena, io, parent_environ_map, options.project_dir, stderr);
-    const simulator_ffi_path = try buildIosSimulatorFfiLibrary(arena, io, stderr, workspace_root);
+    const app_root = std.fs.path.dirname(options.project_dir) orelse options.project_dir;
+    const simulator_ffi_path = try buildIosSimulatorFfiLibrary(
+        arena,
+        io,
+        stderr,
+        parent_environ_map,
+        app_root,
+    );
     const runtime_ffi_path = try bundleIosFfiLibraryForSimulator(arena, io, stderr, app_path, simulator_ffi_path);
 
     try runInheritChecked(
@@ -448,35 +514,55 @@ fn runAndroid(
 ) !void {
     const debugger_mode = try resolveAndroidDebugger(arena, io, stderr, options.debugger);
 
-    const devices = try discoverAndroidDevices(arena, io, stderr);
-    const avds = try discoverAndroidAvds(arena, io);
-    if (devices.len == 0 and avds.len == 0) {
-        try stderr.writeAll("error: no Android devices and no AVD profiles found\n");
-        return error.RunFailed;
-    }
-    const selected_target = try chooseAndroidTarget(
+    const selected = if (options.skip_device_discovery)
+        try resolvePreselectedAndroidDevice(arena, stderr, options.device_selector)
+    else blk: {
+        const devices = try discoverAndroidDevices(arena, io, stderr);
+        const avds = try discoverAndroidAvds(arena, io);
+        if (devices.len == 0 and avds.len == 0) {
+            try stderr.writeAll("error: no Android devices and no AVD profiles found\n");
+            return error.RunFailed;
+        }
+        const selected_target = try chooseAndroidTarget(
+            arena,
+            io,
+            stderr,
+            stdout,
+            devices,
+            avds,
+            options.device_selector,
+            options.non_interactive,
+        );
+
+        break :blk switch (selected_target) {
+            .device => |device| device,
+            .avd => |avd_name| blk_avd: {
+                try stdout.print("starting AVD '{s}'...\n", .{avd_name});
+                try stdout.flush();
+                try startAvd(io, stderr, avd_name);
+                const emulator = try waitForStartedEmulator(arena, io, stderr, devices, avd_name);
+                break :blk_avd emulator;
+            },
+        };
+    };
+
+    try stdout.print("selected Android target: {s} [{s}]\n", .{ selected.model, selected.serial });
+    try stdout.flush();
+
+    const app_root = std.fs.path.dirname(options.project_dir) orelse options.project_dir;
+    const android_ffi = try prepareAndroidFfiLibrary(
         arena,
         io,
         stderr,
         stdout,
-        devices,
-        avds,
-        options.device_selector,
-        options.non_interactive,
+        parent_environ_map,
+        app_root,
+        selected.serial,
     );
-
-    const selected = switch (selected_target) {
-        .device => |device| device,
-        .avd => |avd_name| blk: {
-            try stdout.print("starting AVD '{s}'...\n", .{avd_name});
-            try stdout.flush();
-            try startAvd(io, stderr, avd_name);
-            const emulator = try waitForStartedEmulator(arena, io, stderr, devices, avd_name);
-            break :blk emulator;
-        },
-    };
-
-    try stdout.print("selected Android target: {s} [{s}]\n", .{ selected.model, selected.serial });
+    try stdout.print(
+        "prepared Android FFI library for {s}: {s}\n",
+        .{ android_ffi.abi, android_ffi.staged_path },
+    );
     try stdout.flush();
 
     std.Io.Dir.cwd().createDirPath(io, "/tmp/wizig-gradle-home") catch {};
@@ -503,13 +589,14 @@ fn runAndroid(
     }
     const gradle_cmd: []const u8 = if (has_wrapper_script and has_wrapper_jar) "./gradlew" else "gradle";
     const assemble_task = try std.fmt.allocPrint(arena, ":{s}:assembleDebug", .{options.module});
+    const abi_property = try std.fmt.allocPrint(arena, "-Pandroid.injected.build.abi={s}", .{android_ffi.abi});
 
     try stdout.writeAll("building Android app...\n");
     try stdout.flush();
     try runInheritChecked(
         io,
         options.project_dir,
-        &.{ gradle_cmd, "--no-daemon", assemble_task },
+        &.{ gradle_cmd, "--no-daemon", abi_property, assemble_task },
         &gradle_env,
         stderr,
         "build Android app",
@@ -557,7 +644,7 @@ fn runAndroid(
     try runInheritChecked(
         io,
         null,
-        &.{ "adb", "-s", selected.serial, "install", "-r", apk },
+        &.{ "adb", "-s", selected.serial, "install", "-r", "-t", apk },
         null,
         stderr,
         "install Android app",
@@ -662,6 +749,291 @@ fn runAndroid(
             return error.RunFailed;
         },
     }
+}
+
+const FfiBuildInputs = struct {
+    root_source: []const u8,
+    core_source: []const u8,
+    app_source: ?[]const u8 = null,
+    app_fingerprint_roots: []const []const u8 = &.{},
+};
+
+const AndroidFfiArtifact = struct {
+    abi: []const u8,
+    staged_path: []const u8,
+};
+
+fn prepareAndroidFfiLibrary(
+    arena: Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    parent_environ_map: *const std.process.Environ.Map,
+    app_root: []const u8,
+    serial: []const u8,
+) !AndroidFfiArtifact {
+    const abi = try resolveAndroidDeviceAbi(arena, io, stderr, serial);
+    const zig_target = zigTargetForAndroidAbi(abi) orelse {
+        try stderr.print("error: unsupported Android ABI '{s}'\n", .{abi});
+        return error.RunFailed;
+    };
+    const ffi_inputs = try resolveFfiBuildInputs(
+        arena,
+        io,
+        stderr,
+        parent_environ_map,
+        app_root,
+    );
+
+    const fingerprint = try computeFfiFingerprint(
+        arena,
+        io,
+        android_ffi_cache_version,
+        zig_target,
+        ffi_inputs.root_source,
+        ffi_inputs.core_source,
+        ffi_inputs.app_fingerprint_roots,
+    );
+    const cache_dir = try std.fmt.allocPrint(arena, "/tmp/wizig-ffi-android-cache/{s}", .{fingerprint});
+    std.Io.Dir.cwd().createDirPath(io, cache_dir) catch {};
+
+    const cache_path = try std.fmt.allocPrint(arena, "{s}{s}libwizigffi.so", .{ cache_dir, std.fs.path.sep_str });
+    if (!pathExists(io, cache_path)) {
+        try stdout.print("building Android FFI library for ABI {s}...\n", .{abi});
+        try stdout.flush();
+        const root_arg = try std.fmt.allocPrint(arena, "-Mroot={s}", .{ffi_inputs.root_source});
+        const core_arg = try std.fmt.allocPrint(arena, "-Mwizig_core={s}", .{ffi_inputs.core_source});
+        const app_arg = if (ffi_inputs.app_source) |app_source|
+            try std.fmt.allocPrint(arena, "-Mwizig_app={s}", .{app_source})
+        else
+            null;
+        const emit_arg = try std.fmt.allocPrint(arena, "-femit-bin={s}", .{cache_path});
+        var argv = std.ArrayList([]const u8).empty;
+        try argv.appendSlice(arena, &.{
+            "zig",
+            "build-lib",
+            "-OReleaseFast",
+            "-target",
+            zig_target,
+            "--dep",
+            "wizig_core",
+        });
+        if (app_arg != null) {
+            try argv.appendSlice(arena, &.{ "--dep", "wizig_app" });
+        }
+        try argv.appendSlice(arena, &.{ root_arg, core_arg });
+        if (app_arg) |arg| {
+            try argv.append(arena, arg);
+        }
+        try argv.appendSlice(arena, &.{
+            "--name",
+            "wizigffi",
+            "-dynamic",
+            emit_arg,
+        });
+        _ = try runCaptureChecked(
+            arena,
+            io,
+            null,
+            argv.items,
+            null,
+            stderr,
+            "build Android Wizig FFI library",
+        );
+    }
+
+    const staged_dir = try std.fmt.allocPrint(
+        arena,
+        "{s}{s}.wizig{s}generated{s}android{s}jniLibs{s}{s}",
+        .{
+            app_root,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            abi,
+        },
+    );
+    std.Io.Dir.cwd().createDirPath(io, staged_dir) catch {};
+
+    const staged_path = try std.fmt.allocPrint(arena, "{s}{s}libwizigffi.so", .{ staged_dir, std.fs.path.sep_str });
+    try copyFileIfChanged(arena, io, cache_path, staged_path);
+
+    return .{
+        .abi = try arena.dupe(u8, abi),
+        .staged_path = staged_path,
+    };
+}
+
+fn resolveAndroidDeviceAbi(
+    arena: Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    serial: []const u8,
+) ![]const u8 {
+    const properties = [_][]const u8{
+        "ro.product.cpu.abilist64",
+        "ro.product.cpu.abilist",
+        "ro.product.cpu.abi",
+    };
+
+    for (properties) |property| {
+        const result = runCapture(
+            arena,
+            io,
+            null,
+            &.{ "adb", "-s", serial, "shell", "getprop", property },
+            null,
+        ) catch continue;
+        if (!termIsSuccess(result.term)) continue;
+
+        if (parseFirstSupportedAndroidAbi(result.stdout)) |abi| {
+            return arena.dupe(u8, abi);
+        }
+    }
+
+    try stderr.print("error: failed to resolve Android ABI for device '{s}'\n", .{serial});
+    return error.RunFailed;
+}
+
+fn parseFirstSupportedAndroidAbi(raw: []const u8) ?[]const u8 {
+    var it = std.mem.tokenizeAny(u8, raw, " \t\r\n,");
+    while (it.next()) |token| {
+        if (zigTargetForAndroidAbi(token) != null) return token;
+    }
+    return null;
+}
+
+fn zigTargetForAndroidAbi(abi: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, abi, "arm64-v8a")) return "aarch64-linux-android";
+    if (std.mem.eql(u8, abi, "armeabi-v7a")) return "arm-linux-androideabi";
+    if (std.mem.eql(u8, abi, "x86_64")) return "x86_64-linux-android";
+    if (std.mem.eql(u8, abi, "x86")) return "x86-linux-android";
+    return null;
+}
+
+fn resolveFfiBuildInputs(
+    arena: Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    parent_environ_map: *const std.process.Environ.Map,
+    project_root: []const u8,
+) !FfiBuildInputs {
+    const runtime_root = try resolveWizigWorkspaceRoot(arena, io, parent_environ_map, project_root, stderr);
+    const runtime_core = try std.fmt.allocPrint(
+        arena,
+        "{s}{s}core{s}src{s}root.zig",
+        .{ runtime_root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
+    );
+
+    const generated_ffi_root = try std.fs.path.resolve(
+        arena,
+        &.{ project_root, ".wizig", "generated", "zig", "WizigGeneratedFfiRoot.zig" },
+    );
+    const generated_app_module = try std.fs.path.resolve(
+        arena,
+        &.{ project_root, "lib", "WizigGeneratedAppModule.zig" },
+    );
+    const fallback_app_source = try std.fs.path.resolve(arena, &.{ project_root, "lib", "main.zig" });
+    const lib_root = try std.fs.path.resolve(arena, &.{ project_root, "lib" });
+    const generated_zig_root = try std.fs.path.resolve(arena, &.{ project_root, ".wizig", "generated", "zig" });
+    const runtime_ffi = try std.fmt.allocPrint(
+        arena,
+        "{s}{s}ffi{s}src{s}root.zig",
+        .{ runtime_root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
+    );
+    if (pathExists(io, generated_ffi_root) and pathExists(io, runtime_core)) {
+        const app_source = if (pathExists(io, generated_app_module))
+            generated_app_module
+        else
+            fallback_app_source;
+        if (!pathExists(io, app_source) or !pathExists(io, runtime_ffi)) {
+            try stderr.writeAll("error: missing app/runtime sources for generated FFI root\n");
+            return error.RunFailed;
+        }
+
+        var fingerprint_roots = std.ArrayList([]const u8).empty;
+        if (pathExists(io, lib_root)) {
+            try fingerprint_roots.append(arena, lib_root);
+        }
+        if (pathExists(io, generated_zig_root)) {
+            try fingerprint_roots.append(arena, generated_zig_root);
+        }
+
+        return .{
+            .root_source = generated_ffi_root,
+            .core_source = runtime_core,
+            .app_source = app_source,
+            .app_fingerprint_roots = try fingerprint_roots.toOwnedSlice(arena),
+        };
+    }
+
+    if (!pathExists(io, runtime_ffi) or !pathExists(io, runtime_core)) {
+        try stderr.writeAll("error: missing runtime sources for FFI build\n");
+        return error.RunFailed;
+    }
+
+    return .{
+        .root_source = runtime_ffi,
+        .core_source = runtime_core,
+    };
+}
+
+fn resolvePreselectedIosDevice(
+    arena: Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    project_dir: []const u8,
+    xcode_project: []const u8,
+    scheme: []const u8,
+    selector: ?[]const u8,
+) !IosDevice {
+    const udid = selector orelse {
+        try stderr.writeAll("error: internal preselected iOS run requires --device\n");
+        return error.RunFailed;
+    };
+
+    const supported_ids = try discoverIosSupportedDestinationIds(
+        arena,
+        io,
+        stderr,
+        project_dir,
+        xcode_project,
+        scheme,
+    );
+    if (supported_ids.len > 0 and !containsString(supported_ids, udid)) {
+        try stderr.print("error: selected iOS simulator '{s}' is not supported by scheme '{s}'\n", .{ udid, scheme });
+        return error.RunFailed;
+    }
+
+    return .{
+        .name = udid,
+        .udid = udid,
+        .runtime = "unknown",
+        .state = "Unknown",
+    };
+}
+
+fn resolvePreselectedAndroidDevice(
+    arena: Allocator,
+    stderr: *Io.Writer,
+    selector: ?[]const u8,
+) !AndroidDevice {
+    const serial = selector orelse {
+        try stderr.writeAll("error: internal preselected Android run requires --device\n");
+        return error.RunFailed;
+    };
+    if (std.mem.startsWith(u8, serial, "avd:")) {
+        try stderr.writeAll("error: internal preselected Android run expects connected device serial\n");
+        return error.RunFailed;
+    }
+
+    return .{
+        .serial = try arena.dupe(u8, serial),
+        .model = try arena.dupe(u8, serial),
+        .state = "device",
+    };
 }
 
 fn resolveIosDebugger(
@@ -929,7 +1301,7 @@ fn findDebugApk(
     project_dir: []const u8,
     module: []const u8,
 ) ![]const u8 {
-    const apk_root = try std.fmt.allocPrint(
+    const apk_outputs_root = try std.fmt.allocPrint(
         arena,
         "{s}{s}{s}{s}build{s}outputs{s}apk",
         .{
@@ -941,28 +1313,47 @@ fn findDebugApk(
             std.fs.path.sep_str,
         },
     );
-
-    const result = try runCaptureChecked(
+    const apk_intermediates_root = try std.fmt.allocPrint(
         arena,
-        io,
-        null,
-        &.{ "find", apk_root, "-type", "f", "-name", "*-debug.apk" },
-        null,
-        stderr,
-        "locate Android debug APK",
+        "{s}{s}{s}{s}build{s}intermediates{s}apk",
+        .{
+            project_dir,
+            std.fs.path.sep_str,
+            module,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+            std.fs.path.sep_str,
+        },
     );
 
     var first: ?[]const u8 = null;
     var preferred: ?[]const u8 = null;
-    var lines = std.mem.splitScalar(u8, result.stdout, '\n');
-    while (lines.next()) |raw_line| {
-        const line = std.mem.trim(u8, raw_line, " \t\r");
-        if (line.len == 0) continue;
-        if (first == null) first = line;
-        if (std.mem.endsWith(u8, line, "/app-debug.apk") or std.mem.endsWith(u8, line, "\\app-debug.apk")) {
-            preferred = line;
-            break;
+
+    const roots = [_][]const u8{ apk_outputs_root, apk_intermediates_root };
+    for (roots) |root| {
+        if (!pathExists(io, root)) continue;
+
+        const result = try runCaptureChecked(
+            arena,
+            io,
+            null,
+            &.{ "find", root, "-type", "f", "-name", "*-debug.apk" },
+            null,
+            stderr,
+            "locate Android debug APK",
+        );
+
+        var lines = std.mem.splitScalar(u8, result.stdout, '\n');
+        while (lines.next()) |raw_line| {
+            const line = std.mem.trim(u8, raw_line, " \t\r");
+            if (line.len == 0) continue;
+            if (first == null) first = line;
+            if (std.mem.endsWith(u8, line, "/app-debug.apk") or std.mem.endsWith(u8, line, "\\app-debug.apk")) {
+                preferred = line;
+                break;
+            }
         }
+        if (preferred != null) break;
     }
 
     const selected = preferred orelse first orelse {
@@ -1550,8 +1941,17 @@ fn buildIosSimulatorFfiLibrary(
     arena: Allocator,
     io: std.Io,
     stderr: *Io.Writer,
-    workspace_root: []const u8,
+    parent_environ_map: *const std.process.Environ.Map,
+    project_root: []const u8,
 ) ![]const u8 {
+    const ffi_inputs = try resolveFfiBuildInputs(
+        arena,
+        io,
+        stderr,
+        parent_environ_map,
+        project_root,
+    );
+
     const sdk = try runCaptureChecked(
         arena,
         io,
@@ -1567,44 +1967,213 @@ fn buildIosSimulatorFfiLibrary(
         return error.RunFailed;
     }
 
-    const out_dir = "/tmp/wizig-ffi-iossim";
+    const fingerprint = try computeFfiFingerprint(
+        arena,
+        io,
+        ios_ffi_cache_version,
+        sdk_path,
+        ffi_inputs.root_source,
+        ffi_inputs.core_source,
+        ffi_inputs.app_fingerprint_roots,
+    );
+    const out_dir = try std.fmt.allocPrint(arena, "/tmp/wizig-ffi-iossim-cache/{s}", .{fingerprint});
     std.Io.Dir.cwd().createDirPath(io, out_dir) catch {};
 
     const out_path = try std.fmt.allocPrint(arena, "{s}{s}wizigffi", .{ out_dir, std.fs.path.sep_str });
+    if (pathExists(io, out_path)) {
+        return out_path;
+    }
+
     const emit_arg = try std.fmt.allocPrint(arena, "-femit-bin={s}", .{out_path});
+    const root_arg = try std.fmt.allocPrint(arena, "-Mroot={s}", .{ffi_inputs.root_source});
+    const core_arg = try std.fmt.allocPrint(arena, "-Mwizig_core={s}", .{ffi_inputs.core_source});
+    const app_arg = if (ffi_inputs.app_source) |app_source|
+        try std.fmt.allocPrint(arena, "-Mwizig_app={s}", .{app_source})
+    else
+        null;
+
+    var argv = std.ArrayList([]const u8).empty;
+    try argv.appendSlice(arena, &.{
+        "zig",
+        "build-lib",
+        "-OReleaseFast",
+        "-target",
+        "aarch64-ios-simulator",
+        "--dep",
+        "wizig_core",
+    });
+    if (app_arg != null) {
+        try argv.appendSlice(arena, &.{ "--dep", "wizig_app" });
+    }
+    try argv.appendSlice(arena, &.{ root_arg, core_arg });
+    if (app_arg) |arg| {
+        try argv.append(arena, arg);
+    }
+    try argv.appendSlice(arena, &.{
+        "--name",
+        "wizigffi",
+        "-dynamic",
+        "-install_name",
+        "@rpath/libwizigffi.dylib",
+        "--sysroot",
+        sdk_path,
+        "-L/usr/lib",
+        "-F/System/Library/Frameworks",
+        "-lc",
+        emit_arg,
+    });
 
     _ = try runCaptureChecked(
         arena,
         io,
-        workspace_root,
-        &.{
-            "zig",
-            "build-lib",
-            "-OReleaseFast",
-            "-target",
-            "aarch64-ios-simulator",
-            "--dep",
-            "wizig_core",
-            "-Mroot=ffi/src/root.zig",
-            "-Mwizig_core=core/src/root.zig",
-            "--name",
-            "wizigffi",
-            "-dynamic",
-            "-install_name",
-            "@rpath/libwizigffi.dylib",
-            "--sysroot",
-            sdk_path,
-            "-L/usr/lib",
-            "-F/System/Library/Frameworks",
-            "-lc",
-            emit_arg,
-        },
+        null,
+        argv.items,
         null,
         stderr,
         "build iOS simulator Wizig FFI library",
     );
 
     return out_path;
+}
+
+const ios_ffi_cache_version = "wizig-ios-ffi-cache-v2";
+const android_ffi_cache_version = "wizig-android-ffi-cache-v2";
+
+fn computeFfiFingerprint(
+    arena: Allocator,
+    io: std.Io,
+    version: []const u8,
+    target_descriptor: []const u8,
+    root_source: []const u8,
+    core_source: []const u8,
+    app_fingerprint_roots: []const []const u8,
+) ![]const u8 {
+    const root_bytes = std.Io.Dir.cwd().readFileAlloc(io, root_source, arena, .limited(8 * 1024 * 1024)) catch |err| {
+        return switch (err) {
+            error.FileNotFound => error.RunFailed,
+            else => err,
+        };
+    };
+    const core_bytes = std.Io.Dir.cwd().readFileAlloc(io, core_source, arena, .limited(8 * 1024 * 1024)) catch |err| {
+        return switch (err) {
+            error.FileNotFound => error.RunFailed,
+            else => err,
+        };
+    };
+
+    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    hasher.update(version);
+    hasher.update(&[_]u8{0});
+    hasher.update(target_descriptor);
+    hasher.update(&[_]u8{0});
+    hasher.update(root_source);
+    hasher.update(&[_]u8{0});
+    hasher.update(root_bytes);
+    hasher.update(&[_]u8{0});
+    hasher.update(core_source);
+    hasher.update(&[_]u8{0});
+    hasher.update(core_bytes);
+    for (app_fingerprint_roots) |root| {
+        try appendZigTreeFingerprint(arena, io, &hasher, root);
+    }
+
+    var digest: [32]u8 = undefined;
+    hasher.final(&digest);
+    const hex = std.fmt.bytesToHex(digest, .lower);
+    return arena.dupe(u8, &hex);
+}
+
+fn appendZigTreeFingerprint(
+    arena: Allocator,
+    io: std.Io,
+    hasher: *std.crypto.hash.sha2.Sha256,
+    root_dir: []const u8,
+) !void {
+    if (!pathExists(io, root_dir)) return;
+
+    const rel_paths = try collectZigFilesRecursivelySorted(arena, io, root_dir);
+    hasher.update(&[_]u8{0});
+    hasher.update(root_dir);
+    hasher.update(&[_]u8{0});
+    for (rel_paths) |rel_path| {
+        const abs_path = try std.fmt.allocPrint(arena, "{s}{s}{s}", .{
+            root_dir,
+            std.fs.path.sep_str,
+            rel_path,
+        });
+        const bytes = std.Io.Dir.cwd().readFileAlloc(io, abs_path, arena, .limited(8 * 1024 * 1024)) catch |err| {
+            return switch (err) {
+                error.FileNotFound => error.RunFailed,
+                else => err,
+            };
+        };
+        hasher.update(rel_path);
+        hasher.update(&[_]u8{0});
+        hasher.update(bytes);
+        hasher.update(&[_]u8{0});
+    }
+}
+
+fn collectZigFilesRecursivelySorted(
+    arena: Allocator,
+    io: std.Io,
+    root_dir: []const u8,
+) ![]const []const u8 {
+    var root = std.Io.Dir.cwd().openDir(io, root_dir, .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound => return &.{},
+        else => return err,
+    };
+    defer root.close(io);
+
+    var walker = try root.walk(arena);
+    defer walker.deinit();
+
+    var rel_paths = std.ArrayList([]const u8).empty;
+    errdefer rel_paths.deinit(arena);
+
+    while (try walker.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
+
+        const rel = try arena.dupe(u8, entry.path);
+        for (rel) |*ch| {
+            if (ch.* == '\\') ch.* = '/';
+        }
+        try rel_paths.append(arena, rel);
+    }
+
+    std.mem.sort([]const u8, rel_paths.items, {}, lessStringSlice);
+    return rel_paths.toOwnedSlice(arena);
+}
+
+fn copyFileIfChanged(
+    arena: Allocator,
+    io: std.Io,
+    src_path: []const u8,
+    dst_path: []const u8,
+) !void {
+    const src_bytes = try std.Io.Dir.cwd().readFileAlloc(io, src_path, arena, .limited(128 * 1024 * 1024));
+    const dst_bytes = std.Io.Dir.cwd().readFileAlloc(io, dst_path, arena, .limited(128 * 1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => {
+            try writeFileAtomically(io, dst_path, src_bytes);
+            return;
+        },
+        else => return err,
+    };
+
+    if (std.mem.eql(u8, src_bytes, dst_bytes)) return;
+    try writeFileAtomically(io, dst_path, src_bytes);
+}
+
+fn writeFileAtomically(io: std.Io, path: []const u8, contents: []const u8) !void {
+    var atomic_file = try std.Io.Dir.cwd().createFileAtomic(io, path, .{
+        .make_path = true,
+        .replace = true,
+    });
+    defer atomic_file.deinit(io);
+
+    try atomic_file.file.writeStreamingAll(io, contents);
+    try atomic_file.replace(io);
 }
 
 fn bundleIosFfiLibraryForSimulator(
@@ -2128,6 +2697,8 @@ test "parseRunOptions parses shared and platform flags" {
     try std.testing.expectEqualStrings("emulator-5554", options.device_selector.?);
     try std.testing.expectEqual(DebuggerMode.none, options.debugger);
     try std.testing.expect(options.once);
+    try std.testing.expect(!options.regenerate_host);
+    try std.testing.expect(!options.skip_device_discovery);
 }
 
 test "parseRunOptions rejects mixed platform flags" {
@@ -2143,6 +2714,54 @@ test "parseRunOptions rejects mixed platform flags" {
             "custom-module",
         }, &err_writer.writer),
     );
+}
+
+test "parseRunOptions parses regenerate and internal preselected flags" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    const options = try parseRunOptions(&.{
+        "ios",
+        "examples/ios/WizigExample",
+        "--device",
+        "CAF0B1F5-83DF-477B-8955-43802FC77D58",
+        "--regenerate-host",
+        "--__wizig-skip-device-discovery",
+    }, &err_writer.writer);
+
+    try std.testing.expectEqual(Platform.ios, options.platform);
+    try std.testing.expect(options.regenerate_host);
+    try std.testing.expect(options.skip_device_discovery);
+    try std.testing.expect(!options.skip_codegen);
+}
+
+test "parseRunOptions rejects internal preselected flag without device" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    try std.testing.expectError(
+        error.RunFailed,
+        parseRunOptions(&.{
+            "android",
+            "examples/android/WizigExample",
+            "--__wizig-skip-device-discovery",
+        }, &err_writer.writer),
+    );
+}
+
+test "parseRunOptions parses internal skip-codegen flag" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    const options = try parseRunOptions(&.{
+        "android",
+        "examples/android/WizigExample",
+        "--device",
+        "emulator-5554",
+        "--__wizig-skip-codegen",
+    }, &err_writer.writer);
+
+    try std.testing.expect(options.skip_codegen);
 }
 
 test "parseAndroidDevicesOutput picks connected devices" {
@@ -2217,6 +2836,19 @@ test "chooseAndroidTarget selects avd by selector" {
         .avd => |name| try std.testing.expectEqualStrings("Pixel_9_API_35", name),
         else => return error.TestExpectedEqual,
     }
+}
+
+test "resolvePreselectedAndroidDevice rejects AVD selectors" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    try std.testing.expectError(
+        error.RunFailed,
+        resolvePreselectedAndroidDevice(arena, &err_writer.writer, "avd:Pixel_9_API_35"),
+    );
 }
 
 test "isTransientIosLaunchFailure detects flaky launch output" {

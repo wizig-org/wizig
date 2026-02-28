@@ -1,5 +1,7 @@
 # `core/src/root.zig`
 
+_Language: Zig_
+
 Public Wizig core API surface re-exported for consumers.
 
 ## Public API

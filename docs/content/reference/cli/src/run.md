@@ -1,5 +1,7 @@
 # `cli/src/run.zig`
 
+_Language: Zig_
+
 Shared run command entrypoint that forwards to unified runner.
 
 ## Public API

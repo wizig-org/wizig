@@ -1,0 +1,41 @@
+name: docs-check
+
+on:
+  pull_request:
+    paths:
+      - "**/*.zig"
+      - "**/*.swift"
+      - "**/*.kt"
+      - "docs/**"
+      - "scripts/docs_build.py"
+      - ".github/workflows/docs-check.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.zig"
+      - "**/*.swift"
+      - "**/*.kt"
+      - "docs/**"
+      - "scripts/docs_build.py"
+      - ".github/workflows/docs-check.yml"
+
+jobs:
+  docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install docs dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r docs/requirements.txt
+
+      - name: Validate docs determinism and reference freshness
+        run: python3 scripts/docs_build.py --check

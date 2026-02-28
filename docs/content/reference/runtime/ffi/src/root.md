@@ -1,5 +1,7 @@
 # `runtime/ffi/src/root.zig`
 
+_Language: Zig_
+
 Runtime-packaged C ABI bridge used in generated app projects.
 
 ## Public API

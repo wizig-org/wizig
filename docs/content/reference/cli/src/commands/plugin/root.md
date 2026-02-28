@@ -1,5 +1,7 @@
 # `cli/src/commands/plugin/root.zig`
 
+_Language: Zig_
+
 `wizig plugin` command handlers for validation, syncing, and adding plugins.
 
 ## Public API

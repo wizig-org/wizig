@@ -1,5 +1,7 @@
 # `cli/src/commands/codegen/targets.zig`
 
+_Language: Zig_
+
 Code generation target definitions.
 
 ## Public API

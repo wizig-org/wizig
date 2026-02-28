@@ -1,5 +1,7 @@
 # `cli/src/main.zig`
 
+_Language: Zig_
+
 Wizig CLI entrypoint and command router.
 
 ## Public API

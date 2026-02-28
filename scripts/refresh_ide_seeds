@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Refresh in-repo Wizig scaffold seeds from local IDE-created templates.
+
+This is a maintainer-only tool. Runtime/normal builds do not depend on external
+IDE template paths.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SEEDS_ROOT = REPO_ROOT / "templates" / "seeds"
+
+IOS_SOURCE_DIR = "WizigTemplateiOSmacOSMultiplatform"
+ANDROID_SOURCE_DIR = "WizigTemplateAndroid"
+
+IOS_EXCLUDE_PARTS = {
+    ".git",
+    "xcuserdata",
+}
+IOS_EXCLUDE_FILES = {
+    "UserInterfaceState.xcuserstate",
+    "xcschememanagement.plist",
+}
+
+ANDROID_EXCLUDE_PARTS = {
+    ".gradle",
+    ".idea",
+}
+ANDROID_EXCLUDE_FILES = {
+    "local.properties",
+}
+
+
+def should_skip(path: Path, exclude_parts: set[str], exclude_files: set[str]) -> bool:
+    if any(part in exclude_parts for part in path.parts):
+        return True
+    return path.name in exclude_files
+
+
+def copy_filtered(src_root: Path, dst_root: Path, exclude_parts: set[str], exclude_files: set[str]) -> None:
+    if dst_root.exists():
+        shutil.rmtree(dst_root)
+    dst_root.mkdir(parents=True, exist_ok=True)
+
+    for src_path in sorted(src_root.rglob("*")):
+        rel = src_path.relative_to(src_root)
+        if should_skip(rel, exclude_parts, exclude_files):
+            continue
+
+        dst_path = dst_root / rel
+        if src_path.is_dir():
+            dst_path.mkdir(parents=True, exist_ok=True)
+            continue
+
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_path, dst_path)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Refresh templates/seeds from local IDE templates")
+    parser.add_argument(
+        "--source",
+        default="/Users/arata/Developer/zig/IDE-Templates",
+        help="Path to IDE template root",
+    )
+    args = parser.parse_args()
+
+    source_root = Path(args.source).resolve()
+    if not source_root.exists():
+        raise SystemExit(f"source path does not exist: {source_root}")
+
+    ios_src = source_root / IOS_SOURCE_DIR
+    android_src = source_root / ANDROID_SOURCE_DIR
+    if not ios_src.exists():
+        raise SystemExit(f"missing iOS source directory: {ios_src}")
+    if not android_src.exists():
+        raise SystemExit(f"missing Android source directory: {android_src}")
+
+    ios_dst = SEEDS_ROOT / "ios"
+    android_dst = SEEDS_ROOT / "android"
+
+    copy_filtered(ios_src, ios_dst, IOS_EXCLUDE_PARTS, IOS_EXCLUDE_FILES)
+    copy_filtered(android_src, android_dst, ANDROID_EXCLUDE_PARTS, ANDROID_EXCLUDE_FILES)
+
+    print(f"refreshed seeds:\n- {ios_dst}\n- {android_dst}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

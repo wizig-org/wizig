@@ -1,5 +1,7 @@
 # `cli/src/run/unified.zig`
 
+_Language: Zig_
+
 Unified run mode that auto-detects iOS/Android hosts and devices.
 
 ## Public API

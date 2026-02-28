@@ -25,6 +25,29 @@ pub fn writeFileAtomically(io: std.Io, path: []const u8, contents: []const u8) !
     try atomic_file.replace(io);
 }
 
+/// Writes `contents` to `path` only when bytes changed, returning true when updated.
+pub fn writeFileIfChanged(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    path: []const u8,
+    contents: []const u8,
+) !bool {
+    const existing = std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(256 * 1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => {
+            try writeFileAtomically(io, path, contents);
+            return true;
+        },
+        else => return err,
+    };
+
+    if (std.mem.eql(u8, existing, contents)) {
+        return false;
+    }
+
+    try writeFileAtomically(io, path, contents);
+    return true;
+}
+
 /// Removes `path` tree if present; no-op when missing.
 pub fn removeTreeIfExists(io: std.Io, path: []const u8) !void {
     if (!pathExists(io, path)) return;
@@ -130,4 +153,19 @@ fn shouldSkipEntry(entry_path: []const u8) bool {
         if (std.mem.eql(u8, segment, ".DS_Store")) return true;
     }
     return false;
+}
+
+test "writeFileIfChanged only updates when content differs" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const io = std.testing.io;
+
+    const rel_path = try std.fmt.allocPrint(arena, ".zig-cache/tmp/{s}/sample.txt", .{tmp.sub_path});
+    try std.testing.expect(try writeFileIfChanged(arena, io, rel_path, "hello"));
+    try std.testing.expect(!(try writeFileIfChanged(arena, io, rel_path, "hello")));
+    try std.testing.expect(try writeFileIfChanged(arena, io, rel_path, "hello world"));
 }

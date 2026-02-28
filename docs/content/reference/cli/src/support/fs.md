@@ -1,5 +1,7 @@
 # `cli/src/support/fs.zig`
 
+_Language: Zig_
+
 Filesystem helpers used by Wizig CLI commands.
 
 ## Public API
@@ -26,6 +28,19 @@ Atomically writes `contents` to `path`, creating parents as needed.
 
 ```zig
 pub fn writeFileAtomically(io: std.Io, path: []const u8, contents: []const u8) !void {
+```
+
+### `writeFileIfChanged` (fn)
+
+Writes `contents` to `path` only when bytes changed, returning true when updated.
+
+```zig
+pub fn writeFileIfChanged(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    path: []const u8,
+    contents: []const u8,
+) !bool {
 ```
 
 ### `removeTreeIfExists` (fn)

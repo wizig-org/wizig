@@ -1,5 +1,7 @@
 # `examples/app/WizigExample/lib/main.zig`
 
+_Language: Zig_
+
 Example application Zig logic module.
 
 ## Public API

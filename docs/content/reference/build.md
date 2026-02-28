@@ -1,5 +1,7 @@
 # `build.zig`
 
+_Language: Zig_
+
 Wizig build graph.
 
 This file defines build/install targets for:

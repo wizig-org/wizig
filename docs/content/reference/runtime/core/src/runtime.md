@@ -1,5 +1,7 @@
 # `runtime/core/src/runtime.zig`
 
+_Language: Zig_
+
 Runtime-packaged minimal runtime object used by generated host bindings.
 
 ## Public API

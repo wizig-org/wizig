@@ -3,7 +3,11 @@
 Wizig docs are generated from:
 
 - Manual markdown pages in `docs/content/`
-- Zig source comments (`//!`, `///`) extracted into `docs/content/reference/`
+- Zig source comments (`//!`, `///`)
+- Swift source comments (`///`, `/** ... */`)
+- Kotlin source comments (`/** ... */`)
+
+Generated API reference pages are written to `docs/content/reference/`.
 
 ## Requirements
 
@@ -27,6 +31,9 @@ python3 scripts/docs_build.py --reference-only
 
 # Only rebuild static site from existing markdown
 python3 scripts/docs_build.py --site-only
+
+# Verify deterministic generation + checked-in reference freshness
+python3 scripts/docs_build.py --check
 ```
 
 Output site directory:

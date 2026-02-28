@@ -1,5 +1,7 @@
 # `cli/src/support/process.zig`
 
+_Language: Zig_
+
 Process execution helpers with checked error reporting.
 
 ## Public API

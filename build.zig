@@ -56,11 +56,19 @@ pub fn build(b: *std.Build) void {
     });
     b.getInstallStep().dependOn(&install_runtime.step);
 
+    const generate_templates = b.addSystemCommand(&.{
+        "python3",
+        "tools/templategen/generate_templates.py",
+        "--out",
+        "build/generated/templates",
+    });
+
     const install_templates = b.addInstallDirectory(.{
-        .source_dir = b.path("templates"),
+        .source_dir = b.path("build/generated/templates"),
         .install_dir = .prefix,
         .install_subdir = "share/wizig/templates",
     });
+    install_templates.step.dependOn(&generate_templates.step);
     b.getInstallStep().dependOn(&install_templates.step);
 
     const ffi_module = b.createModule(.{
@@ -154,4 +162,10 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_ffi_tests.step);
     test_step.dependOn(&run_compatibility_tests.step);
     test_step.dependOn(&run_cli_tests.step);
+
+    const e2e_step = b.step("e2e", "Run end-to-end scaffold/run checks");
+    const e2e_cmd = b.addSystemCommand(&.{ "/bin/bash", "scripts/e2e/self_contained_template_pipeline.sh" });
+    e2e_cmd.step.dependOn(b.getInstallStep());
+    e2e_cmd.setEnvironmentVariable("WIZIG_E2E_TEST_ROOT", "/tmp/wizig-e2e");
+    e2e_step.dependOn(&e2e_cmd.step);
 }

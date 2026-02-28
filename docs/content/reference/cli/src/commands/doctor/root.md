@@ -1,5 +1,7 @@
 # `cli/src/commands/doctor/root.zig`
 
+_Language: Zig_
+
 `wizig doctor` diagnostics for host tools and bundled assets.
 
 ## Public API

@@ -1,5 +1,7 @@
 # `templates/app/wizig.api.zig`
 
+_Language: Zig_
+
 Zig-first API contract for Wizig codegen.
 
 Edit this file to define the typed host <-> Zig surface.

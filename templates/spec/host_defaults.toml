@@ -1,0 +1,19 @@
+[host]
+ios_deployment_target = "18.0"
+android_compile_sdk = 36
+android_min_sdk = 26
+android_target_sdk = 36
+android_java_version = 21
+android_kotlin_jvm_target = "21"
+
+[seeds]
+ios_root_name = "WizigTemplate"
+ios_seed_variant = "ios-macos-source-normalized-to-ios"
+android_package = "dev.wizig.wizigtemplateandroid"
+
+[tokens]
+app_name = "{{APP_NAME}}"
+app_identifier = "{{APP_IDENTIFIER}}"
+app_type_name = "{{APP_TYPE_NAME}}"
+android_package = "{{ANDROID_PACKAGE}}"
+android_package_path = "{{ANDROID_PACKAGE_PATH}}"

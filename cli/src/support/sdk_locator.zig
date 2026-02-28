@@ -27,7 +27,7 @@ pub fn resolve(
         const candidate = try path_util.resolveAbsolute(arena, io, raw);
         try attempts.append(arena, candidate);
         if (isValidRoot(arena, io, candidate)) {
-            return buildResolved(arena, candidate);
+            return buildResolved(arena, io, candidate);
         }
     }
 
@@ -35,7 +35,7 @@ pub fn resolve(
         const candidate = try path_util.resolveAbsolute(arena, io, raw);
         try attempts.append(arena, candidate);
         if (isValidRoot(arena, io, candidate)) {
-            return buildResolved(arena, candidate);
+            return buildResolved(arena, io, candidate);
         }
     }
 
@@ -45,13 +45,13 @@ pub fn resolve(
         const bundled_share = try std.fs.path.resolve(arena, &.{ exe_dir, "..", "share", "wizig" });
         try attempts.append(arena, bundled_share);
         if (isValidRoot(arena, io, bundled_share)) {
-            return buildResolved(arena, bundled_share);
+            return buildResolved(arena, io, bundled_share);
         }
 
         const bundled_resources = try std.fs.path.resolve(arena, &.{ exe_dir, "..", "Resources", "wizig" });
         try attempts.append(arena, bundled_resources);
         if (isValidRoot(arena, io, bundled_resources)) {
-            return buildResolved(arena, bundled_resources);
+            return buildResolved(arena, io, bundled_resources);
         }
     } else |_| {}
 
@@ -60,7 +60,7 @@ pub fn resolve(
     while (true) {
         try attempts.append(arena, probe);
         if (isValidRoot(arena, io, probe)) {
-            return buildResolved(arena, probe);
+            return buildResolved(arena, io, probe);
         }
         const parent = std.fs.path.dirname(probe) orelse break;
         if (std.mem.eql(u8, parent, probe)) break;
@@ -77,10 +77,17 @@ pub fn resolve(
     return error.NotFound;
 }
 
-fn buildResolved(arena: std.mem.Allocator, root: []const u8) !ResolvedSdk {
+fn buildResolved(arena: std.mem.Allocator, io: std.Io, root: []const u8) !ResolvedSdk {
     const sdk_dir = try path_util.join(arena, root, "sdk");
     const runtime_dir = try path_util.join(arena, root, "runtime");
-    const templates_dir = try path_util.join(arena, root, "templates");
+    const generated_templates_dir = try path_util.join(arena, root, "build/generated/templates");
+    const source_templates_dir = try path_util.join(arena, root, "templates");
+    const templates_dir = if (isValidTemplatesRoot(arena, io, generated_templates_dir))
+        generated_templates_dir
+    else if (isValidTemplatesRoot(arena, io, source_templates_dir))
+        source_templates_dir
+    else
+        return error.NotFound;
     return .{
         .root = root,
         .sdk_dir = sdk_dir,
@@ -94,11 +101,23 @@ fn isValidRoot(arena: std.mem.Allocator, io: std.Io, root: []const u8) bool {
     const marker_b = path_util.join(arena, root, "sdk/android/src/main/kotlin/dev/wizig/WizigRuntime.kt") catch return false;
     const marker_c = path_util.join(arena, root, "runtime/ffi/src/root.zig") catch return false;
     const marker_d = path_util.join(arena, root, "runtime/core/src/root.zig") catch return false;
-    const marker_e = path_util.join(arena, root, "templates/app/README.md") catch return false;
+    const generated_templates_dir = path_util.join(arena, root, "build/generated/templates") catch return false;
+    const source_templates_dir = path_util.join(arena, root, "templates") catch return false;
+    const has_templates = isValidTemplatesRoot(arena, io, generated_templates_dir) or isValidTemplatesRoot(arena, io, source_templates_dir);
 
     return fs_util.pathExists(io, marker_a) and
         fs_util.pathExists(io, marker_b) and
         fs_util.pathExists(io, marker_c) and
         fs_util.pathExists(io, marker_d) and
-        fs_util.pathExists(io, marker_e);
+        has_templates;
+}
+
+fn isValidTemplatesRoot(arena: std.mem.Allocator, io: std.Io, templates_root: []const u8) bool {
+    const marker_readme = path_util.join(arena, templates_root, "app/README.md") catch return false;
+    const marker_ios = path_util.join(arena, templates_root, "app/ios/__APP_NAME__.xcodeproj/project.pbxproj") catch return false;
+    const marker_android = path_util.join(arena, templates_root, "app/android/app/build.gradle.kts") catch return false;
+
+    return fs_util.pathExists(io, marker_readme) and
+        fs_util.pathExists(io, marker_ios) and
+        fs_util.pathExists(io, marker_android);
 }

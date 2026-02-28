@@ -1,5 +1,7 @@
 # `cli/src/commands/create/scaffold.zig`
 
+_Language: Zig_
+
 Project scaffolding for `wizig create`.
 
 ## Public API
@@ -35,12 +37,13 @@ pub fn createApp(
     destination_dir_raw: []const u8,
     platforms: CreatePlatforms,
     explicit_sdk_root: ?[]const u8,
+    force_host_overwrite: bool,
 ) !void {
 ```
 
 ### `createIos` (fn)
 
-Creates the iOS host scaffold and optionally runs `xcodegen generate`.
+Creates the iOS host scaffold from bundled templates.
 
 ```zig
 pub fn createIos(
@@ -51,6 +54,7 @@ pub fn createIos(
     templates_root: []const u8,
     app_name_raw: []const u8,
     destination_dir_raw: []const u8,
+    force_host_overwrite: bool,
 ) !void {
 ```
 
@@ -65,7 +69,9 @@ pub fn createAndroid(
     parent_environ_map: *const std.process.Environ.Map,
     stderr: *Io.Writer,
     stdout: *Io.Writer,
+    templates_root: []const u8,
     app_name_raw: []const u8,
     destination_dir_raw: []const u8,
+    force_host_overwrite: bool,
 ) !void {
 ```

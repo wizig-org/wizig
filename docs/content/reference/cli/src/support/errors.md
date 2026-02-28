@@ -1,5 +1,7 @@
 # `cli/src/support/errors.zig`
 
+_Language: Zig_
+
 Shared CLI-level error tags.
 
 ## Public API

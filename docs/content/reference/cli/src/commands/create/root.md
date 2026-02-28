@@ -1,5 +1,7 @@
 # `cli/src/commands/create/root.zig`
 
+_Language: Zig_
+
 `wizig create` command parser and dispatch.
 
 ## Public API
