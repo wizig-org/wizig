@@ -145,16 +145,26 @@ def inject_wizig_package_reference(text: str) -> str:
     if f"\t\t\t\t{shell_phase_id} /* Wizig FFI Build */,\n" not in text:
         text = text.replace(
             "\t\t\tbuildPhases = (\n\t\t\t\tAB25979F2F532F6600C45779 /* Sources */,\n\t\t\t\tAB2597A02F532F6600C45779 /* Frameworks */,\n\t\t\t\tAB2597A12F532F6600C45779 /* Resources */,\n\t\t\t);\n",
-            "\t\t\tbuildPhases = (\n\t\t\t\tAB25979F2F532F6600C45779 /* Sources */,\n"
+            "\t\t\tbuildPhases = (\n"
             f"\t\t\t\t{shell_phase_id} /* Wizig FFI Build */,\n"
+            "\t\t\t\tAB25979F2F532F6600C45779 /* Sources */,\n"
             "\t\t\t\tAB2597A02F532F6600C45779 /* Frameworks */,\n\t\t\t\tAB2597A12F532F6600C45779 /* Resources */,\n\t\t\t);\n",
             1,
         )
 
-    if shell_phase_id not in text:
+    if f"\t\t{shell_phase_id} /* Wizig FFI Build */ = {{\n" not in text:
         shell_script = (
             "set -euo pipefail\n"
             "APP_ROOT=\"${SRCROOT}/..\"\n"
+            "WIZIG_BIN=\"${WIZIG_BIN:-}\"\n"
+            "if [ -z \"${WIZIG_BIN}\" ] && command -v wizig >/dev/null 2>&1; then\n"
+            "  WIZIG_BIN=\"$(command -v wizig)\"\n"
+            "fi\n"
+            "if [ -n \"${WIZIG_BIN}\" ]; then\n"
+            "  if ! \"${WIZIG_BIN}\" codegen \"${APP_ROOT}\" >/dev/null 2>&1; then\n"
+            "    echo \"warning: wizig codegen failed from Xcode build; continuing with existing generated artifacts\"\n"
+            "  fi\n"
+            "fi\n"
             "GENERATED_ROOT=\"${APP_ROOT}/.wizig/generated/zig\"\n"
             "RUNTIME_ROOT=\"${APP_ROOT}/.wizig/runtime\"\n"
             "APP_MODULE=\"${APP_ROOT}/lib/WizigGeneratedAppModule.zig\"\n"
@@ -177,7 +187,32 @@ def inject_wizig_package_reference(text: str) -> str:
             "  TARGET_TRIPLE=\"aarch64-ios-simulator\"\n"
             "  SDK_PATH=\"$(xcrun --sdk iphonesimulator --show-sdk-path)\"\n"
             "fi\n"
-            "zig build-lib -OReleaseFast -target \"${TARGET_TRIPLE}\" --dep wizig_core --dep wizig_app \\\n"
+            "ZIG_BIN=\"${WIZIG_ZIG_BIN:-${ZIG_BIN:-}}\"\n"
+            "if [ -z \"${ZIG_BIN}\" ] && command -v zig >/dev/null 2>&1; then\n"
+            "  ZIG_BIN=\"$(command -v zig)\"\n"
+            "fi\n"
+            "if [ -z \"${ZIG_BIN}\" ] && [ -n \"${WIZIG_BIN}\" ]; then\n"
+            "  WIZIG_BIN_DIR=\"$(cd \"$(dirname \"${WIZIG_BIN}\")\" && pwd)\"\n"
+            "  for candidate in \"${WIZIG_BIN_DIR}/zig\" \"${WIZIG_BIN_DIR}/../zig\"; do\n"
+            "    if [ -x \"${candidate}\" ]; then\n"
+            "      ZIG_BIN=\"${candidate}\"\n"
+            "      break\n"
+            "    fi\n"
+            "  done\n"
+            "fi\n"
+            "if [ -z \"${ZIG_BIN}\" ]; then\n"
+            "  for candidate in \"/opt/homebrew/bin/zig\" \"/usr/local/bin/zig\" \"${HOME}/.zvm/bin/zig\" \"${HOME}/.zvm/master/zig\"; do\n"
+            "    if [ -x \"${candidate}\" ]; then\n"
+            "      ZIG_BIN=\"${candidate}\"\n"
+            "      break\n"
+            "    fi\n"
+            "  done\n"
+            "fi\n"
+            "if [ -z \"${ZIG_BIN}\" ]; then\n"
+            "  echo \"error: unable to find zig compiler (set WIZIG_ZIG_BIN or add zig to PATH)\"\n"
+            "  exit 1\n"
+            "fi\n"
+            "\"${ZIG_BIN}\" build-lib -OReleaseFast -target \"${TARGET_TRIPLE}\" --dep wizig_core --dep wizig_app \\\n"
             "  -Mroot=\"${FFI_ROOT}\" \\\n"
             "  -Mwizig_core=\"${RUNTIME_ROOT}/core/src/root.zig\" \\\n"
             "  -Mwizig_app=\"${APP_MODULE}\" \\\n"

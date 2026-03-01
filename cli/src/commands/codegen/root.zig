@@ -31,6 +31,71 @@ pub const EnsureCodegenResult = enum {
     generated,
 };
 
+const wizig_ios_shell_phase_id = "D0A0A0A0A0A0A0A0A0A0A010";
+const wizig_ios_shell_phase_ref_line = "\t\t\t\t" ++ wizig_ios_shell_phase_id ++ " /* Wizig FFI Build */,\n";
+const wizig_ios_shell_phase_object_marker = "\t\t" ++ wizig_ios_shell_phase_id ++ " /* Wizig FFI Build */ = {\n";
+const wizig_ios_shell_script =
+    \\set -euo pipefail
+    \\APP_ROOT="${SRCROOT}/.."
+    \\WIZIG_BIN="${WIZIG_BIN:-}"
+    \\if [ -z "${WIZIG_BIN}" ] && command -v wizig >/dev/null 2>&1; then
+    \\  WIZIG_BIN="$(command -v wizig)"
+    \\fi
+    \\if [ -n "${WIZIG_BIN}" ]; then
+    \\  if ! "${WIZIG_BIN}" codegen "${APP_ROOT}" >/dev/null 2>&1; then
+    \\    echo "warning: wizig codegen failed from Xcode build; continuing with existing generated artifacts"
+    \\  fi
+    \\fi
+    \\GENERATED_ROOT="${APP_ROOT}/.wizig/generated/zig"
+    \\RUNTIME_ROOT="${APP_ROOT}/.wizig/runtime"
+    \\APP_MODULE="${APP_ROOT}/lib/WizigGeneratedAppModule.zig"
+    \\FFI_ROOT="${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig"
+    \\if [ ! -f "${FFI_ROOT}" ]; then
+    \\  echo "warning: missing ${FFI_ROOT}; run 'wizig codegen ${APP_ROOT}'"
+    \\  exit 0
+    \\fi
+    \\OUT_DIR="${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks"
+    \\mkdir -p "${OUT_DIR}"
+    \\PLATFORM="${PLATFORM_NAME:-iphonesimulator}"
+    \\ARCH="${NATIVE_ARCH_ACTUAL:-${CURRENT_ARCH:-arm64}}"
+    \\if [ "${PLATFORM}" = "iphoneos" ]; then
+    \\  TARGET_TRIPLE="aarch64-ios"
+    \\  SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
+    \\elif [ "${ARCH}" = "x86_64" ]; then
+    \\  TARGET_TRIPLE="x86_64-ios-simulator"
+    \\  SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+    \\else
+    \\  TARGET_TRIPLE="aarch64-ios-simulator"
+    \\  SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+    \\fi
+    \\ZIG_BIN="${WIZIG_ZIG_BIN:-${ZIG_BIN:-}}"
+    \\if [ -z "${ZIG_BIN}" ] && command -v zig >/dev/null 2>&1; then
+    \\  ZIG_BIN="$(command -v zig)"
+    \\fi
+    \\if [ -z "${ZIG_BIN}" ] && [ -n "${WIZIG_BIN}" ]; then
+    \\  WIZIG_BIN_DIR="$(cd "$(dirname "${WIZIG_BIN}")" && pwd)"
+    \\  for candidate in "${WIZIG_BIN_DIR}/zig" "${WIZIG_BIN_DIR}/../zig"; do
+    \\    if [ -x "${candidate}" ]; then
+    \\      ZIG_BIN="${candidate}"
+    \\      break
+    \\    fi
+    \\  done
+    \\fi
+    \\if [ -z "${ZIG_BIN}" ]; then
+    \\  for candidate in "/opt/homebrew/bin/zig" "/usr/local/bin/zig" "${HOME}/.zvm/bin/zig" "${HOME}/.zvm/master/zig"; do
+    \\    if [ -x "${candidate}" ]; then
+    \\      ZIG_BIN="${candidate}"
+    \\      break
+    \\    fi
+    \\  done
+    \\fi
+    \\if [ -z "${ZIG_BIN}" ]; then
+    \\  echo "error: unable to find zig compiler (set WIZIG_ZIG_BIN or add zig to PATH)"
+    \\  exit 1
+    \\fi
+    \\"${ZIG_BIN}" build-lib -OReleaseFast -target "${TARGET_TRIPLE}" --dep wizig_core --dep wizig_app -Mroot="${FFI_ROOT}" -Mwizig_core="${RUNTIME_ROOT}/core/src/root.zig" -Mwizig_app="${APP_MODULE}" --name wizigffi -dynamic -fstrip -install_name @rpath/wizigffi --sysroot "${SDK_PATH}" -L/usr/lib -F/System/Library/Frameworks -lc -femit-bin="${OUT_DIR}/wizigffi"
+;
+
 /// Parses codegen CLI options and triggers project generation.
 pub fn run(
     arena: std.mem.Allocator,
@@ -258,6 +323,7 @@ pub fn generateProject(
     const ios_project_info = try resolveIosProjectInfo(arena, io, project_root);
     const ios_mirror_swift_file = if (ios_project_info) |info| @as(?[]const u8, info.mirror_swift_file) else null;
     const ios_build_server_file = if (ios_project_info) |info| @as(?[]const u8, info.build_server_file) else null;
+    const ios_pbxproj_file = if (ios_project_info) |info| @as(?[]const u8, info.pbxproj_file) else null;
     const ios_build_server_out = if (ios_project_info) |info|
         @as(?[]u8, try renderIosBuildServerConfig(arena, info.project_name))
     else
@@ -288,9 +354,13 @@ pub fn generateProject(
         try fs_util.writeFileIfChanged(arena, io, sdk_path, kotlin_out)
     else
         false;
+    const ios_pbxproj_changed = if (ios_project_info) |ios_info|
+        try ensureIosPbxprojWiring(arena, io, stderr, ios_info)
+    else
+        false;
 
     if (ios_project_info) |ios_info| {
-        if (ios_build_server_changed and process_util.commandExists(arena, io, "xcode-build-server")) {
+        if (process_util.commandExists(arena, io, "xcode-build-server")) {
             const xcodeproj_name = try std.fmt.allocPrint(arena, "{s}.xcodeproj", .{ios_info.project_name});
             refresh_build_server: {
                 const result = process_util.runCapture(
@@ -322,7 +392,7 @@ pub fn generateProject(
         }
     }
 
-    if (zig_changed or zig_ffi_changed or zig_app_module_changed or swift_changed or kotlin_changed or android_jni_bridge_changed or android_jni_cmake_changed or ios_mirror_changed or ios_build_server_changed or sdk_swift_changed or sdk_kotlin_changed) {
+    if (zig_changed or zig_ffi_changed or zig_app_module_changed or swift_changed or kotlin_changed or android_jni_bridge_changed or android_jni_cmake_changed or ios_mirror_changed or ios_build_server_changed or ios_pbxproj_changed or sdk_swift_changed or sdk_kotlin_changed) {
         try stdout.print("generated API bindings ({s})\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}", .{
             if (maybe_source) |source| if (source == .zig) "zig contract + discovery" else "json contract + discovery" else "auto-discovery",
             zig_file,
@@ -338,6 +408,9 @@ pub fn generateProject(
         }
         if (ios_build_server_file) |build_server_path| {
             try stdout.print("\n- {s}", .{build_server_path});
+        }
+        if (ios_pbxproj_file) |pbxproj_path| {
+            try stdout.print("\n- {s}", .{pbxproj_path});
         }
         if (sdk_swift_file) |sdk_path| {
             try stdout.print("\n- {s}", .{sdk_path});
@@ -370,6 +443,7 @@ fn defaultApiSpecForProject(arena: std.mem.Allocator, project_root: []const u8) 
 const IosProjectInfo = struct {
     ios_dir: []const u8,
     project_name: []const u8,
+    pbxproj_file: []const u8,
     mirror_swift_file: []const u8,
     build_server_file: []const u8,
 };
@@ -401,12 +475,15 @@ fn resolveIosProjectInfo(
 
         const generated_dir = try path_util.join(arena, host_dir, "Generated");
         try fs_util.ensureDir(io, generated_dir);
+        const pbxproj_dir = try path_util.join(arena, ios_dir, entry.path);
+        const pbxproj_path = try path_util.join(arena, pbxproj_dir, "project.pbxproj");
         const mirror_path = try path_util.join(arena, generated_dir, "WizigGeneratedApi.swift");
         const build_server_path = try path_util.join(arena, ios_dir, "buildServer.json");
 
         return IosProjectInfo{
             .ios_dir = ios_dir,
             .project_name = project_name,
+            .pbxproj_file = pbxproj_path,
             .mirror_swift_file = mirror_path,
             .build_server_file = build_server_path,
         };
@@ -435,6 +512,204 @@ fn resolveSdkKotlinApiFile(
     if (!fs_util.pathExists(io, sdk_dir)) return null;
     const path = try path_util.join(arena, sdk_dir, "WizigGeneratedApi.kt");
     return @as(?[]const u8, path);
+}
+
+fn ensureIosPbxprojWiring(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    ios_info: IosProjectInfo,
+) !bool {
+    if (!fs_util.pathExists(io, ios_info.pbxproj_file)) return false;
+
+    const source = std.Io.Dir.cwd().readFileAlloc(io, ios_info.pbxproj_file, arena, .limited(16 * 1024 * 1024)) catch |err| {
+        try stderr.print("warning: failed to read iOS project file '{s}': {s}\n", .{ ios_info.pbxproj_file, @errorName(err) });
+        return false;
+    };
+
+    const patched = try patchIosPbxprojWiring(arena, source, ios_info.project_name);
+    if (std.mem.eql(u8, source, patched)) return false;
+
+    _ = try fs_util.writeFileIfChanged(arena, io, ios_info.pbxproj_file, patched);
+    return true;
+}
+
+fn patchIosPbxprojWiring(
+    arena: std.mem.Allocator,
+    source: []const u8,
+    project_name: []const u8,
+) ![]const u8 {
+    var current = source;
+    current = try ensureAppTargetWizigBuildPhaseReference(arena, current, project_name);
+    current = try ensureWizigShellScriptBuildPhaseObject(arena, current);
+    return current;
+}
+
+fn ensureAppTargetWizigBuildPhaseReference(
+    arena: std.mem.Allocator,
+    source: []const u8,
+    project_name: []const u8,
+) ![]const u8 {
+    const target_marker = try std.fmt.allocPrint(arena, "/* {s} */ = {{\n\t\t\tisa = PBXNativeTarget;\n", .{project_name});
+    const target_start = std.mem.indexOf(u8, source, target_marker) orelse return source;
+    const target_end = std.mem.indexOfPos(u8, source, target_start, "\t\t};\n") orelse return source;
+
+    const build_phases_marker = "buildPhases = (\n";
+    const phases_start = std.mem.indexOfPos(u8, source, target_start, build_phases_marker) orelse return source;
+    if (phases_start >= target_end) return source;
+
+    const entries_start = phases_start + build_phases_marker.len;
+    const entries_end = std.mem.indexOfPos(u8, source, entries_start, "\t\t\t);\n") orelse return source;
+    if (entries_end > target_end) return source;
+
+    const entries = source[entries_start..entries_end];
+    var lines = std.ArrayList([]const u8).empty;
+    defer lines.deinit(arena);
+
+    var it = std.mem.splitScalar(u8, entries, '\n');
+    while (it.next()) |line| {
+        if (line.len == 0) continue;
+        if (std.mem.indexOf(u8, line, "/* Wizig FFI Build */") != null) continue;
+        try lines.append(arena, line);
+    }
+
+    var source_index: ?usize = null;
+    for (lines.items, 0..) |line, idx| {
+        if (std.mem.indexOf(u8, line, "/* Sources */") != null) {
+            source_index = idx;
+            break;
+        }
+    }
+
+    var updated_entries = std.ArrayList(u8).empty;
+    defer updated_entries.deinit(arena);
+
+    if (source_index == null) {
+        try updated_entries.appendSlice(arena, wizig_ios_shell_phase_ref_line);
+    }
+
+    for (lines.items, 0..) |line, idx| {
+        if (source_index != null and idx == source_index.?) {
+            try updated_entries.appendSlice(arena, wizig_ios_shell_phase_ref_line);
+        }
+        try updated_entries.appendSlice(arena, line);
+        try updated_entries.append(arena, '\n');
+    }
+
+    if (std.mem.eql(u8, entries, updated_entries.items)) return source;
+    return replaceRange(arena, source, entries_start, entries_end, updated_entries.items);
+}
+
+fn ensureWizigShellScriptBuildPhaseObject(
+    arena: std.mem.Allocator,
+    source: []const u8,
+) ![]const u8 {
+    const object_block = try renderIosShellScriptBuildPhase(arena);
+    if (std.mem.indexOf(u8, source, wizig_ios_shell_phase_object_marker)) |object_start| {
+        const object_end_marker = "\t\t};\n";
+        const object_end_start = std.mem.indexOfPos(
+            u8,
+            source,
+            object_start + wizig_ios_shell_phase_object_marker.len,
+            object_end_marker,
+        ) orelse return source;
+        const object_end = object_end_start + object_end_marker.len;
+        if (std.mem.eql(u8, source[object_start..object_end], object_block)) return source;
+        return replaceRange(arena, source, object_start, object_end, object_block);
+    }
+
+    const section_begin = "/* Begin PBXShellScriptBuildPhase section */\n";
+    const section_end = "/* End PBXShellScriptBuildPhase section */\n";
+
+    if (std.mem.indexOf(u8, source, section_begin)) |begin_index| {
+        if (std.mem.indexOfPos(u8, source, begin_index, section_end)) |end_index| {
+            return insertAt(arena, source, end_index, object_block);
+        }
+    }
+
+    const sources_section = "/* Begin PBXSourcesBuildPhase section */\n";
+    if (std.mem.indexOf(u8, source, sources_section)) |insert_at| {
+        const section_block = try std.fmt.allocPrint(arena, "{s}{s}{s}\n", .{
+            section_begin,
+            object_block,
+            section_end,
+        });
+        return insertAt(arena, source, insert_at, section_block);
+    }
+
+    return source;
+}
+
+fn renderIosShellScriptBuildPhase(arena: std.mem.Allocator) ![]u8 {
+    const encoded_script = try encodePbxQuotedString(arena, wizig_ios_shell_script);
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(arena);
+
+    try out.appendSlice(arena, "\t\t");
+    try out.appendSlice(arena, wizig_ios_shell_phase_id);
+    try out.appendSlice(arena, " /* Wizig FFI Build */ = {\n");
+    try out.appendSlice(arena, "\t\t\tisa = PBXShellScriptBuildPhase;\n");
+    try out.appendSlice(arena, "\t\t\talwaysOutOfDate = 1;\n");
+    try out.appendSlice(arena, "\t\t\tbuildActionMask = 2147483647;\n");
+    try out.appendSlice(arena, "\t\t\tfiles = (\n");
+    try out.appendSlice(arena, "\t\t\t);\n");
+    try out.appendSlice(arena, "\t\t\tinputFileListPaths = (\n");
+    try out.appendSlice(arena, "\t\t\t);\n");
+    try out.appendSlice(arena, "\t\t\tinputPaths = (\n");
+    try out.appendSlice(arena, "\t\t\t\t\"$(SRCROOT)/../.wizig/generated/zig/WizigGeneratedFfiRoot.zig\",\n");
+    try out.appendSlice(arena, "\t\t\t\t\"$(SRCROOT)/../.wizig/runtime/core/src/root.zig\",\n");
+    try out.appendSlice(arena, "\t\t\t\t\"$(SRCROOT)/../lib/WizigGeneratedAppModule.zig\",\n");
+    try out.appendSlice(arena, "\t\t\t);\n");
+    try out.appendSlice(arena, "\t\t\tname = \"Wizig FFI Build\";\n");
+    try out.appendSlice(arena, "\t\t\toutputFileListPaths = (\n");
+    try out.appendSlice(arena, "\t\t\t);\n");
+    try out.appendSlice(arena, "\t\t\toutputPaths = (\n");
+    try out.appendSlice(arena, "\t\t\t\t\"$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Frameworks/wizigffi\",\n");
+    try out.appendSlice(arena, "\t\t\t);\n");
+    try out.appendSlice(arena, "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n");
+    try out.appendSlice(arena, "\t\t\tshellPath = /bin/sh;\n");
+    try out.appendSlice(arena, "\t\t\tshellScript = \"");
+    try out.appendSlice(arena, encoded_script);
+    try out.appendSlice(arena, "\";\n");
+    try out.appendSlice(arena, "\t\t};\n");
+
+    return out.toOwnedSlice(arena);
+}
+
+fn encodePbxQuotedString(arena: std.mem.Allocator, source: []const u8) ![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(arena);
+
+    for (source) |byte| {
+        switch (byte) {
+            '\\' => try out.appendSlice(arena, "\\\\"),
+            '"' => try out.appendSlice(arena, "\\\""),
+            '\n' => try out.appendSlice(arena, "\\n"),
+            '\r' => {},
+            else => try out.append(arena, byte),
+        }
+    }
+
+    return out.toOwnedSlice(arena);
+}
+
+fn replaceRange(
+    arena: std.mem.Allocator,
+    source: []const u8,
+    start: usize,
+    end: usize,
+    replacement: []const u8,
+) ![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(arena);
+    try out.appendSlice(arena, source[0..start]);
+    try out.appendSlice(arena, replacement);
+    try out.appendSlice(arena, source[end..]);
+    return out.toOwnedSlice(arena);
+}
+
+fn insertAt(arena: std.mem.Allocator, source: []const u8, index: usize, insertion: []const u8) ![]u8 {
+    return replaceRange(arena, source, index, index, insertion);
 }
 
 const ApiType = enum {
@@ -909,6 +1184,11 @@ fn renderZigFfiRoot(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     try out.appendSlice(arena, "pub export fn getauxval(_: usize) usize {\n");
     try out.appendSlice(arena, "    return 0;\n");
     try out.appendSlice(arena, "}\n\n");
+    // Zig std debug paths may reference this dyld symbol on Apple mobile targets.
+    // iOS simulator/device SDKs do not always expose it, so provide a no-op fallback.
+    try out.appendSlice(arena, "pub export fn _dyld_get_image_header_containing_address(_: ?*const anyopaque) ?*const anyopaque {\n");
+    try out.appendSlice(arena, "    return null;\n");
+    try out.appendSlice(arena, "}\n\n");
 
     try out.appendSlice(arena, "fn statusCode(status: Status) i32 {\n");
     try out.appendSlice(arena, "    return @intFromEnum(status);\n");
@@ -1324,7 +1604,9 @@ fn renderSwiftApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
 
     try out.appendSlice(arena, "// Code generated by `wizig codegen`. DO NOT EDIT.\n");
     try out.appendSlice(arena, "import Darwin\n");
-    try out.appendSlice(arena, "import Foundation\n\n");
+    try out.appendSlice(arena, "import Dispatch\n");
+    try out.appendSlice(arena, "import Foundation\n");
+    try out.appendSlice(arena, "import OSLog\n\n");
 
     try out.appendSlice(arena, "public protocol WizigGeneratedEventSink: AnyObject {\n");
     for (spec.events) |event| {
@@ -1360,6 +1642,49 @@ fn renderSwiftApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
 
     try out.appendSlice(arena, "private enum WizigGeneratedStatus: Int32 {\n");
     try out.appendSlice(arena, "    case ok = 0\n");
+    try out.appendSlice(arena, "}\n\n");
+
+    try out.appendSlice(arena, "private enum WizigGeneratedConsoleBridge {\n");
+    try out.appendSlice(arena, "    private static let logger = Logger(\n");
+    try out.appendSlice(arena, "        subsystem: Bundle.main.bundleIdentifier ?? \"dev.wizig.runtime\",\n");
+    try out.appendSlice(arena, "        category: \"WizigBackend\"\n");
+    try out.appendSlice(arena, "    )\n\n");
+    try out.appendSlice(arena, "    private final class Runtime: @unchecked Sendable {\n");
+    try out.appendSlice(arena, "        let pipe: Pipe\n");
+    try out.appendSlice(arena, "        let source: DispatchSourceRead\n\n");
+    try out.appendSlice(arena, "        init?() {\n");
+    try out.appendSlice(arena, "#if os(iOS) || os(tvOS) || os(watchOS)\n");
+    try out.appendSlice(arena, "            let pipe = Pipe()\n");
+    try out.appendSlice(arena, "            let readFd = pipe.fileHandleForReading.fileDescriptor\n");
+    try out.appendSlice(arena, "            let writeFd = pipe.fileHandleForWriting.fileDescriptor\n");
+    try out.appendSlice(arena, "            if dup2(writeFd, STDOUT_FILENO) == -1 { return nil }\n");
+    try out.appendSlice(arena, "            if dup2(writeFd, STDERR_FILENO) == -1 { return nil }\n");
+    try out.appendSlice(arena, "            setvbuf(__stdoutp, nil, _IONBF, 0)\n");
+    try out.appendSlice(arena, "            setvbuf(__stderrp, nil, _IONBF, 0)\n");
+    try out.appendSlice(arena, "            let source = DispatchSource.makeReadSource(fileDescriptor: readFd, queue: DispatchQueue.global(qos: .utility))\n");
+    try out.appendSlice(arena, "            let logger = WizigGeneratedConsoleBridge.logger\n");
+    try out.appendSlice(arena, "            source.setEventHandler {\n");
+    try out.appendSlice(arena, "                var buffer = [UInt8](repeating: 0, count: 4096)\n");
+    try out.appendSlice(arena, "                let readCount = Darwin.read(readFd, &buffer, buffer.count)\n");
+    try out.appendSlice(arena, "                guard readCount > 0 else { return }\n");
+    try out.appendSlice(arena, "                let text = String(decoding: buffer[0..<readCount], as: UTF8.self)\n");
+    try out.appendSlice(arena, "                for line in text.split(whereSeparator: \\.isNewline) {\n");
+    try out.appendSlice(arena, "                    guard !line.isEmpty else { continue }\n");
+    try out.appendSlice(arena, "                    logger.notice(\"[WizigBackend] \\(String(line), privacy: .public)\")\n");
+    try out.appendSlice(arena, "                }\n");
+    try out.appendSlice(arena, "            }\n");
+    try out.appendSlice(arena, "            source.resume()\n");
+    try out.appendSlice(arena, "            self.pipe = pipe\n");
+    try out.appendSlice(arena, "            self.source = source\n");
+    try out.appendSlice(arena, "#else\n");
+    try out.appendSlice(arena, "            return nil\n");
+    try out.appendSlice(arena, "#endif\n");
+    try out.appendSlice(arena, "        }\n");
+    try out.appendSlice(arena, "    }\n\n");
+    try out.appendSlice(arena, "    private static let runtime: Runtime? = Runtime()\n\n");
+    try out.appendSlice(arena, "    static func installIfNeeded() {\n");
+    try out.appendSlice(arena, "        _ = runtime\n");
+    try out.appendSlice(arena, "    }\n");
     try out.appendSlice(arena, "}\n\n");
 
     try out.appendSlice(arena, "private final class WizigGeneratedFFI {\n");
@@ -1422,6 +1747,7 @@ fn renderSwiftApi(arena: std.mem.Allocator, spec: ApiSpec) ![]u8 {
     try out.appendSlice(arena, "    public weak var sink: WizigGeneratedEventSink?\n");
     try out.appendSlice(arena, "    private let ffi: WizigGeneratedFFI\n\n");
     try out.appendSlice(arena, "    public init(libraryPath: String? = nil, sink: WizigGeneratedEventSink? = nil) throws {\n");
+    try out.appendSlice(arena, "        WizigGeneratedConsoleBridge.installIfNeeded()\n");
     try out.appendSlice(arena, "        self.ffi = try WizigGeneratedFFI(libraryPath: libraryPath)\n");
     try out.appendSlice(arena, "        self.sink = sink\n");
     try out.appendSlice(arena, "        try validateBindings()\n");

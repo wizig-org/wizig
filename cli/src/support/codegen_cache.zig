@@ -3,7 +3,7 @@ const std = @import("std");
 const fs_util = @import("fs.zig");
 
 pub const auto_discovery_contract_path = "__auto_discovery__";
-pub const fingerprint_version = "wizig-codegen-v9";
+pub const fingerprint_version = "wizig-codegen-v13";
 pub const manifest_schema_version: u32 = 1;
 
 /// Persistent cache metadata describing the last successful codegen state.

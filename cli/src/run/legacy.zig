@@ -357,6 +357,16 @@ fn runIos(
 
     const destination = try std.fmt.allocPrint(arena, "id={s}", .{selected.udid});
     const derived_data = try std.fmt.allocPrint(arena, "/tmp/wizig-derived-{s}", .{scheme});
+    var build_env = try parent_environ_map.clone(arena);
+    defer build_env.deinit();
+
+    const wizig_bin_for_xcode = parent_environ_map.get("WIZIG_BIN") orelse std.process.executablePathAlloc(io, arena) catch null;
+    if (wizig_bin_for_xcode) |path| {
+        try build_env.put("WIZIG_BIN", path);
+    }
+    if (try resolveZigCompilerPath(arena, io, parent_environ_map)) |zig_path| {
+        try build_env.put("WIZIG_ZIG_BIN", zig_path);
+    }
 
     try stdout.writeAll("building iOS app...\n");
     try stdout.flush();
@@ -375,7 +385,7 @@ fn runIos(
             derived_data,
             "build",
         },
-        null,
+        &build_env,
         stderr,
         "build iOS app",
     );
@@ -396,7 +406,7 @@ fn runIos(
             derived_data,
             "-showBuildSettings",
         },
-        null,
+        &build_env,
         stderr,
         "read iOS build settings",
     );
@@ -448,22 +458,50 @@ fn runIos(
     try launch_env.put("WIZIG_FFI_LIB", runtime_ffi_path);
     try launch_env.put("SIMCTL_CHILD_WIZIG_FFI_LIB", runtime_ffi_path);
     try launch_env.put("SIMCTL_CHILD_NSUnbufferedIO", "YES");
-    try launch_env.put("SIMCTL_CHILD_CFLOG_FORCE_STDERR", "YES");
-    try launch_env.put("SIMCTL_CHILD_OS_ACTIVITY_MODE", "disable");
     try stdout.print("configured iOS FFI path: {s}\n", .{runtime_ffi_path});
     try stdout.flush();
 
     if (debugger_mode == .none and !options.once) {
-        try stdout.writeAll("launching iOS app with attached console (close app or Ctrl+C to stop)...\n");
+        const launch = try launchIosAppWithRetry(arena, io, stderr, selected.udid, bundle_id, &launch_env);
+        const pid = parseLaunchPid(launch.stdout) orelse {
+            try stderr.writeAll("error: failed to parse launched iOS app PID\n");
+            return error.RunFailed;
+        };
+        const predicate = try std.fmt.allocPrint(arena, "processID == {d}", .{pid});
+        try stdout.print("launched {s} (pid {d})\n", .{ bundle_id, pid });
+        try stdout.writeAll("streaming iOS simulator logs (Ctrl+C to stop)...\n");
         try stdout.flush();
-        try launchIosAppWithConsoleRetry(
-            arena,
+        const stream_term = try runInheritTerm(
             io,
+            null,
+            &.{
+                "xcrun",
+                "simctl",
+                "spawn",
+                selected.udid,
+                "log",
+                "stream",
+                "--style",
+                "compact",
+                "--level",
+                "debug",
+                "--predicate",
+                predicate,
+            },
+            null,
             stderr,
-            selected.udid,
-            bundle_id,
-            &launch_env,
+            "stream iOS logs",
         );
+        if (termIsInterrupted(stream_term)) {
+            try stdout.writeAll("iOS log stream stopped by user\n");
+            try stdout.flush();
+            return;
+        }
+        if (!termIsSuccess(stream_term)) {
+            try stderr.writeAll("error: command failed for stream iOS logs\n");
+            try stderr.flush();
+            return error.RunFailed;
+        }
         return;
     }
 
@@ -2558,14 +2596,71 @@ fn pathExists(io: std.Io, path: []const u8) bool {
 }
 
 fn commandExists(arena: Allocator, io: std.Io, command_name: []const u8) bool {
+    const resolved = resolveExecutablePath(arena, io, command_name) catch return false;
+    return resolved != null;
+}
+
+fn resolveZigCompilerPath(
+    arena: Allocator,
+    io: std.Io,
+    parent_environ_map: *const std.process.Environ.Map,
+) !?[]const u8 {
+    const env_keys = [_][]const u8{ "WIZIG_ZIG_BIN", "ZIG_BIN" };
+    for (env_keys) |key| {
+        if (parent_environ_map.get(key)) |raw_path| {
+            const path = std.mem.trim(u8, raw_path, " \t\r\n");
+            if (path.len == 0) continue;
+            if (std.fs.path.isAbsolute(path)) {
+                if (pathExists(io, path)) return @as([]const u8, try arena.dupe(u8, path));
+            } else if (try resolveExecutablePath(arena, io, path)) |resolved| {
+                return resolved;
+            }
+        }
+    }
+
+    if (try resolveExecutablePath(arena, io, "zig")) |resolved| {
+        return resolved;
+    }
+
+    const fallback_paths = [_][]const u8{ "/opt/homebrew/bin/zig", "/usr/local/bin/zig" };
+    for (fallback_paths) |path| {
+        if (pathExists(io, path)) {
+            return @as([]const u8, try arena.dupe(u8, path));
+        }
+    }
+
+    if (parent_environ_map.get("HOME")) |home| {
+        const zvm_candidates = [_][]const u8{
+            try std.fmt.allocPrint(arena, "{s}/.zvm/bin/zig", .{home}),
+            try std.fmt.allocPrint(arena, "{s}/.zvm/master/zig", .{home}),
+        };
+        for (zvm_candidates) |path| {
+            if (pathExists(io, path)) {
+                return @as([]const u8, try arena.dupe(u8, path));
+            }
+        }
+    }
+
+    return null;
+}
+
+fn resolveExecutablePath(arena: Allocator, io: std.Io, command_name: []const u8) !?[]const u8 {
     const result = runCapture(
         arena,
         io,
         null,
         &.{ "which", command_name },
         null,
-    ) catch return false;
-    return termIsSuccess(result.term) and std.mem.trim(u8, result.stdout, " \t\r\n").len > 0;
+    ) catch return null;
+    if (!termIsSuccess(result.term)) return null;
+
+    var lines = std.mem.splitScalar(u8, result.stdout, '\n');
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, " \t\r\n");
+        if (line.len == 0) continue;
+        return @as([]const u8, try arena.dupe(u8, line));
+    }
+    return null;
 }
 
 fn containsAny(haystack: []const u8, needles: []const []const u8) bool {
