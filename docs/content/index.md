@@ -31,6 +31,8 @@ If you are new to Wizig, read in this order:
 3. [Bridge And Codegen](bridge-and-codegen.md)
 4. [Zig-First Bridge Design](zig-first-bridge.md)
 5. [Plugin System](plugin-system.md)
+6. [Toolchain Governance](toolchain-governance.md)
+7. [Toolchain Manifest Reference](toolchain-manifest-reference.md)
 
 For command details, use [CLI Reference](cli-reference.md).
 

@@ -2,7 +2,10 @@
 
 _Language: Zig_
 
-Unified run mode that auto-detects iOS/Android hosts and devices.
+Unified run module shim.
+
+This file intentionally remains small and delegates implementation details to
+`run/unified/*` modules to keep the run pipeline maintainable.
 
 ## Public API
 
@@ -12,7 +15,7 @@ Discovers available targets and runs the selected host flow.
 
 ```zig
 pub fn run(
-    arena: Allocator,
+    arena: std.mem.Allocator,
     io: std.Io,
     parent_environ_map: *const std.process.Environ.Map,
     stderr: *Io.Writer,

@@ -70,6 +70,8 @@ pub fn build(b: *std.Build) void {
     });
     install_templates.step.dependOn(&generate_templates.step);
     b.getInstallStep().dependOn(&install_templates.step);
+    const install_toolchains = b.addInstallFile(b.path("toolchains.toml"), "share/wizig/toolchains.toml");
+    b.getInstallStep().dependOn(&install_toolchains.step);
 
     const ffi_module = b.createModule(.{
         .root_source_file = b.path("ffi/src/root.zig"),
@@ -105,7 +107,9 @@ pub fn build(b: *std.Build) void {
     }
 
     const docs_step = b.step("docs", "Generate Wizig documentation site");
+    const docs_toolchains_cmd = b.addSystemCommand(&.{ "python3", "tools/toolchains/render_docs.py" });
     const docs_cmd = b.addSystemCommand(&.{ "python3", "scripts/docs_build.py" });
+    docs_cmd.step.dependOn(&docs_toolchains_cmd.step);
     docs_step.dependOn(&docs_cmd.step);
 
     const core_tests = b.addTest(.{

@@ -98,14 +98,20 @@ wizig plugin add <git_or_path>
 ## `wizig doctor`
 
 ```sh
-wizig doctor [--sdk-root <path>]
+wizig doctor [--sdk-root <path>] [--strict|--no-strict]
 ```
 
 Checks:
 
-- Required host tools (Zig/Xcode/Java/Gradle/adb/xcodegen)
+- Tool policy from `toolchains.toml` (required/optional + minimum versions)
 - SDK/runtime/templates bundle integrity
 - Path marker validity for selected SDK root
+- Strict enforcement mode via `--strict`
+
+Detailed policy and lock-file behavior:
+
+- [Toolchain Governance](toolchain-governance.md)
+- [Toolchain Manifest Reference](toolchain-manifest-reference.md)
 
 ## Exit Semantics
 
