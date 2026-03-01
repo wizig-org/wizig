@@ -4,11 +4,17 @@ _Language: Zig_
 
 `wizig doctor` diagnostics for host tools and bundled assets.
 
+This command validates host tool presence/version against policy from
+`toolchains.toml` and supports strict enforcement mode.
+
 ## Public API
 
 ### `run` (fn)
 
-Runs environment diagnostics and SDK integrity checks.
+Runs environment diagnostics and toolchain policy checks.
+
+The command validates SDK bundle presence, then checks host tools against
+`toolchains.toml` policy and reports warning/failure based on strict mode.
 
 ```zig
 pub fn run(
@@ -24,6 +30,8 @@ pub fn run(
 ### `printUsage` (fn)
 
 Writes usage help for the doctor command.
+
+Keep this in sync with `parseDoctorOptions` whenever flags are added.
 
 ```zig
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {

@@ -21,7 +21,7 @@ Wizig uses a hybrid architecture:
 - Xcode `26+` with command line tools (`xcodebuild`, `xcrun`)
 - XcodeGen (optional, only for legacy `--regenerate-host` flows)
 - Java `21`
-- Gradle `9.3.1`
+- Gradle `9.2.1`
 - Android SDK tools (`adb`, emulator, platform SDKs)
 - Python `3.10+` + `markdown` package for docs build
 

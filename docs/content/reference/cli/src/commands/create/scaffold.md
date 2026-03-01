@@ -2,7 +2,11 @@
 
 _Language: Zig_
 
-Project scaffolding for `wizig create`.
+Project scaffolding orchestrator for `wizig create`.
+
+This file coordinates high-level creation flow. Platform-specific host
+generation and low-level utilities live in separate modules to keep each
+implementation unit focused and below the line-limit policy.
 
 ## Public API
 
@@ -18,6 +22,10 @@ pub const CreateError = error{CreateFailed};
 
 Platform selection for generated hosts.
 
+- `ios`: Generate an iOS host project from templates.
+- `android`: Generate an Android host project from templates.
+- `macos`: Reserve a placeholder host directory for future desktop support.
+
 ```zig
 pub const CreatePlatforms = struct {
 ```
@@ -25,6 +33,9 @@ pub const CreatePlatforms = struct {
 ### `createApp` (fn)
 
 Creates a full Wizig application scaffold at `destination_dir_raw`.
+
+The workflow materializes SDK/runtime files, generates selected host
+projects, runs initial codegen, and records toolchain lock metadata.
 
 ```zig
 pub fn createApp(
@@ -37,41 +48,6 @@ pub fn createApp(
     destination_dir_raw: []const u8,
     platforms: CreatePlatforms,
     explicit_sdk_root: ?[]const u8,
-    force_host_overwrite: bool,
-) !void {
-```
-
-### `createIos` (fn)
-
-Creates the iOS host scaffold from bundled templates.
-
-```zig
-pub fn createIos(
-    arena: std.mem.Allocator,
-    io: std.Io,
-    stderr: *Io.Writer,
-    stdout: *Io.Writer,
-    templates_root: []const u8,
-    app_name_raw: []const u8,
-    destination_dir_raw: []const u8,
-    force_host_overwrite: bool,
-) !void {
-```
-
-### `createAndroid` (fn)
-
-Creates the Android host scaffold and initializes Gradle wrapper files.
-
-```zig
-pub fn createAndroid(
-    arena: std.mem.Allocator,
-    io: std.Io,
-    parent_environ_map: *const std.process.Environ.Map,
-    stderr: *Io.Writer,
-    stdout: *Io.Writer,
-    templates_root: []const u8,
-    app_name_raw: []const u8,
-    destination_dir_raw: []const u8,
     force_host_overwrite: bool,
 ) !void {
 ```

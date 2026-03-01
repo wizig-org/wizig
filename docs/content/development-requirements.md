@@ -8,7 +8,7 @@ Wizig framework development requires:
 - Xcode `26+` and Apple CLT (`xcodebuild`, `xcrun`)
 - XcodeGen (optional for legacy regeneration flows)
 - Java `21`
-- Gradle `9.3.1`
+- Gradle `9.2.1`
 - Android SDK tools (`adb`, emulator, platform SDKs)
 - Python `3.10+` for docs tooling
 
@@ -21,7 +21,8 @@ brew install --cask android-platform-tools android-commandlinetools
 
 ## Android Notes
 
-- App scaffolds pin Gradle wrapper `9.3.1`.
+- App scaffolds pin Gradle wrapper `9.2.1`.
+- Android host defaults: `compileSdk 36`, `minSdk 26`, `targetSdk 36`.
 - Kotlin/Compose versions are managed by generated version catalog.
 - Generated host bindings are sourced from `.wizig/generated/kotlin`.
 
