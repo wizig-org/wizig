@@ -11,6 +11,7 @@ Primary commands:
 - `create`
 - `run`
 - `codegen`
+- `wizigd`
 - `plugin`
 - `doctor`
 
@@ -60,7 +61,7 @@ wizig run /tmp/Runa --non-interactive --device 3BE718C0-8315-4698-8C04-7F62D2EE7
 ## `wizig codegen`
 
 ```sh
-wizig codegen [project_root] [--api <path>]
+wizig codegen [project_root] [--api <path>] [--force]
 ```
 
 Contract resolution:
@@ -69,6 +70,12 @@ Contract resolution:
 2. `<project>/wizig.api.zig`
 3. `<project>/wizig.api.json`
 4. fallback: discovery-only mode from `lib/**/*.zig`
+
+Incremental behavior:
+
+- Uses `.wizig/cache/codegen.manifest.json` fingerprint cache.
+- Skips regeneration when inputs are unchanged.
+- `--force` bypasses cache and regenerates.
 
 Outputs:
 
@@ -83,6 +90,30 @@ Examples:
 ```sh
 wizig codegen .
 wizig codegen /tmp/Runa --api /tmp/Runa/wizig.api.zig
+wizig codegen /tmp/Runa --force
+```
+
+## `wizig wizigd`
+
+```sh
+wizig wizigd [status] [project_root]
+wizig wizigd start [project_root] [--interval-ms <ms>]
+wizig wizigd stop [project_root]
+```
+
+Behavior:
+
+1. Runs a persistent background codegen loop per project.
+2. Reuses the same manifest fingerprinting as `wizig codegen`.
+3. Regenerates only when contract/lib input fingerprints change.
+4. Stores daemon pid in `.wizig/cache/wizigd.pid`.
+
+Examples:
+
+```sh
+wizig wizigd start . --interval-ms 300
+wizig wizigd status .
+wizig wizigd stop .
 ```
 
 ## `wizig plugin`

@@ -22,6 +22,22 @@ Resolved API contract file path and format.
 pub const ResolvedApiContract = struct {
 ```
 
+### `EnsureCodegenOptions` (const)
+
+Behavior options for cache-aware project generation.
+
+```zig
+pub const EnsureCodegenOptions = struct {
+```
+
+### `EnsureCodegenResult` (const)
+
+Outcome of cache-aware generation.
+
+```zig
+pub const EnsureCodegenResult = enum {
+```
+
 ### `run` (fn)
 
 Parses codegen CLI options and triggers project generation.
@@ -56,6 +72,22 @@ pub fn resolveApiContract(
     project_root: []const u8,
     api_override: ?[]const u8,
 ) !?ResolvedApiContract {
+```
+
+### `ensureProjectGenerated` (fn)
+
+Ensures generated bindings are up-to-date using manifest fingerprint caching.
+
+```zig
+pub fn ensureProjectGenerated(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    project_root: []const u8,
+    api_path: ?[]const u8,
+    options: EnsureCodegenOptions,
+) !EnsureCodegenResult {
 ```
 
 ### `generateProject` (fn)

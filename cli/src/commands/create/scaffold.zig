@@ -141,7 +141,9 @@ pub fn createApp(
         );
     }
 
-    codegen_cmd.generateProject(arena, io, stderr, stdout, destination_dir, null) catch |err| {
+    _ = codegen_cmd.ensureProjectGenerated(arena, io, stderr, stdout, destination_dir, null, .{
+        .force = true,
+    }) catch |err| {
         try stderr.print("error: failed to run initial codegen: {s}\n", .{@errorName(err)});
         try stderr.flush();
         return error.CreateFailed;

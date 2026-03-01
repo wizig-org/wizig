@@ -77,66 +77,142 @@ def normalize_ios_pbxproj(text: str, ios_deployment_target: str) -> str:
     text = re.sub(r"^\s*MACOSX_DEPLOYMENT_TARGET = [^;]+;\n", "", text, flags=re.MULTILINE)
     text = re.sub(r'SUPPORTED_PLATFORMS = "[^"]+";', 'SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";', text)
     text = re.sub(r'TARGETED_DEVICE_FAMILY = "[^"]+";', 'TARGETED_DEVICE_FAMILY = "1,2";', text)
+    text = text.replace("ENABLE_USER_SCRIPT_SANDBOXING = YES;", "ENABLE_USER_SCRIPT_SANDBOXING = NO;")
     text = text.replace("SDKROOT = auto;", "SDKROOT = iphoneos;")
     text = inject_wizig_package_reference(text)
     return text
 
 
 def inject_wizig_package_reference(text: str) -> str:
-    if "XCLocalSwiftPackageReference" in text and "Wizig */ = {isa = XCSwiftPackageProductDependency;" in text:
-        return text
-
     build_file_id = "D0A0A0A0A0A0A0A0A0A0A001"
     product_id = "D0A0A0A0A0A0A0A0A0A0A002"
     package_ref_id = "D0A0A0A0A0A0A0A0A0A0A003"
+    shell_phase_id = "D0A0A0A0A0A0A0A0A0A0A010"
 
-    build_file_section = (
-        "/* Begin PBXBuildFile section */\n"
-        f"\t\t{build_file_id} /* Wizig in Frameworks */ = {{isa = PBXBuildFile; productRef = {product_id} /* Wizig */; }};\n"
-        "/* End PBXBuildFile section */\n\n"
-    )
-    text = text.replace("/* Begin PBXContainerItemProxy section */\n", build_file_section + "/* Begin PBXContainerItemProxy section */\n", 1)
+    if build_file_id not in text:
+        build_file_section = (
+            "/* Begin PBXBuildFile section */\n"
+            f"\t\t{build_file_id} /* Wizig in Frameworks */ = {{isa = PBXBuildFile; productRef = {product_id} /* Wizig */; }};\n"
+            "/* End PBXBuildFile section */\n\n"
+        )
+        text = text.replace("/* Begin PBXContainerItemProxy section */\n", build_file_section + "/* Begin PBXContainerItemProxy section */\n", 1)
 
-    text = text.replace(
-        "\t\tAB2597A02F532F6600C45779 /* Frameworks */ = {\n\t\t\tisa = PBXFrameworksBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n",
-        "\t\tAB2597A02F532F6600C45779 /* Frameworks */ = {\n\t\t\tisa = PBXFrameworksBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n"
-        f"\t\t\t\t{build_file_id} /* Wizig in Frameworks */,\n"
-        "\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n",
-        1,
-    )
+    if f"\t\t\t\t{build_file_id} /* Wizig in Frameworks */,\n" not in text:
+        text = text.replace(
+            "\t\tAB2597A02F532F6600C45779 /* Frameworks */ = {\n\t\t\tisa = PBXFrameworksBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n",
+            "\t\tAB2597A02F532F6600C45779 /* Frameworks */ = {\n\t\t\tisa = PBXFrameworksBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n"
+            f"\t\t\t\t{build_file_id} /* Wizig in Frameworks */,\n"
+            "\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n",
+            1,
+        )
 
-    text = text.replace(
-        "\t\t\tpackageProductDependencies = (\n\t\t\t);\n",
-        "\t\t\tpackageProductDependencies = (\n"
-        f"\t\t\t\t{product_id} /* Wizig */,\n"
-        "\t\t\t);\n",
-        1,
-    )
+    if f"\t\t\t\t{product_id} /* Wizig */,\n" not in text:
+        text = text.replace(
+            "\t\t\tpackageProductDependencies = (\n\t\t\t);\n",
+            "\t\t\tpackageProductDependencies = (\n"
+            f"\t\t\t\t{product_id} /* Wizig */,\n"
+            "\t\t\t);\n",
+            1,
+        )
 
-    text = text.replace(
-        "\t\t\tminimizedProjectReferenceProxies = 1;\n",
-        "\t\t\tminimizedProjectReferenceProxies = 1;\n"
-        "\t\t\tpackageReferences = (\n"
-        f"\t\t\t\t{package_ref_id} /* XCLocalSwiftPackageReference \"../.wizig/sdk/ios\" */,\n"
-        "\t\t\t);\n",
-        1,
-    )
+    if f"\t\t\t\t{package_ref_id} /* XCLocalSwiftPackageReference \"../.wizig/sdk/ios\" */,\n" not in text:
+        text = text.replace(
+            "\t\t\tminimizedProjectReferenceProxies = 1;\n",
+            "\t\t\tminimizedProjectReferenceProxies = 1;\n"
+            "\t\t\tpackageReferences = (\n"
+            f"\t\t\t\t{package_ref_id} /* XCLocalSwiftPackageReference \"../.wizig/sdk/ios\" */,\n"
+            "\t\t\t);\n",
+            1,
+        )
 
-    package_sections = (
-        "/* Begin XCLocalSwiftPackageReference section */\n"
-        f"\t\t{package_ref_id} /* XCLocalSwiftPackageReference \"../.wizig/sdk/ios\" */ = {{\n"
-        "\t\t\tisa = XCLocalSwiftPackageReference;\n"
-        "\t\t\trelativePath = ../.wizig/sdk/ios;\n"
-        "\t\t};\n"
-        "/* End XCLocalSwiftPackageReference section */\n\n"
-        "/* Begin XCSwiftPackageProductDependency section */\n"
-        f"\t\t{product_id} /* Wizig */ = {{\n"
-        "\t\t\tisa = XCSwiftPackageProductDependency;\n"
-        "\t\t\tproductName = Wizig;\n"
-        "\t\t};\n"
-        "/* End XCSwiftPackageProductDependency section */\n\n"
-    )
-    text = text.replace("/* Begin XCConfigurationList section */\n", package_sections + "/* Begin XCConfigurationList section */\n", 1)
+    if "XCLocalSwiftPackageReference section" not in text:
+        package_sections = (
+            "/* Begin XCLocalSwiftPackageReference section */\n"
+            f"\t\t{package_ref_id} /* XCLocalSwiftPackageReference \"../.wizig/sdk/ios\" */ = {{\n"
+            "\t\t\tisa = XCLocalSwiftPackageReference;\n"
+            "\t\t\trelativePath = ../.wizig/sdk/ios;\n"
+            "\t\t};\n"
+            "/* End XCLocalSwiftPackageReference section */\n\n"
+            "/* Begin XCSwiftPackageProductDependency section */\n"
+            f"\t\t{product_id} /* Wizig */ = {{\n"
+            "\t\t\tisa = XCSwiftPackageProductDependency;\n"
+            "\t\t\tproductName = Wizig;\n"
+            "\t\t};\n"
+            "/* End XCSwiftPackageProductDependency section */\n\n"
+        )
+        text = text.replace("/* Begin XCConfigurationList section */\n", package_sections + "/* Begin XCConfigurationList section */\n", 1)
+
+    if f"\t\t\t\t{shell_phase_id} /* Wizig FFI Build */,\n" not in text:
+        text = text.replace(
+            "\t\t\tbuildPhases = (\n\t\t\t\tAB25979F2F532F6600C45779 /* Sources */,\n\t\t\t\tAB2597A02F532F6600C45779 /* Frameworks */,\n\t\t\t\tAB2597A12F532F6600C45779 /* Resources */,\n\t\t\t);\n",
+            "\t\t\tbuildPhases = (\n\t\t\t\tAB25979F2F532F6600C45779 /* Sources */,\n"
+            f"\t\t\t\t{shell_phase_id} /* Wizig FFI Build */,\n"
+            "\t\t\t\tAB2597A02F532F6600C45779 /* Frameworks */,\n\t\t\t\tAB2597A12F532F6600C45779 /* Resources */,\n\t\t\t);\n",
+            1,
+        )
+
+    if shell_phase_id not in text:
+        shell_script = (
+            "set -euo pipefail\n"
+            "APP_ROOT=\"${SRCROOT}/..\"\n"
+            "GENERATED_ROOT=\"${APP_ROOT}/.wizig/generated/zig\"\n"
+            "RUNTIME_ROOT=\"${APP_ROOT}/.wizig/runtime\"\n"
+            "APP_MODULE=\"${APP_ROOT}/lib/WizigGeneratedAppModule.zig\"\n"
+            "FFI_ROOT=\"${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig\"\n"
+            "if [ ! -f \"${FFI_ROOT}\" ]; then\n"
+            "  echo \"warning: missing ${FFI_ROOT}; run 'wizig codegen ${APP_ROOT}'\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "OUT_DIR=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks\"\n"
+            "mkdir -p \"${OUT_DIR}\"\n"
+            "PLATFORM=\"${PLATFORM_NAME:-iphonesimulator}\"\n"
+            "ARCH=\"${NATIVE_ARCH_ACTUAL:-${CURRENT_ARCH:-arm64}}\"\n"
+            "if [ \"${PLATFORM}\" = \"iphoneos\" ]; then\n"
+            "  TARGET_TRIPLE=\"aarch64-ios\"\n"
+            "  SDK_PATH=\"$(xcrun --sdk iphoneos --show-sdk-path)\"\n"
+            "elif [ \"${ARCH}\" = \"x86_64\" ]; then\n"
+            "  TARGET_TRIPLE=\"x86_64-ios-simulator\"\n"
+            "  SDK_PATH=\"$(xcrun --sdk iphonesimulator --show-sdk-path)\"\n"
+            "else\n"
+            "  TARGET_TRIPLE=\"aarch64-ios-simulator\"\n"
+            "  SDK_PATH=\"$(xcrun --sdk iphonesimulator --show-sdk-path)\"\n"
+            "fi\n"
+            "zig build-lib -OReleaseFast -target \"${TARGET_TRIPLE}\" --dep wizig_core --dep wizig_app \\\n"
+            "  -Mroot=\"${FFI_ROOT}\" \\\n"
+            "  -Mwizig_core=\"${RUNTIME_ROOT}/core/src/root.zig\" \\\n"
+            "  -Mwizig_app=\"${APP_MODULE}\" \\\n"
+            "  --name wizigffi -dynamic -fstrip -install_name @rpath/wizigffi --sysroot \"${SDK_PATH}\" -L/usr/lib -F/System/Library/Frameworks -lc \\\n"
+            "  -femit-bin=\"${OUT_DIR}/wizigffi\"\n"
+        )
+        encoded = shell_script.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+        shell_section = (
+            "/* Begin PBXShellScriptBuildPhase section */\n"
+            f"\t\t{shell_phase_id} /* Wizig FFI Build */ = {{\n"
+            "\t\t\tisa = PBXShellScriptBuildPhase;\n"
+            "\t\t\talwaysOutOfDate = 1;\n"
+            "\t\t\tbuildActionMask = 2147483647;\n"
+            "\t\t\tfiles = (\n"
+            "\t\t\t);\n"
+            "\t\t\tinputFileListPaths = (\n"
+            "\t\t\t);\n"
+            "\t\t\tinputPaths = (\n"
+            "\t\t\t\t\"$(SRCROOT)/../.wizig/generated/zig/WizigGeneratedFfiRoot.zig\",\n"
+            "\t\t\t\t\"$(SRCROOT)/../.wizig/runtime/core/src/root.zig\",\n"
+            "\t\t\t\t\"$(SRCROOT)/../lib/WizigGeneratedAppModule.zig\",\n"
+            "\t\t\t);\n"
+            "\t\t\tname = \"Wizig FFI Build\";\n"
+            "\t\t\toutputFileListPaths = (\n"
+            "\t\t\t);\n"
+            "\t\t\toutputPaths = (\n"
+            "\t\t\t\t\"$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Frameworks/wizigffi\",\n"
+            "\t\t\t);\n"
+            "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n"
+            "\t\t\tshellPath = /bin/sh;\n"
+            f"\t\t\tshellScript = \"{encoded}\";\n"
+            "\t\t};\n"
+            "/* End PBXShellScriptBuildPhase section */\n\n"
+        )
+        text = text.replace("/* Begin PBXSourcesBuildPhase section */\n", shell_section + "/* Begin PBXSourcesBuildPhase section */\n", 1)
 
     return text
 
@@ -148,7 +224,7 @@ def write_ios_swift_sources(app_sources_dir: Path) -> None:
     generated_dir = app_sources_dir / "Generated"
 
     app_file.write_text(
-        """import SwiftUI\nimport Wizig\n\n@main\nstruct {{APP_TYPE_NAME}}App: App {\n    @State private var message: String = \"Loading runtime...\"\n    private let runtime = WizigRuntime(appName: \"{{APP_NAME}}\")\n    private let api = try? WizigGeneratedApi()\n\n    var body: some Scene {\n        WindowGroup {\n            ContentView(message: message, runtimeAvailable: runtime.isAvailable)\n                .task {\n                    guard let api else {\n                        message = \"Wizig runtime unavailable\"\n                        return\n                    }\n                    message = (try? api.echo(\"hello\")) ?? \"Wizig runtime unavailable\"\n                }\n        }\n    }\n}\n""",
+        """import SwiftUI\nimport Wizig\n\n@main\nstruct {{APP_TYPE_NAME}}App: App {\n    @State private var message: String = \"Loading runtime...\"\n    private let api = try? WizigGeneratedApi()\n\n    var body: some Scene {\n        WindowGroup {\n            ContentView(message: message, runtimeAvailable: api != nil)\n                .task {\n                    guard let api else {\n                        message = \"Wizig runtime unavailable\"\n                        return\n                    }\n                    message = (try? api.echo(\"hello\")) ?? \"Wizig runtime unavailable\"\n                }\n        }\n    }\n}\n""",
         encoding="utf-8",
     )
 
@@ -241,7 +317,7 @@ def write_android_gradle_files(out_android_dir: Path, defaults: dict) -> None:
     )
 
     (out_android_dir / "app" / "build.gradle.kts").write_text(
-        f"""plugins {{\n    alias(libs.plugins.android.application)\n    alias(libs.plugins.kotlin.compose)\n}}\n\nandroid {{\n    namespace = \"{ANDROID_PACKAGE_TOKEN}\"\n    compileSdk = {compile_sdk}\n\n    defaultConfig {{\n        applicationId = \"{ANDROID_PACKAGE_TOKEN}\"\n        minSdk = {min_sdk}\n        targetSdk = {target_sdk}\n        versionCode = 1\n        versionName = \"1.0\"\n        testInstrumentationRunner = \"androidx.test.runner.AndroidJUnitRunner\"\n    }}\n\n    buildTypes {{\n        release {{\n            isMinifyEnabled = false\n            proguardFiles(\n                getDefaultProguardFile(\"proguard-android-optimize.txt\"),\n                \"proguard-rules.pro\"\n            )\n        }}\n    }}\n\n    compileOptions {{\n        sourceCompatibility = JavaVersion.VERSION_{java_version}\n        targetCompatibility = JavaVersion.VERSION_{java_version}\n    }}\n\n    buildFeatures {{\n        compose = true\n    }}\n\n    externalNativeBuild {{\n        cmake {{\n            path = rootProject.file(\"../.wizig/generated/android/jni/CMakeLists.txt\")\n        }}\n    }}\n\n    sourceSets {{\n        getByName(\"main\") {{\n            kotlin.directories.add(rootProject.file(\"../.wizig/sdk/android/src/main/kotlin\").path)\n            jniLibs.srcDir(rootProject.file(\"../.wizig/generated/android/jniLibs\"))\n        }}\n    }}\n\n    packaging {{\n        resources {{\n            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n        }}\n    }}\n}}\n\nkotlin {{\n    jvmToolchain({kotlin_target})\n}}\n\nfun registerWizigFfiTask(taskName: String, abi: String, zigTarget: String) = tasks.register<Exec>(taskName) {{\n    val appRoot = rootProject.file(\"..\")\n    val outDir = appRoot.resolve(\".wizig/generated/android/jniLibs/$abi\")\n    val generatedRoot = appRoot.resolve(\".wizig/generated/zig\")\n    val runtimeRoot = appRoot.resolve(\".wizig/runtime\")\n    val libRoot = appRoot.resolve(\"lib\")\n    doFirst {{\n        outDir.mkdirs()\n    }}\n    commandLine(\n        \"zig\",\n        \"build-lib\",\n        \"-OReleaseFast\",\n        \"-target\",\n        zigTarget,\n        \"--dep\",\n        \"wizig_core\",\n        \"--dep\",\n        \"wizig_app\",\n        \"-Mroot=${{generatedRoot.path}}/WizigGeneratedFfiRoot.zig\",\n        \"-Mwizig_core=${{runtimeRoot.path}}/core/src/root.zig\",\n        \"-Mwizig_app=${{libRoot.path}}/WizigGeneratedAppModule.zig\",\n        \"--name\",\n        \"wizigffi\",\n        \"-dynamic\",\n        \"-femit-bin=${{outDir.path}}/libwizigffi.so\",\n    )\n}}\n\nval buildWizigFfiArm64 = registerWizigFfiTask(\"buildWizigFfiArm64V8a\", \"arm64-v8a\", \"aarch64-linux-android\")\nval buildWizigFfiArmV7 = registerWizigFfiTask(\"buildWizigFfiArmeabiV7a\", \"armeabi-v7a\", \"arm-linux-androideabi\")\nval buildWizigFfiX64 = registerWizigFfiTask(\"buildWizigFfiX8664\", \"x86_64\", \"x86_64-linux-android\")\nval buildWizigFfiX86 = registerWizigFfiTask(\"buildWizigFfiX86\", \"x86\", \"x86-linux-android\")\n\ntasks.matching {{ it.name.startsWith(\"configureCMake\") || it.name.startsWith(\"buildCMake\") }}.configureEach {{\n    dependsOn(buildWizigFfiArm64, buildWizigFfiArmV7, buildWizigFfiX64, buildWizigFfiX86)\n}}\n\ndependencies {{\n    implementation(libs.androidx.core.ktx)\n    implementation(libs.androidx.lifecycle.runtime.ktx)\n    implementation(libs.androidx.activity.compose)\n    implementation(platform(libs.androidx.compose.bom))\n    implementation(libs.androidx.compose.ui)\n    implementation(libs.androidx.compose.ui.graphics)\n    implementation(libs.androidx.compose.ui.tooling.preview)\n    implementation(libs.androidx.compose.material3)\n    implementation(\"net.java.dev.jna:jna:5.14.0\")\n\n    testImplementation(libs.junit)\n    androidTestImplementation(libs.androidx.junit)\n    androidTestImplementation(libs.androidx.espresso.core)\n    androidTestImplementation(platform(libs.androidx.compose.bom))\n    androidTestImplementation(libs.androidx.compose.ui.test.junit4)\n\n    debugImplementation(libs.androidx.compose.ui.tooling)\n    debugImplementation(libs.androidx.compose.ui.test.manifest)\n}}\n""",
+        f"""plugins {{\n    alias(libs.plugins.android.application)\n    alias(libs.plugins.kotlin.compose)\n}}\n\nandroid {{\n    namespace = \"{ANDROID_PACKAGE_TOKEN}\"\n    compileSdk = {compile_sdk}\n\n    defaultConfig {{\n        applicationId = \"{ANDROID_PACKAGE_TOKEN}\"\n        minSdk = {min_sdk}\n        targetSdk = {target_sdk}\n        versionCode = 1\n        versionName = \"1.0\"\n        testInstrumentationRunner = \"androidx.test.runner.AndroidJUnitRunner\"\n    }}\n\n    buildTypes {{\n        release {{\n            isMinifyEnabled = false\n            proguardFiles(\n                getDefaultProguardFile(\"proguard-android-optimize.txt\"),\n                \"proguard-rules.pro\"\n            )\n        }}\n    }}\n\n    compileOptions {{\n        sourceCompatibility = JavaVersion.VERSION_{java_version}\n        targetCompatibility = JavaVersion.VERSION_{java_version}\n    }}\n\n    buildFeatures {{\n        compose = true\n    }}\n\n    externalNativeBuild {{\n        cmake {{\n            path = rootProject.file(\"../.wizig/generated/android/jni/CMakeLists.txt\")\n        }}\n    }}\n\n    sourceSets {{\n        getByName(\"main\") {{\n            kotlin.srcDir(rootProject.file(\"../.wizig/sdk/android/src/main/kotlin\"))\n            jniLibs.srcDir(rootProject.file(\"../.wizig/generated/android/jniLibs\"))\n        }}\n    }}\n\n    packaging {{\n        resources {{\n            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n        }}\n    }}\n}}\n\nkotlin {{\n    jvmToolchain({kotlin_target})\n}}\n\nfun registerWizigFfiTask(taskName: String, abi: String, zigTarget: String) = tasks.register<Exec>(taskName) {{\n    val appRoot = rootProject.file(\"..\")\n    val outDir = appRoot.resolve(\".wizig/generated/android/jniLibs/$abi\")\n    val generatedRoot = appRoot.resolve(\".wizig/generated/zig\")\n    val runtimeRoot = appRoot.resolve(\".wizig/runtime\")\n    val libRoot = appRoot.resolve(\"lib\")\n    doFirst {{\n        outDir.mkdirs()\n    }}\n    commandLine(\n        \"zig\",\n        \"build-lib\",\n        \"-OReleaseFast\",\n        \"-target\",\n        zigTarget,\n        \"--dep\",\n        \"wizig_core\",\n        \"--dep\",\n        \"wizig_app\",\n        \"-Mroot=${{generatedRoot.path}}/WizigGeneratedFfiRoot.zig\",\n        \"-Mwizig_core=${{runtimeRoot.path}}/core/src/root.zig\",\n        \"-Mwizig_app=${{libRoot.path}}/WizigGeneratedAppModule.zig\",\n        \"--name\",\n        \"wizigffi\",\n        \"-dynamic\",\n        \"-fstrip\",\n        \"-femit-bin=${{outDir.path}}/libwizigffi.so\",\n    )\n}}\n\nval buildWizigFfiArm64 = registerWizigFfiTask(\"buildWizigFfiArm64V8a\", \"arm64-v8a\", \"aarch64-linux-android\")\nval buildWizigFfiArmV7 = registerWizigFfiTask(\"buildWizigFfiArmeabiV7a\", \"armeabi-v7a\", \"arm-linux-androideabi\")\nval buildWizigFfiX64 = registerWizigFfiTask(\"buildWizigFfiX8664\", \"x86_64\", \"x86_64-linux-android\")\nval buildWizigFfiX86 = registerWizigFfiTask(\"buildWizigFfiX86\", \"x86\", \"x86-linux-android\")\n\ntasks.matching {{ it.name.startsWith(\"configureCMake\") || it.name.startsWith(\"buildCMake\") }}.configureEach {{\n    dependsOn(buildWizigFfiArm64, buildWizigFfiArmV7, buildWizigFfiX64, buildWizigFfiX86)\n}}\n\ndependencies {{\n    implementation(libs.androidx.core.ktx)\n    implementation(libs.androidx.lifecycle.runtime.ktx)\n    implementation(libs.androidx.activity.compose)\n    implementation(platform(libs.androidx.compose.bom))\n    implementation(libs.androidx.compose.ui)\n    implementation(libs.androidx.compose.ui.graphics)\n    implementation(libs.androidx.compose.ui.tooling.preview)\n    implementation(libs.androidx.compose.material3)\n    implementation(\"net.java.dev.jna:jna:5.14.0\")\n\n    testImplementation(libs.junit)\n    androidTestImplementation(libs.androidx.junit)\n    androidTestImplementation(libs.androidx.espresso.core)\n    androidTestImplementation(platform(libs.androidx.compose.bom))\n    androidTestImplementation(libs.androidx.compose.ui.test.junit4)\n\n    debugImplementation(libs.androidx.compose.ui.tooling)\n    debugImplementation(libs.androidx.compose.ui.test.manifest)\n}}\n""",
         encoding="utf-8",
     )
 

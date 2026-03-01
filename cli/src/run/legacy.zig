@@ -139,15 +139,15 @@ fn maybeRunCodegenForLegacy(
 ) !void {
     const app_root = std.fs.path.dirname(host_project_dir) orelse host_project_dir;
     const contract = try codegen_cmd.resolveApiContract(arena, io, stderr, app_root, null);
-    codegen_cmd.generateProject(arena, io, stderr, stdout, app_root, if (contract) |resolved| resolved.path else null) catch |err| {
-        if (contract) |resolved| {
-            try stderr.print("error: failed to generate API bindings from '{s}': {s}\n", .{ resolved.path, @errorName(err) });
-        } else {
-            try stderr.print("error: failed to generate API bindings from discovered lib methods: {s}\n", .{@errorName(err)});
-        }
-        try stderr.flush();
-        return error.RunFailed;
-    };
+    _ = codegen_cmd.ensureProjectGenerated(
+        arena,
+        io,
+        stderr,
+        stdout,
+        app_root,
+        if (contract) |resolved| resolved.path else null,
+        .{},
+    ) catch return error.RunFailed;
 }
 
 fn parseRunOptions(args: []const []const u8, stderr: *Io.Writer) !RunOptions {
@@ -833,6 +833,7 @@ fn prepareAndroidFfiLibrary(
             "--name",
             "wizigffi",
             "-dynamic",
+            "-fstrip",
             emit_arg,
         });
         _ = try runCaptureChecked(
@@ -2017,6 +2018,7 @@ fn buildIosSimulatorFfiLibrary(
         "--name",
         "wizigffi",
         "-dynamic",
+        "-fstrip",
         "-install_name",
         "@rpath/libwizigffi.dylib",
         "--sysroot",
@@ -2040,8 +2042,8 @@ fn buildIosSimulatorFfiLibrary(
     return out_path;
 }
 
-const ios_ffi_cache_version = "wizig-ios-ffi-cache-v2";
-const android_ffi_cache_version = "wizig-android-ffi-cache-v2";
+const ios_ffi_cache_version = "wizig-ios-ffi-cache-v3";
+const android_ffi_cache_version = "wizig-android-ffi-cache-v3";
 
 fn computeFfiFingerprint(
     arena: Allocator,

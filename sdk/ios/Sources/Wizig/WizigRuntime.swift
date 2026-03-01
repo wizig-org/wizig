@@ -82,6 +82,13 @@ private final class WizigFFI {
             if let fromEnv = ProcessInfo.processInfo.environment["WIZIG_FFI_LIB"], !fromEnv.isEmpty {
                 values.append(fromEnv)
             }
+            if let frameworksPath = Bundle.main.privateFrameworksPath {
+                values.append((frameworksPath as NSString).appendingPathComponent("wizigffi"))
+                values.append((frameworksPath as NSString).appendingPathComponent("libwizigffi.dylib"))
+            }
+            let bundlePath = Bundle.main.bundlePath
+            values.append((bundlePath as NSString).appendingPathComponent("wizigffi"))
+            values.append((bundlePath as NSString).appendingPathComponent("libwizigffi.dylib"))
             values.append(contentsOf: ["libwizigffi.dylib", "wizigffi"])
             return values
         }()

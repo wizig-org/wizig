@@ -60,7 +60,7 @@ zig build run -- run /tmp/MyApp --once
 ## Codegen
 
 ```sh
-zig build run -- codegen /tmp/MyApp
+zig build run -- codegen /tmp/MyApp [--force]
 ```
 
 Codegen discovery precedence:
@@ -74,6 +74,23 @@ Generated Swift/Kotlin APIs are mirrored into app-local SDK imports:
 
 - `.wizig/sdk/ios/Sources/Wizig/WizigGeneratedApi.swift`
 - `.wizig/sdk/android/src/main/kotlin/dev/wizig/WizigGeneratedApi.kt`
+
+Incremental cache files are persisted under:
+
+- `.wizig/cache/codegen.manifest.json`
+- `.wizig/cache/codegen.sha256` (legacy compatibility)
+
+## Daemon (Phase 1)
+
+Use `wizigd` to keep codegen hot in the background:
+
+```sh
+zig build run -- wizigd start /tmp/MyApp --interval-ms 300
+zig build run -- wizigd status /tmp/MyApp
+zig build run -- wizigd stop /tmp/MyApp
+```
+
+`wizigd` polls project inputs and regenerates only when fingerprints change.
 
 ## Plugins
 

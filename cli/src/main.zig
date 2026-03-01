@@ -7,6 +7,7 @@ const run_cmd = @import("commands/run/root.zig");
 const plugin_cmd = @import("commands/plugin/root.zig");
 const codegen_cmd = @import("commands/codegen/root.zig");
 const doctor_cmd = @import("commands/doctor/root.zig");
+const wizigd_cmd = @import("commands/wizigd/root.zig");
 
 /// Parses top-level CLI arguments and dispatches to command handlers.
 pub fn main(init: std.process.Init) !void {
@@ -66,6 +67,13 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
+    if (std.mem.eql(u8, command, "wizigd")) {
+        wizigd_cmd.run(arena, io, stderr, stdout, rest) catch {
+            std.process.exit(1);
+        };
+        return;
+    }
+
     try stderr.writeAll("error: unknown command\n\n");
     try printUsage(stderr);
     try stderr.flush();
@@ -79,8 +87,9 @@ fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "  wizig create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]\n" ++
             "  wizig run [project_dir] [options]\n" ++
             "  wizig plugin validate|sync|add ...\n" ++
-            "  wizig codegen [project_root] [--api <path>]\n" ++
-            "  wizig doctor [--sdk-root <path>]\n\n",
+            "  wizig codegen [project_root] [--api <path>] [--force]\n" ++
+            "  wizig doctor [--sdk-root <path>]\n" ++
+            "  wizig wizigd [status|start|stop|serve] [project_root]\n\n",
     );
 
     try create_cmd.printUsage(writer);
@@ -88,6 +97,7 @@ fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try plugin_cmd.printUsage(writer);
     try codegen_cmd.printUsage(writer);
     try doctor_cmd.printUsage(writer);
+    try wizigd_cmd.printUsage(writer);
 }
 
 test "printUsage includes core commands" {
@@ -101,4 +111,5 @@ test "printUsage includes core commands" {
     try std.testing.expect(std.mem.indexOf(u8, output, "wizig plugin") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "wizig codegen") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "wizig doctor") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "wizig wizigd") != null);
 }
