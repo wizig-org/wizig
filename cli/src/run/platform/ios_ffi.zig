@@ -53,7 +53,18 @@ pub fn buildIosSimulatorFfiLibrary(
     const app_arg = if (ffi_inputs.app_source) |app_source| try std.fmt.allocPrint(arena, "-Mwizig_app={s}", .{app_source}) else null;
 
     var argv = std.ArrayList([]const u8).empty;
-    try argv.appendSlice(arena, &.{ "zig", "build-lib", "-OReleaseFast", "-target", "aarch64-ios-simulator", "--dep", "wizig_core" });
+    try argv.appendSlice(arena, &.{
+        "zig",
+        "build-lib",
+        "-OReleaseFast",
+        "-fno-error-tracing",
+        "-fno-unwind-tables",
+        "-fstrip",
+        "-target",
+        "aarch64-ios-simulator",
+        "--dep",
+        "wizig_core",
+    });
     if (app_arg != null) {
         try argv.appendSlice(arena, &.{ "--dep", "wizig_app" });
     }

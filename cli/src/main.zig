@@ -79,7 +79,7 @@ fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "  wizig create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]\n" ++
             "  wizig run [project_dir] [options]\n" ++
             "  wizig plugin validate|sync|add ...\n" ++
-            "  wizig codegen [project_root] [--api <path>]\n" ++
+            "  wizig codegen [project_root] [--api <path>] [--watch] [--watch-interval-ms <milliseconds>]\n" ++
             "  wizig doctor [--sdk-root <path>]\n\n",
     );
 

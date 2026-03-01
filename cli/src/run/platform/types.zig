@@ -32,6 +32,7 @@ pub const RunOptions = struct {
     debugger: DebuggerMode = .auto,
     non_interactive: bool = false,
     once: bool = false,
+    monitor_timeout_seconds: ?u64 = null,
     regenerate_host: bool = false,
     skip_device_discovery: bool = false,
     skip_codegen: bool = false,

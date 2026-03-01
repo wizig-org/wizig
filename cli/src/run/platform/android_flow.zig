@@ -5,6 +5,7 @@
 const std = @import("std");
 const Io = std.Io;
 
+const app_root = @import("app_root.zig");
 const android_app_info = @import("android_app_info.zig");
 const android_debug = @import("android_debug.zig");
 const android_discovery = @import("android_discovery.zig");
@@ -62,14 +63,14 @@ pub fn runAndroid(
     try stdout.print("selected Android target: {s} [{s}]\n", .{ selected.model, selected.serial });
     try stdout.flush();
 
-    const app_root = std.fs.path.dirname(options.project_dir) orelse options.project_dir;
+    const app_root_path = try app_root.resolveAppRoot(arena, io, options.project_dir);
     const android_ffi_artifact = try android_ffi.prepareAndroidFfiLibrary(
         arena,
         io,
         stderr,
         stdout,
         parent_environ_map,
-        app_root,
+        app_root_path,
         selected.serial,
     );
     try stdout.print("prepared Android FFI library for {s}: {s}\n", .{ android_ffi_artifact.abi, android_ffi_artifact.staged_path });
@@ -156,7 +157,7 @@ pub fn runAndroid(
 
     switch (debugger_mode) {
         .jdb => try android_debug.attachJdb(arena, io, stderr, stdout, selected.serial, app_id_value),
-        .logcat => try streamAndroidLogs(io, stderr, stdout, selected.serial, app_id_value),
+        .logcat => try streamAndroidLogs(arena, io, stderr, stdout, selected.serial, app_id_value, options.monitor_timeout_seconds),
         .none => {
             try stdout.writeAll("app launched without debugger\n");
             try stdout.flush();
@@ -186,29 +187,40 @@ fn resolvePreselectedAndroidDevice(
 }
 
 fn streamAndroidLogs(
+    arena: std.mem.Allocator,
     io: std.Io,
     stderr: *Io.Writer,
     stdout: *Io.Writer,
     serial: []const u8,
     app_id: []const u8,
+    monitor_timeout_seconds: ?u64,
 ) !void {
+    const liveness_probe = process.LivenessProbe{
+        .spec = .{
+            .argv = &.{ "adb", "-s", serial, "shell", "pidof", app_id },
+            .label = "check Android app liveness",
+        },
+    };
+    const watchdog: process.MonitorWatchdog = .{
+        .timeout_seconds = monitor_timeout_seconds,
+        .liveness_probe = liveness_probe,
+    };
+
     const pid: ?u32 = android_debug.waitForAndroidPid(io, stderr, serial, app_id) catch |err| blk: {
         try stderr.print("warning: failed to determine Android pid for filtered logcat ({s}); falling back to full logcat\n", .{@errorName(err)});
         try stderr.flush();
         try stdout.writeAll("streaming logcat (Ctrl+C to stop)...\n");
         try stdout.flush();
 
-        const stream_term = try process.runInheritTerm(io, stderr, .{ .argv = &.{ "adb", "-s", serial, "logcat" }, .label = "stream Android logs" });
-        if (process.termIsInterrupted(stream_term)) {
-            try stdout.writeAll("Android log stream stopped by user\n");
-            try stdout.flush();
-            break :blk null;
-        }
-        if (!process.termIsSuccess(stream_term)) {
-            try stderr.writeAll("error: command failed for stream Android logs\n");
-            try stderr.flush();
-            return error.RunFailed;
-        }
+        const monitor_result = try process.runInheritMonitored(
+            arena,
+            io,
+            stderr,
+            stdout,
+            .{ .argv = &.{ "adb", "-s", serial, "logcat" }, .label = "stream Android logs" },
+            watchdog,
+        );
+        try handleMonitorResult(stderr, stdout, monitor_result, "Android log stream");
         break :blk null;
     };
 
@@ -217,19 +229,52 @@ fn streamAndroidLogs(
         const pid_text = try std.fmt.bufPrint(&pid_buf, "{d}", .{android_pid});
         try stdout.print("streaming logcat for pid {s} (Ctrl+C to stop)...\n", .{pid_text});
         try stdout.flush();
-        const stream_term = try process.runInheritTerm(io, stderr, .{
-            .argv = &.{ "adb", "-s", serial, "logcat", "--pid", pid_text },
-            .label = "stream Android logs",
-        });
-        if (process.termIsInterrupted(stream_term)) {
-            try stdout.writeAll("Android log stream stopped by user\n");
+        const monitor_result = try process.runInheritMonitored(
+            arena,
+            io,
+            stderr,
+            stdout,
+            .{
+                .argv = &.{ "adb", "-s", serial, "logcat", "--pid", pid_text },
+                .label = "stream Android logs",
+            },
+            watchdog,
+        );
+        try handleMonitorResult(stderr, stdout, monitor_result, "Android log stream");
+    }
+}
+
+fn handleMonitorResult(
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    result: process.MonitoredTerm,
+    label: []const u8,
+) !void {
+    switch (result.stop_reason) {
+        .interrupted => {
+            try stdout.print("{s} stopped by user\n", .{label});
             try stdout.flush();
             return;
-        }
-        if (!process.termIsSuccess(stream_term)) {
+        },
+        .timeout => {
+            try stdout.print("{s} stopped by monitor timeout\n", .{label});
+            try stdout.flush();
+            return;
+        },
+        .app_liveness_lost => {
+            try stdout.print("{s} stopped because app exited\n", .{label});
+            try stdout.flush();
+            return;
+        },
+        .exited => {
+            if (process.termIsSuccess(result.term)) {
+                try stdout.print("{s} ended\n", .{label});
+                try stdout.flush();
+                return;
+            }
             try stderr.writeAll("error: command failed for stream Android logs\n");
             try stderr.flush();
             return error.RunFailed;
-        }
+        },
     }
 }

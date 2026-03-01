@@ -6,6 +6,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
 
+const app_root = @import("app_root.zig");
 const config_parse = @import("config_parse.zig");
 const ios_discovery = @import("ios_discovery.zig");
 const ios_ffi = @import("ios_ffi.zig");
@@ -105,8 +106,8 @@ pub fn runIos(
     });
     const app_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ target_build_dir, wrapper_name });
 
-    const app_root = std.fs.path.dirname(options.project_dir) orelse options.project_dir;
-    const simulator_ffi_path = try ios_ffi.buildIosSimulatorFfiLibrary(arena, io, stderr, parent_environ_map, app_root);
+    const app_root_path = try app_root.resolveAppRoot(arena, io, options.project_dir);
+    const simulator_ffi_path = try ios_ffi.buildIosSimulatorFfiLibrary(arena, io, stderr, parent_environ_map, app_root_path);
     const runtime_ffi_path = try ios_ffi.bundleIosFfiLibraryForSimulator(arena, io, stderr, app_path, simulator_ffi_path);
 
     try process.runInheritChecked(io, stderr, .{
@@ -127,7 +128,16 @@ pub fn runIos(
     if (debugger_mode == .none and !options.once) {
         try stdout.writeAll("launching iOS app with attached console (close app or Ctrl+C to stop)...\n");
         try stdout.flush();
-        try ios_launch.launchIosAppWithConsoleRetry(arena, io, stderr, selected.udid, bundle_id, &launch_env);
+        try ios_launch.launchIosAppWithConsoleRetry(
+            arena,
+            io,
+            stderr,
+            stdout,
+            selected.udid,
+            bundle_id,
+            &launch_env,
+            options.monitor_timeout_seconds,
+        );
         return;
     }
 

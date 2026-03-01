@@ -64,6 +64,7 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "  --debugger <auto|lldb|jdb|logcat|none>\n" ++
             "  --non-interactive           Fail instead of prompting for selection\n" ++
             "  --once                      Launch and exit without attaching/streaming\n" ++
+            "  --monitor-timeout <seconds> Stop log/console monitor automatically after timeout\n" ++
             "  --regenerate-host           Regenerate iOS xcodegen hosts from project.yml before run\n" ++
             "\n" ++
             "iOS options:\n" ++

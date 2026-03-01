@@ -37,6 +37,12 @@ pub fn run(
     try logging_codegen.appendLogLine(arena, &log_lines, "wizig run unified\n", .{});
     try logging_codegen.appendLogLine(arena, &log_lines, "project_root={s}\n", .{project_root});
     try logging_codegen.appendLogLine(arena, &log_lines, "debugger={s}\n", .{parsed.debugger_mode orelse "auto"});
+    try logging_codegen.appendLogLine(
+        arena,
+        &log_lines,
+        "monitor_timeout_seconds={s}\n",
+        .{if (parsed.monitor_timeout_seconds != null) "set" else "none"},
+    );
 
     const ios_dir = try fs_utils.joinPath(arena, project_root, "ios");
     const android_dir = try fs_utils.joinPath(arena, project_root, "android");
@@ -118,6 +124,10 @@ pub fn run(
     try delegated_args.append(arena, selected.project_dir);
     try delegated_args.appendSlice(arena, &.{ "--device", selected.id, "--non-interactive", "--__wizig-skip-device-discovery", "--__wizig-skip-codegen" });
     if (parsed.once) try delegated_args.append(arena, "--once");
+    if (parsed.monitor_timeout_seconds) |seconds| {
+        const timeout_value = try std.fmt.allocPrint(arena, "{d}", .{seconds});
+        try delegated_args.appendSlice(arena, &.{ "--monitor-timeout", timeout_value });
+    }
     if (parsed.regenerate_host) try delegated_args.append(arena, "--regenerate-host");
     try delegated_args.appendSlice(arena, &.{ "--debugger", parsed.debugger_mode orelse "auto" });
 
@@ -137,7 +147,7 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Unified run options:\n" ++
-            "  wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once] [--regenerate-host]\n" ++
+            "  wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once] [--monitor-timeout <seconds>] [--regenerate-host]\n" ++
             "\n",
     );
 }

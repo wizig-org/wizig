@@ -3,7 +3,9 @@ const std = @import("std");
 const Io = std.Io;
 const fs_util = @import("../../support/fs.zig");
 const path_util = @import("../../support/path.zig");
+const options = @import("options.zig");
 const targets = @import("targets.zig");
+const watch_runner = @import("watch/runner.zig");
 
 /// Supported contract source formats.
 pub const ApiContractSource = enum {
@@ -25,37 +27,24 @@ pub fn run(
     stdout: *Io.Writer,
     args: []const []const u8,
 ) !void {
-    var project_root: []const u8 = ".";
-    var api_override: ?[]const u8 = null;
+    const parsed = try options.parseCodegenOptions(args, stderr);
+    const root_abs = try path_util.resolveAbsolute(arena, io, parsed.project_root);
 
-    var i: usize = 0;
-    if (i < args.len and !std.mem.startsWith(u8, args[i], "--")) {
-        project_root = args[i];
-        i += 1;
+    if (parsed.watch) {
+        try watch_runner.runWatchCodegenLoop(
+            io,
+            stderr,
+            stdout,
+            root_abs,
+            parsed.api_override,
+            parsed.watch_interval_ms,
+            resolveApiPathForWatch,
+            generateProject,
+        );
+        return;
     }
 
-    while (i < args.len) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "--api")) {
-            if (i + 1 >= args.len) {
-                try stderr.writeAll("error: missing value for --api\n");
-                return error.InvalidArguments;
-            }
-            api_override = args[i + 1];
-            i += 2;
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--api=")) {
-            api_override = arg["--api=".len..];
-            i += 1;
-            continue;
-        }
-        try stderr.print("error: unknown codegen option '{s}'\n", .{arg});
-        return error.InvalidArguments;
-    }
-
-    const root_abs = try path_util.resolveAbsolute(arena, io, project_root);
-    const contract = try resolveApiContract(arena, io, stderr, root_abs, api_override);
+    const contract = try resolveApiContract(arena, io, stderr, root_abs, parsed.api_override);
     try generateProject(arena, io, stderr, stdout, root_abs, if (contract) |resolved| resolved.path else null);
 }
 
@@ -64,11 +53,25 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     const ts_supported = targets.supportedNow(.typescript);
     try writer.writeAll(
         "Codegen:\n" ++
-            "  wizig codegen [project_root] [--api <path>]\n" ++
+            "  wizig codegen [project_root] [--api <path>] [--watch] [--watch-interval-ms <milliseconds>]\n" ++
             "  # default contract lookup: wizig.api.zig -> wizig.api.json (optional)\n" ++
+            "  # watch mode: incremental codegen on lib/**/*.zig and contract changes\n" ++
             "  # current targets: zig, swift, kotlin\n",
     );
+    try writer.print("  # default watch interval: {d}ms\n", .{options.default_watch_interval_ms});
     try writer.print("  # reserved target: typescript ({s})\n\n", .{if (ts_supported) "enabled" else "planned"});
+}
+
+/// Resolves contract path for the watch runner callback interface.
+fn resolveApiPathForWatch(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    project_root: []const u8,
+    api_override: ?[]const u8,
+) !?[]const u8 {
+    const contract = try resolveApiContract(arena, io, stderr, project_root, api_override);
+    return if (contract) |resolved| resolved.path else null;
 }
 
 /// Resolves API contract path from explicit override or project defaults.

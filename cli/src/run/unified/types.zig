@@ -17,6 +17,7 @@ pub const UnifiedOptions = struct {
     debugger_mode: ?[]const u8 = null,
     non_interactive: bool = false,
     once: bool = false,
+    monitor_timeout_seconds: ?u64 = null,
     regenerate_host: bool = false,
 };
 

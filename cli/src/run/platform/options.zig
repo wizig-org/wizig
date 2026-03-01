@@ -56,6 +56,12 @@ pub fn parseRunOptions(args: []const []const u8, stderr: *Io.Writer) !types.RunO
             i += 1;
             continue;
         }
+        if (std.mem.startsWith(u8, arg, "--monitor-timeout=")) {
+            const raw = arg["--monitor-timeout=".len..];
+            options.monitor_timeout_seconds = try parseMonitorTimeout(raw, stderr);
+            i += 1;
+            continue;
+        }
 
         if (i + 1 >= args.len) {
             try stderr.print("error: missing value for option '{s}'\n", .{arg});
@@ -70,6 +76,8 @@ pub fn parseRunOptions(args: []const []const u8, stderr: *Io.Writer) !types.RunO
                 try stderr.print("error: invalid debugger mode '{s}'\n", .{value});
                 return error.RunFailed;
             };
+        } else if (std.mem.eql(u8, arg, "--monitor-timeout")) {
+            options.monitor_timeout_seconds = try parseMonitorTimeout(value, stderr);
         } else if (std.mem.eql(u8, arg, "--scheme")) {
             options.scheme = value;
         } else if (std.mem.eql(u8, arg, "--bundle-id")) {
@@ -112,6 +120,19 @@ pub fn parseRunOptions(args: []const []const u8, stderr: *Io.Writer) !types.RunO
     }
 
     return options;
+}
+
+/// Parses monitor timeout seconds from CLI input.
+fn parseMonitorTimeout(raw: []const u8, stderr: *Io.Writer) !u64 {
+    const seconds = std.fmt.parseInt(u64, raw, 10) catch {
+        try stderr.print("error: invalid --monitor-timeout value '{s}' (expected positive integer seconds)\n", .{raw});
+        return error.RunFailed;
+    };
+    if (seconds == 0) {
+        try stderr.writeAll("error: --monitor-timeout must be greater than zero seconds\n");
+        return error.RunFailed;
+    }
+    return seconds;
 }
 
 /// Normalizes run options that depend on filesystem context.
@@ -175,6 +196,8 @@ test "parseRunOptions parses shared and platform flags" {
         "app",
         "--debugger",
         "none",
+        "--monitor-timeout",
+        "90",
         "--once",
     }, &err_writer.writer);
 
@@ -182,6 +205,7 @@ test "parseRunOptions parses shared and platform flags" {
     try std.testing.expectEqualStrings("examples/android/WizigExample", options.project_dir);
     try std.testing.expectEqualStrings("emulator-5554", options.device_selector.?);
     try std.testing.expectEqual(types.DebuggerMode.none, options.debugger);
+    try std.testing.expectEqual(@as(?u64, 90), options.monitor_timeout_seconds);
     try std.testing.expect(options.once);
     try std.testing.expect(!options.regenerate_host);
     try std.testing.expect(!options.skip_device_discovery);
@@ -215,4 +239,17 @@ test "parseRunOptions parses internal skip-codegen flag" {
     }, &err_writer.writer);
 
     try std.testing.expect(options.skip_codegen);
+}
+
+test "parseRunOptions parses inline monitor timeout form" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    const options = try parseRunOptions(&.{
+        "ios",
+        "examples/ios/WizigExample",
+        "--monitor-timeout=45",
+    }, &err_writer.writer);
+
+    try std.testing.expectEqual(@as(?u64, 45), options.monitor_timeout_seconds);
 }

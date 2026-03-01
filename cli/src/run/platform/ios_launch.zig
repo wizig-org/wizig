@@ -124,19 +124,45 @@ pub fn launchIosAppWithConsoleRetry(
     arena: std.mem.Allocator,
     io: std.Io,
     stderr: *Io.Writer,
+    stdout: *Io.Writer,
     udid: []const u8,
     bundle_id: []const u8,
     environ_map: ?*const std.process.Environ.Map,
+    monitor_timeout_seconds: ?u64,
 ) !void {
+    const liveness_probe = process.LivenessProbe{
+        .spec = .{
+            .argv = &.{ "xcrun", "simctl", "spawn", udid, "launchctl", "list" },
+            .label = "check iOS app liveness",
+        },
+        .required_substring = bundle_id,
+    };
+    const watchdog: process.MonitorWatchdog = .{
+        .timeout_seconds = monitor_timeout_seconds,
+        .liveness_probe = liveness_probe,
+    };
+
     var attempt: usize = 0;
     while (attempt < 5) : (attempt += 1) {
-        const term = try process.runInheritTerm(io, stderr, .{
-            .argv = &.{ "xcrun", "simctl", "launch", "--terminate-running-process", "--console-pty", udid, bundle_id },
-            .environ_map = environ_map,
-            .label = "launch iOS app with console",
-        });
-        if (process.termIsSuccess(term) or process.termIsInterrupted(term)) {
-            return;
+        const monitor_result = try process.runInheritMonitored(
+            arena,
+            io,
+            stderr,
+            stdout,
+            .{
+                .argv = &.{ "xcrun", "simctl", "launch", "--terminate-running-process", "--console-pty", udid, bundle_id },
+                .environ_map = environ_map,
+                .label = "launch iOS app with console",
+            },
+            watchdog,
+        );
+        switch (monitor_result.stop_reason) {
+            .interrupted => return,
+            .timeout => return,
+            .app_liveness_lost => return,
+            .exited => {
+                if (process.termIsSuccess(monitor_result.term)) return;
+            },
         }
 
         if (attempt + 1 >= 5) {

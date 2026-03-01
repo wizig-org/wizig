@@ -38,7 +38,7 @@ wizig create Runa /tmp/Runa --platforms ios,android
 ## `wizig run`
 
 ```sh
-wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once]
+wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once] [--monitor-timeout <seconds>]
 ```
 
 Behavior:
@@ -47,7 +47,8 @@ Behavior:
 2. Discovers iOS and Android run targets.
 3. Prompts for target selection unless non-interactive.
 4. Delegates to platform-specific build/install/launch.
-5. Writes run log under `.wizig/logs/run.log`.
+5. Applies monitor watchdog rules for terminal stream commands (timeout + app-liveness stop).
+6. Writes run log under `.wizig/logs/run.log`.
 
 Examples:
 
@@ -60,7 +61,7 @@ wizig run /tmp/Runa --non-interactive --device 3BE718C0-8315-4698-8C04-7F62D2EE7
 ## `wizig codegen`
 
 ```sh
-wizig codegen [project_root] [--api <path>]
+wizig codegen [project_root] [--api <path>] [--watch] [--watch-interval-ms <milliseconds>]
 ```
 
 Contract resolution:
@@ -78,11 +79,17 @@ Outputs:
 - `.wizig/sdk/ios/Sources/Wizig/WizigGeneratedApi.swift`
 - `.wizig/sdk/android/src/main/kotlin/dev/wizig/WizigGeneratedApi.kt`
 
+Watch mode:
+
+- `--watch` keeps a lightweight polling loop active and reruns codegen when `lib/**/*.zig` or contract files change.
+- `--watch-interval-ms` controls polling interval (default: `500`).
+
 Examples:
 
 ```sh
 wizig codegen .
 wizig codegen /tmp/Runa --api /tmp/Runa/wizig.api.zig
+wizig codegen /tmp/Runa --watch
 ```
 
 ## `wizig plugin`

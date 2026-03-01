@@ -30,6 +30,7 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "  --debugger <mode>           Pass through to selected platform\n" ++
             "  --non-interactive           Fail instead of prompting for selection\n" ++
             "  --once                      Launch and return without log/debug loop\n" ++
+            "  --monitor-timeout <seconds> Stop log/console monitor automatically after timeout\n" ++
             "  --regenerate-host           Regenerate iOS xcodegen hosts from project.yml before run\n" ++
             "\n" ++
             "Project-level behavior:\n" ++

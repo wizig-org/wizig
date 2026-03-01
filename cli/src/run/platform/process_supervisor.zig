@@ -7,6 +7,7 @@
 const std = @import("std");
 const Io = std.Io;
 
+const monitor = @import("process_monitor.zig");
 const types = @import("types.zig");
 
 const Allocator = std.mem.Allocator;
@@ -28,10 +29,25 @@ pub const CommandSpec = struct {
     label: []const u8,
 };
 
+/// Monitor command spec for inherited watchdog execution.
+pub const MonitorCommandSpec = monitor.MonitorCommandSpec;
+
+/// App liveness probe settings used by monitor watchdog execution.
+pub const LivenessProbe = monitor.LivenessProbe;
+
+/// Watchdog controls for long-running monitor commands.
+pub const MonitorWatchdog = monitor.MonitorWatchdog;
+
+/// Reason why monitored command execution completed.
+pub const MonitorStopReason = monitor.MonitorStopReason;
+
+/// Result for monitored inherited command execution.
+pub const MonitoredTerm = monitor.MonitoredTerm;
+
 /// Executes a child process with captured stdout/stderr.
 ///
 /// This is intentionally used for short-lived commands whose output is parsed.
-/// For long-running monitors, use `runInheritTerm` to stream directly.
+/// For long-running monitors, use `runInheritTerm` or `runInheritMonitored`.
 pub fn runCapture(
     arena: Allocator,
     io: std.Io,
@@ -108,6 +124,21 @@ pub fn runInheritTerm(
         try stderr.flush();
         return types.RunError.RunFailed;
     };
+}
+
+/// Runs an inherited command with watchdog timeout/liveness controls.
+///
+/// This delegates to `process_monitor.zig` so monitor-specific logic remains
+/// isolated from short-lived command execution behavior.
+pub fn runInheritMonitored(
+    arena: Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    spec: MonitorCommandSpec,
+    watchdog: MonitorWatchdog,
+) !MonitoredTerm {
+    return monitor.runInheritMonitored(arena, io, stderr, stdout, spec, watchdog);
 }
 
 /// Runs an inherited command and fails on non-zero termination.

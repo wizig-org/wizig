@@ -35,6 +35,12 @@ pub fn parseUnifiedOptions(args: []const []const u8, stderr: *Io.Writer) !types.
             i += 1;
             continue;
         }
+        if (std.mem.startsWith(u8, arg, "--monitor-timeout=")) {
+            const raw = arg["--monitor-timeout=".len..];
+            options.monitor_timeout_seconds = try parseMonitorTimeout(raw, stderr);
+            i += 1;
+            continue;
+        }
 
         if (i + 1 >= args.len) {
             try stderr.print("error: missing value for option '{s}'\n", .{arg});
@@ -46,6 +52,8 @@ pub fn parseUnifiedOptions(args: []const []const u8, stderr: *Io.Writer) !types.
             options.device_selector = value;
         } else if (std.mem.eql(u8, arg, "--debugger")) {
             options.debugger_mode = value;
+        } else if (std.mem.eql(u8, arg, "--monitor-timeout")) {
+            options.monitor_timeout_seconds = try parseMonitorTimeout(value, stderr);
         } else {
             try stderr.print("error: unknown run option '{s}'\n", .{arg});
             return error.RunFailed;
@@ -54,6 +62,19 @@ pub fn parseUnifiedOptions(args: []const []const u8, stderr: *Io.Writer) !types.
     }
 
     return options;
+}
+
+/// Parses monitor timeout seconds from CLI input.
+fn parseMonitorTimeout(raw: []const u8, stderr: *Io.Writer) !u64 {
+    const seconds = std.fmt.parseInt(u64, raw, 10) catch {
+        try stderr.print("error: invalid --monitor-timeout value '{s}' (expected positive integer seconds)\n", .{raw});
+        return error.RunFailed;
+    };
+    if (seconds == 0) {
+        try stderr.writeAll("error: --monitor-timeout must be greater than zero seconds\n");
+        return error.RunFailed;
+    }
+    return seconds;
 }
 
 /// Resolves project root to an absolute path.
@@ -73,6 +94,7 @@ test "parseUnifiedOptions defaults" {
     try std.testing.expectEqualStrings(".", options.project_root);
     try std.testing.expect(options.device_selector == null);
     try std.testing.expect(options.debugger_mode == null);
+    try std.testing.expect(options.monitor_timeout_seconds == null);
     try std.testing.expect(!options.non_interactive);
     try std.testing.expect(!options.once);
     try std.testing.expect(!options.regenerate_host);
@@ -83,12 +105,24 @@ test "parseUnifiedOptions parses project and flags" {
     defer err_writer.deinit();
 
     const options = try parseUnifiedOptions(
-        &.{ "examples/app/WizigExample", "--device", "emulator-5554", "--debugger", "none", "--once", "--regenerate-host" },
+        &.{ "examples/app/WizigExample", "--device", "emulator-5554", "--debugger", "none", "--monitor-timeout", "75", "--once", "--regenerate-host" },
         &err_writer.writer,
     );
     try std.testing.expectEqualStrings("examples/app/WizigExample", options.project_root);
     try std.testing.expectEqualStrings("emulator-5554", options.device_selector.?);
     try std.testing.expectEqualStrings("none", options.debugger_mode.?);
+    try std.testing.expectEqual(@as(?u64, 75), options.monitor_timeout_seconds);
     try std.testing.expect(options.once);
     try std.testing.expect(options.regenerate_host);
+}
+
+test "parseUnifiedOptions parses inline monitor timeout form" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    const options = try parseUnifiedOptions(
+        &.{ "--monitor-timeout=30" },
+        &err_writer.writer,
+    );
+    try std.testing.expectEqual(@as(?u64, 30), options.monitor_timeout_seconds);
 }
