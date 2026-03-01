@@ -23,6 +23,10 @@ except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore
 
 ROOT = Path(__file__).resolve().parents[2]
+_SPEC_DIR = ROOT / "templates" / "spec"
+_IOS_FFI_PHASE_ID = (_SPEC_DIR / "ios_ffi_phase_id.txt").read_text(encoding="utf-8")
+_IOS_FFI_SHELL_SCRIPT = (_SPEC_DIR / "ios_ffi_build.sh").read_text(encoding="utf-8")
+
 APP_TOKEN = "{{APP_NAME}}"
 APP_IDENTIFIER_TOKEN = "{{APP_IDENTIFIER}}"
 APP_TYPE_TOKEN = "{{APP_TYPE_NAME}}"
@@ -87,7 +91,7 @@ def inject_wizig_package_reference(text: str) -> str:
     build_file_id = "D0A0A0A0A0A0A0A0A0A0A001"
     product_id = "D0A0A0A0A0A0A0A0A0A0A002"
     package_ref_id = "D0A0A0A0A0A0A0A0A0A0A003"
-    shell_phase_id = "D0A0A0A0A0A0A0A0A0A0A010"
+    shell_phase_id = _IOS_FFI_PHASE_ID
 
     if build_file_id not in text:
         build_file_section = (
@@ -153,73 +157,7 @@ def inject_wizig_package_reference(text: str) -> str:
         )
 
     if f"\t\t{shell_phase_id} /* Wizig FFI Build */ = {{\n" not in text:
-        shell_script = (
-            "set -euo pipefail\n"
-            "APP_ROOT=\"${SRCROOT}/..\"\n"
-            "WIZIG_BIN=\"${WIZIG_BIN:-}\"\n"
-            "if [ -z \"${WIZIG_BIN}\" ] && command -v wizig >/dev/null 2>&1; then\n"
-            "  WIZIG_BIN=\"$(command -v wizig)\"\n"
-            "fi\n"
-            "if [ -n \"${WIZIG_BIN}\" ]; then\n"
-            "  if ! \"${WIZIG_BIN}\" codegen \"${APP_ROOT}\" >/dev/null 2>&1; then\n"
-            "    echo \"warning: wizig codegen failed from Xcode build; continuing with existing generated artifacts\"\n"
-            "  fi\n"
-            "fi\n"
-            "GENERATED_ROOT=\"${APP_ROOT}/.wizig/generated/zig\"\n"
-            "RUNTIME_ROOT=\"${APP_ROOT}/.wizig/runtime\"\n"
-            "APP_MODULE=\"${APP_ROOT}/lib/WizigGeneratedAppModule.zig\"\n"
-            "FFI_ROOT=\"${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig\"\n"
-            "if [ ! -f \"${FFI_ROOT}\" ]; then\n"
-            "  echo \"warning: missing ${FFI_ROOT}; run 'wizig codegen ${APP_ROOT}'\"\n"
-            "  exit 0\n"
-            "fi\n"
-            "OUT_DIR=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks\"\n"
-            "mkdir -p \"${OUT_DIR}\"\n"
-            "PLATFORM=\"${PLATFORM_NAME:-iphonesimulator}\"\n"
-            "ARCH=\"${NATIVE_ARCH_ACTUAL:-${CURRENT_ARCH:-arm64}}\"\n"
-            "if [ \"${PLATFORM}\" = \"iphoneos\" ]; then\n"
-            "  TARGET_TRIPLE=\"aarch64-ios\"\n"
-            "  SDK_PATH=\"$(xcrun --sdk iphoneos --show-sdk-path)\"\n"
-            "elif [ \"${ARCH}\" = \"x86_64\" ]; then\n"
-            "  TARGET_TRIPLE=\"x86_64-ios-simulator\"\n"
-            "  SDK_PATH=\"$(xcrun --sdk iphonesimulator --show-sdk-path)\"\n"
-            "else\n"
-            "  TARGET_TRIPLE=\"aarch64-ios-simulator\"\n"
-            "  SDK_PATH=\"$(xcrun --sdk iphonesimulator --show-sdk-path)\"\n"
-            "fi\n"
-            "ZIG_BIN=\"${WIZIG_ZIG_BIN:-${ZIG_BIN:-}}\"\n"
-            "if [ -z \"${ZIG_BIN}\" ] && command -v zig >/dev/null 2>&1; then\n"
-            "  ZIG_BIN=\"$(command -v zig)\"\n"
-            "fi\n"
-            "if [ -z \"${ZIG_BIN}\" ] && [ -n \"${WIZIG_BIN}\" ]; then\n"
-            "  WIZIG_BIN_DIR=\"$(cd \"$(dirname \"${WIZIG_BIN}\")\" && pwd)\"\n"
-            "  for candidate in \"${WIZIG_BIN_DIR}/zig\" \"${WIZIG_BIN_DIR}/../zig\"; do\n"
-            "    if [ -x \"${candidate}\" ]; then\n"
-            "      ZIG_BIN=\"${candidate}\"\n"
-            "      break\n"
-            "    fi\n"
-            "  done\n"
-            "fi\n"
-            "if [ -z \"${ZIG_BIN}\" ]; then\n"
-            "  for candidate in \"/opt/homebrew/bin/zig\" \"/usr/local/bin/zig\" \"${HOME}/.zvm/bin/zig\" \"${HOME}/.zvm/master/zig\"; do\n"
-            "    if [ -x \"${candidate}\" ]; then\n"
-            "      ZIG_BIN=\"${candidate}\"\n"
-            "      break\n"
-            "    fi\n"
-            "  done\n"
-            "fi\n"
-            "if [ -z \"${ZIG_BIN}\" ]; then\n"
-            "  echo \"error: unable to find zig compiler (set WIZIG_ZIG_BIN or add zig to PATH)\"\n"
-            "  exit 1\n"
-            "fi\n"
-            "\"${ZIG_BIN}\" build-lib -OReleaseFast -target \"${TARGET_TRIPLE}\" --dep wizig_core --dep wizig_app \\\n"
-            "  -Mroot=\"${FFI_ROOT}\" \\\n"
-            "  -Mwizig_core=\"${RUNTIME_ROOT}/core/src/root.zig\" \\\n"
-            "  -Mwizig_app=\"${APP_MODULE}\" \\\n"
-            "  --name wizigffi -dynamic -fstrip -install_name @rpath/wizigffi --sysroot \"${SDK_PATH}\" -L/usr/lib -F/System/Library/Frameworks -lc \\\n"
-            "  -femit-bin=\"${OUT_DIR}/wizigffi\"\n"
-        )
-        encoded = shell_script.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+        encoded = _IOS_FFI_SHELL_SCRIPT.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
         shell_section = (
             "/* Begin PBXShellScriptBuildPhase section */\n"
             f"\t\t{shell_phase_id} /* Wizig FFI Build */ = {{\n"
