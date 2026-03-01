@@ -16,7 +16,7 @@ Auto-generated from Zig, Swift, and Kotlin source comments.
 - [`cli/src/commands/run/root.zig`](cli/src/commands/run/root.md)
 - [`cli/src/main.zig`](cli/src/main.md)
 - [`cli/src/run.zig`](cli/src/run.md)
-- [`cli/src/run/legacy.zig`](cli/src/run/legacy.md)
+- [`cli/src/run/platform/root.zig`](cli/src/run/platform/root.md)
 - [`cli/src/run/unified.zig`](cli/src/run/unified.md)
 - [`cli/src/support/errors.zig`](cli/src/support/errors.md)
 - [`cli/src/support/fs.zig`](cli/src/support/fs.md)
