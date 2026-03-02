@@ -1,6 +1,7 @@
 .zig-cache/
 zig-out/
 .gradle/
+__pycache__
 **/.gradle/
 **/local.properties
 DerivedData/

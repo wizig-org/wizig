@@ -75,9 +75,3 @@ pub const FfiBuildInputs = struct {
     app_source: ?[]const u8 = null,
     app_fingerprint_roots: []const []const u8 = &.{},
 };
-
-/// Android FFI output metadata returned after staging artifacts.
-pub const AndroidFfiArtifact = struct {
-    abi: []const u8,
-    staged_path: []const u8,
-};

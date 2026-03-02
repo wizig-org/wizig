@@ -1,68 +1,19 @@
-//! Android FFI build and staging pipeline.
+//! Android ABI resolution helpers for host-managed FFI builds.
 //!
-//! This module builds ABI-specific Wizig FFI shared libraries, caches results
-//! by content fingerprint, and stages artifacts for Android host build usage.
+//! ## Ownership Model
+//! Android FFI compilation is orchestrated by Gradle tasks generated in the
+//! app host project. This module is intentionally limited to ABI discovery and
+//! normalization so the CLI can select device-compatible build parameters
+//! without duplicating library compilation paths.
+//!
+//! ## Responsibilities
+//! - Resolve a connected device ABI via `adb shell getprop`.
+//! - Map Android ABIs to Zig target triples.
+//! - Provide small parsing helpers covered by unit tests.
 const std = @import("std");
 const Io = std.Io;
 
-const ffi_fingerprint = @import("ffi_fingerprint.zig");
-const fs_utils = @import("fs_utils.zig");
 const process = @import("process_supervisor.zig");
-const text_utils = @import("text_utils.zig");
-const types = @import("types.zig");
-const workspace_runtime = @import("workspace_runtime.zig");
-
-/// Builds and stages Android FFI library for the selected device ABI.
-pub fn prepareAndroidFfiLibrary(
-    arena: std.mem.Allocator,
-    io: std.Io,
-    stderr: *Io.Writer,
-    stdout: *Io.Writer,
-    parent_environ_map: *const std.process.Environ.Map,
-    app_root: []const u8,
-    serial: []const u8,
-) !types.AndroidFfiArtifact {
-    const abi = try resolveAndroidDeviceAbi(arena, io, stderr, serial);
-    const zig_target = zigTargetForAndroidAbi(abi) orelse {
-        try stderr.print("error: unsupported Android ABI '{s}'\n", .{abi});
-        return error.RunFailed;
-    };
-    const ffi_inputs = try workspace_runtime.resolveFfiBuildInputs(arena, io, stderr, parent_environ_map, app_root);
-
-    const fingerprint = try ffi_fingerprint.computeFfiFingerprint(
-        arena,
-        io,
-        ffi_fingerprint.android_ffi_cache_version,
-        zig_target,
-        ffi_inputs.root_source,
-        ffi_inputs.core_source,
-        ffi_inputs.app_fingerprint_roots,
-    );
-    const cache_dir = try std.fmt.allocPrint(arena, "/tmp/wizig-ffi-android-cache/{s}", .{fingerprint});
-    std.Io.Dir.cwd().createDirPath(io, cache_dir) catch {};
-
-    const cache_path = try std.fmt.allocPrint(arena, "{s}{s}libwizigffi.so", .{ cache_dir, std.fs.path.sep_str });
-    if (!fs_utils.pathExists(io, cache_path)) {
-        try stdout.print("building Android FFI library for ABI {s}...\n", .{abi});
-        try stdout.flush();
-        try buildAndroidFfiLibrary(arena, io, stderr, ffi_inputs, zig_target, cache_path);
-    }
-
-    const staged_dir = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}.wizig{s}generated{s}android{s}jniLibs{s}{s}",
-        .{ app_root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str, abi },
-    );
-    std.Io.Dir.cwd().createDirPath(io, staged_dir) catch {};
-
-    const staged_path = try std.fmt.allocPrint(arena, "{s}{s}libwizigffi.so", .{ staged_dir, std.fs.path.sep_str });
-    try fs_utils.copyFileIfChanged(arena, io, cache_path, staged_path);
-
-    return .{
-        .abi = try arena.dupe(u8, abi),
-        .staged_path = staged_path,
-    };
-}
 
 /// Resolves device ABI using ordered `getprop` probes.
 pub fn resolveAndroidDeviceAbi(
@@ -110,32 +61,19 @@ fn parseFirstSupportedAndroidAbi(raw: []const u8) ?[]const u8 {
     return null;
 }
 
-fn buildAndroidFfiLibrary(
-    arena: std.mem.Allocator,
-    io: std.Io,
-    stderr: *Io.Writer,
-    ffi_inputs: types.FfiBuildInputs,
-    zig_target: []const u8,
-    cache_path: []const u8,
-) !void {
-    const root_arg = try std.fmt.allocPrint(arena, "-Mroot={s}", .{ffi_inputs.root_source});
-    const core_arg = try std.fmt.allocPrint(arena, "-Mwizig_core={s}", .{ffi_inputs.core_source});
-    const app_arg = if (ffi_inputs.app_source) |app_source| try std.fmt.allocPrint(arena, "-Mwizig_app={s}", .{app_source}) else null;
-    const emit_arg = try std.fmt.allocPrint(arena, "-femit-bin={s}", .{cache_path});
+test "zigTargetForAndroidAbi maps supported values" {
+    try std.testing.expectEqualStrings("aarch64-linux-android", zigTargetForAndroidAbi("arm64-v8a").?);
+    try std.testing.expectEqualStrings("arm-linux-androideabi", zigTargetForAndroidAbi("armeabi-v7a").?);
+    try std.testing.expectEqualStrings("x86_64-linux-android", zigTargetForAndroidAbi("x86_64").?);
+    try std.testing.expectEqualStrings("x86-linux-android", zigTargetForAndroidAbi("x86").?);
+    try std.testing.expect(zigTargetForAndroidAbi("mips64") == null);
+}
 
-    var argv = std.ArrayList([]const u8).empty;
-    try argv.appendSlice(arena, &.{ "zig", "build-lib", "-OReleaseFast", "-target", zig_target, "--dep", "wizig_core" });
-    if (app_arg != null) {
-        try argv.appendSlice(arena, &.{ "--dep", "wizig_app" });
-    }
-    try argv.appendSlice(arena, &.{ root_arg, core_arg });
-    if (app_arg) |arg| {
-        try argv.append(arena, arg);
-    }
-    try argv.appendSlice(arena, &.{ "--name", "wizigffi", "-dynamic", emit_arg });
+test "parseFirstSupportedAndroidAbi returns first recognized ABI token" {
+    const parsed = parseFirstSupportedAndroidAbi("mips64, x86_64, arm64-v8a").?;
+    try std.testing.expectEqualStrings("x86_64", parsed);
+}
 
-    _ = try process.runCaptureChecked(arena, io, stderr, .{
-        .argv = argv.items,
-        .label = "build Android Wizig FFI library",
-    }, .{});
+test "parseFirstSupportedAndroidAbi returns null for unsupported lists" {
+    try std.testing.expect(parseFirstSupportedAndroidAbi("mips, mips64, riscv64") == null);
 }

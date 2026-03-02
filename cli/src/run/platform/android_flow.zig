@@ -1,15 +1,19 @@
 //! Android platform run orchestration.
 //!
-//! This module coordinates target selection, FFI prep, Gradle build, install,
-//! launch, and optional debugger/log monitor attachment for Android runs.
+//! This module coordinates target selection, host-managed FFI planning, Gradle
+//! build, install, launch, and optional debugger/log monitor attachment for
+//! Android runs.
 const std = @import("std");
 const Io = std.Io;
 
-const app_root = @import("app_root.zig");
 const android_app_info = @import("android_app_info.zig");
+const android_build_plan = @import("android_build_plan.zig");
 const android_debug = @import("android_debug.zig");
 const android_discovery = @import("android_discovery.zig");
 const android_ffi = @import("android_ffi.zig");
+const android_gradle_init = @import("android_gradle_init.zig");
+const android_gradle_migration = @import("android_gradle_migration.zig");
+const android_jni_bridge_migration = @import("android_jni_bridge_migration.zig");
 const config_parse = @import("config_parse.zig");
 const fs_utils = @import("fs_utils.zig");
 const options_mod = @import("options.zig");
@@ -63,23 +67,56 @@ pub fn runAndroid(
     try stdout.print("selected Android target: {s} [{s}]\n", .{ selected.model, selected.serial });
     try stdout.flush();
 
-    const app_root_path = try app_root.resolveAppRoot(arena, io, options.project_dir);
-    const android_ffi_artifact = try android_ffi.prepareAndroidFfiLibrary(
+    const resolved_abi = try android_ffi.resolveAndroidDeviceAbi(
         arena,
         io,
         stderr,
-        stdout,
-        parent_environ_map,
-        app_root_path,
         selected.serial,
     );
-    try stdout.print("prepared Android FFI library for {s}: {s}\n", .{ android_ffi_artifact.abi, android_ffi_artifact.staged_path });
+    const ffi_plan = android_build_plan.planHostManagedAndroidFfiBuild(arena, resolved_abi) catch {
+        try stderr.print("error: unsupported Android ABI '{s}'\n", .{resolved_abi});
+        return error.RunFailed;
+    };
+    try stdout.print("selected Android FFI ABI: {s} ({s})\n", .{ ffi_plan.abi, ffi_plan.zig_target });
     try stdout.flush();
 
     std.Io.Dir.cwd().createDirPath(io, "/tmp/wizig-gradle-home") catch {};
+    const gradle_home = "/tmp/wizig-gradle-home";
+    const migration_summary = android_gradle_migration.ensureBuildGradleKtsCompatibility(
+        arena,
+        io,
+        options.project_dir,
+        options.module,
+    ) catch |err| blk: {
+        try stderr.print(
+            "warning: failed to run Android Gradle compatibility migration: {s}\n",
+            .{@errorName(err)},
+        );
+        break :blk android_gradle_migration.MigrationSummary{};
+    };
+    if (migration_summary.patched) {
+        try stdout.writeAll("patched Android host Gradle compatibility for FFI task wiring\n");
+        try stdout.flush();
+    }
+    const jni_bridge_migration_summary = android_jni_bridge_migration.ensureGeneratedJniBridgeCompatibility(
+        arena,
+        io,
+        options.project_dir,
+    ) catch |err| blk: {
+        try stderr.print(
+            "warning: failed to run Android JNI bridge compatibility migration: {s}\n",
+            .{@errorName(err)},
+        );
+        break :blk android_jni_bridge_migration.MigrationSummary{};
+    };
+    if (jni_bridge_migration_summary.patched) {
+        try stdout.writeAll("patched Android JNI bridge to forward Zig stdio to logcat\n");
+        try stdout.flush();
+    }
     var gradle_env = try parent_environ_map.clone(arena);
     defer gradle_env.deinit();
-    try gradle_env.put("GRADLE_USER_HOME", "/tmp/wizig-gradle-home");
+    try gradle_env.put("GRADLE_USER_HOME", gradle_home);
+    const gradle_init_script = try android_gradle_init.ensureInitScript(arena, io, gradle_home);
 
     const gradle_wrapper_path = try fs_utils.joinPath(arena, options.project_dir, "gradlew");
     const gradle_wrapper_jar_path = try std.fmt.allocPrint(arena, "{s}{s}gradle{s}wrapper{s}gradle-wrapper.jar", .{ options.project_dir, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str });
@@ -96,12 +133,20 @@ pub fn runAndroid(
     }
 
     const assemble_task = try std.fmt.allocPrint(arena, ":{s}:assembleDebug", .{options.module});
-    const abi_property = try std.fmt.allocPrint(arena, "-Pandroid.injected.build.abi={s}", .{android_ffi_artifact.abi});
 
-    try stdout.writeAll("building Android app...\n");
+    try stdout.writeAll("building Android app (host-managed FFI)...\n");
     try stdout.flush();
     try process.runInheritChecked(io, stderr, .{
-        .argv = &.{ gradle_cmd, "--no-daemon", abi_property, assemble_task },
+        .argv = &.{
+            gradle_cmd,
+            "--no-daemon",
+            "-I",
+            gradle_init_script,
+            ffi_plan.injected_build_abi_property,
+            ffi_plan.wizig_ffi_abi_property,
+            "-Pwizig.ffi.optimize=Debug",
+            assemble_task,
+        },
         .cwd_path = options.project_dir,
         .environ_map = &gradle_env,
         .label = "build Android app",
@@ -227,6 +272,26 @@ fn streamAndroidLogs(
     if (pid) |android_pid| {
         var pid_buf: [24]u8 = undefined;
         const pid_text = try std.fmt.bufPrint(&pid_buf, "{d}", .{android_pid});
+
+        const startup_dump = process.runCapture(arena, io, .{
+            .argv = &.{ "adb", "-s", serial, "logcat", "--pid", pid_text, "-d" },
+            .label = "dump Android startup logs",
+        }, .{
+            .stdout_bytes = 4 * 1024 * 1024,
+            .stderr_bytes = 512 * 1024,
+        }) catch null;
+        if (startup_dump) |dump| {
+            if (dump.stdout.len > 0) {
+                try stdout.writeAll(dump.stdout);
+                if (dump.stdout[dump.stdout.len - 1] != '\n') try stdout.writeAll("\n");
+            }
+            if (dump.stderr.len > 0) {
+                try stderr.writeAll(dump.stderr);
+                if (dump.stderr[dump.stderr.len - 1] != '\n') try stderr.writeAll("\n");
+                try stderr.flush();
+            }
+        }
+
         try stdout.print("streaming logcat for pid {s} (Ctrl+C to stop)...\n", .{pid_text});
         try stdout.flush();
         const monitor_result = try process.runInheritMonitored(
@@ -235,7 +300,7 @@ fn streamAndroidLogs(
             stderr,
             stdout,
             .{
-                .argv = &.{ "adb", "-s", serial, "logcat", "--pid", pid_text },
+                .argv = &.{ "adb", "-s", serial, "logcat", "--pid", pid_text, "-T", "1" },
                 .label = "stream Android logs",
             },
             watchdog,

@@ -94,7 +94,17 @@ pub fn buildIosSimulatorFfiLibrary(
     return out_path;
 }
 
-/// Copies host dylib into simulator bundle and framework locations.
+/// Copies host dylib into simulator app Frameworks location.
+///
+/// ## Incrementality
+/// Destination files are updated only when bytes differ, preserving filesystem
+/// metadata via `cp` while avoiding redundant writes.
+///
+/// ## Launch Stability
+/// On modern simulator runtimes, placing unmanaged dylibs in the app bundle
+/// root can fail installation preflight. This function stages the Wizig runtime
+/// only in `Frameworks/` and re-signs changed artifacts to satisfy launch
+/// policy checks.
 pub fn bundleIosFfiLibraryForSimulator(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -105,19 +115,67 @@ pub fn bundleIosFfiLibraryForSimulator(
     const frameworks_dir = try std.fmt.allocPrint(arena, "{s}{s}Frameworks", .{ app_path, std.fs.path.sep_str });
     std.Io.Dir.cwd().createDirPath(io, frameworks_dir) catch {};
 
-    const app_bundle_ffi = try std.fmt.allocPrint(arena, "{s}{s}wizigffi", .{ app_path, std.fs.path.sep_str });
     const frameworks_ffi = try std.fmt.allocPrint(arena, "{s}{s}wizigffi", .{ frameworks_dir, std.fs.path.sep_str });
 
-    _ = try process.runCaptureChecked(arena, io, stderr, .{
-        .argv = &.{ "cp", host_ffi_path, app_bundle_ffi },
-        .label = "copy Wizig FFI into iOS app bundle",
-    }, .{});
-    _ = try process.runCaptureChecked(arena, io, stderr, .{
-        .argv = &.{ "cp", host_ffi_path, frameworks_ffi },
-        .label = "copy Wizig FFI into iOS app Frameworks",
-    }, .{});
+    const changed_frameworks = try copyFileWithCpIfChanged(
+        arena,
+        io,
+        stderr,
+        host_ffi_path,
+        frameworks_ffi,
+        "copy Wizig FFI into iOS app Frameworks",
+    );
+
+    if (changed_frameworks) {
+        try codesignPath(arena, io, stderr, frameworks_ffi, "codesign staged Wizig FFI in iOS Frameworks");
+        try codesignPath(arena, io, stderr, app_path, "codesign iOS app after staging Wizig FFI");
+    }
 
     return "@executable_path/Frameworks/wizigffi";
+}
+
+fn copyFileWithCpIfChanged(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    src_path: []const u8,
+    dst_path: []const u8,
+    label: []const u8,
+) !bool {
+    if (try filesEqual(arena, io, src_path, dst_path)) return false;
+
+    _ = try process.runCaptureChecked(arena, io, stderr, .{
+        .argv = &.{ "cp", src_path, dst_path },
+        .label = label,
+    }, .{});
+    return true;
+}
+
+fn filesEqual(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    src_path: []const u8,
+    dst_path: []const u8,
+) !bool {
+    const src_bytes = try std.Io.Dir.cwd().readFileAlloc(io, src_path, arena, .limited(128 * 1024 * 1024));
+    const dst_bytes = std.Io.Dir.cwd().readFileAlloc(io, dst_path, arena, .limited(128 * 1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return err,
+    };
+    return std.mem.eql(u8, src_bytes, dst_bytes);
+}
+
+fn codesignPath(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    path: []const u8,
+    label: []const u8,
+) !void {
+    _ = try process.runCaptureChecked(arena, io, stderr, .{
+        .argv = &.{ "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none", path },
+        .label = label,
+    }, .{});
 }
 
 /// Resolves existing iOS FFI library path from environment or default output.

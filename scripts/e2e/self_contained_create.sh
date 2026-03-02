@@ -53,10 +53,21 @@ grep -Fq "compileSdk = 36" "$app_dir/android/app/build.gradle.kts" \
   || fail "Android compileSdk is not normalized to 36"
 grep -Fq "minSdk = 26" "$app_dir/android/app/build.gradle.kts" \
   || fail "Android minSdk is not normalized to 26"
-grep -Fq 'jniLibs.srcDir(rootProject.file("../.wizig/generated/android/jniLibs"))' "$app_dir/android/app/build.gradle.kts" \
-  || fail "Android jniLibs sourceSet is not wired to .wizig/generated/android/jniLibs"
+grep -Fq 'jniLibs.directories.add(rootProject.file("../.wizig/generated/android/jniLibs").path)' "$app_dir/android/app/build.gradle.kts" \
+  || fail "Android jniLibs sourceSet is not wired to .wizig/generated/android/jniLibs via non-deprecated directory wiring"
 grep -Fq 'kotlin.directories.add(rootProject.file("../.wizig/sdk/android/src/main/kotlin").path)' "$app_dir/android/app/build.gradle.kts" \
   || fail "Android Kotlin sourceSet is not wired to .wizig/sdk/android/src/main/kotlin"
+grep -Fq 'val requestedWizigAbi: String? = providers.gradleProperty("wizig.ffi.abi").orNull' "$app_dir/android/app/build.gradle.kts" \
+  || fail "Android FFI ABI selection property is not wired for host-managed build ownership"
+grep -Fq 'onlyIf { requestedWizigAbi == null || requestedWizigAbi == abi }' "$app_dir/android/app/build.gradle.kts" \
+  || fail "Android host-managed FFI tasks are not filtered by requested ABI"
+grep -Fq 'inputs.file(generatedRoot.resolve("WizigGeneratedFfiRoot.zig"))' "$app_dir/android/app/build.gradle.kts" \
+  || fail "Android host-managed FFI task inputs are not declared for incremental execution"
+grep -Fq 'tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach {' "$app_dir/android/app/build.gradle.kts" \
+  || fail "Android merge*JniLibFolders tasks are not explicitly wired to host-managed FFI producers"
+if grep -Fq 'val buildWizigFfiArm64 =' "$app_dir/android/app/build.gradle.kts"; then
+  fail "Android scaffold still uses legacy fixed per-ABI task wiring"
+fi
 if grep -Fq "{APP_NAME}" "$app_dir/android/app/src/main/java/dev/wizig/selfcontainedapp/MainActivity.kt"; then
   fail "Android MainActivity still contains unresolved {APP_NAME} token"
 fi

@@ -3,7 +3,9 @@ const std = @import("std");
 const Io = std.Io;
 const fs_util = @import("../../support/fs.zig");
 const path_util = @import("../../support/path.zig");
+const android_gradle_migration = @import("../../run/platform/android_gradle_migration.zig");
 const compatibility = @import("compatibility.zig");
+const ios_host_patch = @import("ios_host_patch.zig");
 const options = @import("options.zig");
 const targets = @import("targets.zig");
 const watch_runner = @import("watch/runner.zig");
@@ -198,6 +200,23 @@ pub fn generateProject(
         try fs_util.writeFileIfChanged(arena, io, sdk_path, kotlin_out)
     else
         false;
+    const ios_host_patch_summary = ios_host_patch.ensureIosHostBuildPhase(arena, io, project_root) catch |err| blk: {
+        try stderr.print("warning: failed to patch iOS host project for Wizig FFI build phase: {s}\n", .{@errorName(err)});
+        break :blk ios_host_patch.PatchSummary{};
+    };
+    const android_project_root = try path_util.join(arena, project_root, "android");
+    const android_host_patch_summary = if (fs_util.pathExists(io, android_project_root))
+        android_gradle_migration.ensureBuildGradleKtsCompatibility(
+            arena,
+            io,
+            android_project_root,
+            "app",
+        ) catch |err| blk: {
+            try stderr.print("warning: failed to patch Android host Gradle for Wizig FFI build tasks: {s}\n", .{@errorName(err)});
+            break :blk android_gradle_migration.MigrationSummary{};
+        }
+    else
+        android_gradle_migration.MigrationSummary{};
 
     if (zig_changed or zig_ffi_changed or zig_app_module_changed or swift_changed or kotlin_changed or android_jni_bridge_changed or android_jni_cmake_changed or ios_mirror_changed or sdk_swift_changed or sdk_kotlin_changed) {
         try stdout.print("generated API bindings ({s})\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}", .{
@@ -224,6 +243,15 @@ pub fn generateProject(
         try stdout.print("API bindings unchanged ({s})\n", .{
             if (maybe_source) |source| if (source == .zig) "zig contract + discovery" else "json contract + discovery" else "auto-discovery",
         });
+    }
+    if (ios_host_patch_summary.patched_projects > 0) {
+        try stdout.print(
+            "updated iOS host FFI build phase in {d}/{d} project(s)\n",
+            .{ ios_host_patch_summary.patched_projects, ios_host_patch_summary.scanned_projects },
+        );
+    }
+    if (android_host_patch_summary.patched) {
+        try stdout.writeAll("updated Android host Gradle FFI task compatibility in app/build.gradle.kts\n");
     }
     try stdout.flush();
 }
@@ -1744,7 +1772,12 @@ fn renderAndroidJniBridge(arena: std.mem.Allocator, spec: ApiSpec, compat: compa
     try out.appendSlice(arena, "#include <stdlib.h>\n");
     try out.appendSlice(arena, "#include <string.h>\n");
     try out.appendSlice(arena, "#include <stdio.h>\n");
-    try out.appendSlice(arena, "#include <dlfcn.h>\n\n");
+    try out.appendSlice(arena, "#include <dlfcn.h>\n");
+    try out.appendSlice(arena, "#if defined(__ANDROID__)\n");
+    try out.appendSlice(arena, "#include <android/log.h>\n");
+    try out.appendSlice(arena, "#include <pthread.h>\n");
+    try out.appendSlice(arena, "#include <unistd.h>\n");
+    try out.appendSlice(arena, "#endif\n\n");
     try appendFmt(&out, arena, "#define WIZIG_EXPECTED_ABI_VERSION {d}\n", .{compat.abi_version});
     try appendFmt(&out, arena, "#define WIZIG_EXPECTED_CONTRACT_HASH \"{s}\"\n\n", .{compat.contract_hash_hex});
     try out.appendSlice(arena, "extern void wizig_bytes_free(uint8_t* ptr, size_t len);\n");
@@ -1793,6 +1826,56 @@ fn renderAndroidJniBridge(arena: std.mem.Allocator, spec: ApiSpec, compat: compa
         try out.appendSlice(arena, ");\n");
     }
     try out.appendSlice(arena, "\n");
+
+    try out.appendSlice(arena, "#if defined(__ANDROID__)\n");
+    try out.appendSlice(arena, "static pthread_once_t wizig_stdio_forward_once = PTHREAD_ONCE_INIT;\n\n");
+    try out.appendSlice(arena, "static void* wizig_android_stdio_forward_loop(void* ctx) {\n");
+    try out.appendSlice(arena, "    int read_fd = *(int*)ctx;\n");
+    try out.appendSlice(arena, "    free(ctx);\n");
+    try out.appendSlice(arena, "    char buffer[1024];\n");
+    try out.appendSlice(arena, "    while (true) {\n");
+    try out.appendSlice(arena, "        ssize_t read_count = read(read_fd, buffer, sizeof(buffer) - 1);\n");
+    try out.appendSlice(arena, "        if (read_count <= 0) break;\n");
+    try out.appendSlice(arena, "        buffer[(size_t)read_count] = '\\0';\n");
+    try out.appendSlice(arena, "        __android_log_write(ANDROID_LOG_INFO, \"WizigZig\", buffer);\n");
+    try out.appendSlice(arena, "    }\n");
+    try out.appendSlice(arena, "    close(read_fd);\n");
+    try out.appendSlice(arena, "    return NULL;\n");
+    try out.appendSlice(arena, "}\n\n");
+    try out.appendSlice(arena, "static void wizig_android_setup_stdio_forwarder(void) {\n");
+    try out.appendSlice(arena, "    int pipe_fds[2];\n");
+    try out.appendSlice(arena, "    if (pipe(pipe_fds) != 0) return;\n");
+    try out.appendSlice(arena, "    const int read_fd = pipe_fds[0];\n");
+    try out.appendSlice(arena, "    const int write_fd = pipe_fds[1];\n\n");
+    try out.appendSlice(arena, "    if (dup2(write_fd, STDOUT_FILENO) < 0 || dup2(write_fd, STDERR_FILENO) < 0) {\n");
+    try out.appendSlice(arena, "        close(read_fd);\n");
+    try out.appendSlice(arena, "        close(write_fd);\n");
+    try out.appendSlice(arena, "        return;\n");
+    try out.appendSlice(arena, "    }\n\n");
+    try out.appendSlice(arena, "    close(write_fd);\n");
+    try out.appendSlice(arena, "    setvbuf(stdout, NULL, _IONBF, 0);\n");
+    try out.appendSlice(arena, "    setvbuf(stderr, NULL, _IONBF, 0);\n\n");
+    try out.appendSlice(arena, "    int* thread_fd = (int*)malloc(sizeof(int));\n");
+    try out.appendSlice(arena, "    if (thread_fd == NULL) {\n");
+    try out.appendSlice(arena, "        close(read_fd);\n");
+    try out.appendSlice(arena, "        return;\n");
+    try out.appendSlice(arena, "    }\n");
+    try out.appendSlice(arena, "    *thread_fd = read_fd;\n\n");
+    try out.appendSlice(arena, "    pthread_t thread;\n");
+    try out.appendSlice(arena, "    if (pthread_create(&thread, NULL, wizig_android_stdio_forward_loop, thread_fd) != 0) {\n");
+    try out.appendSlice(arena, "        free(thread_fd);\n");
+    try out.appendSlice(arena, "        close(read_fd);\n");
+    try out.appendSlice(arena, "        return;\n");
+    try out.appendSlice(arena, "    }\n");
+    try out.appendSlice(arena, "    pthread_detach(thread);\n");
+    try out.appendSlice(arena, "}\n\n");
+    try out.appendSlice(arena, "static void wizig_forward_stdio_to_logcat_once(void) {\n");
+    try out.appendSlice(arena, "    pthread_once(&wizig_stdio_forward_once, wizig_android_setup_stdio_forwarder);\n");
+    try out.appendSlice(arena, "}\n");
+    try out.appendSlice(arena, "#else\n");
+    try out.appendSlice(arena, "static void wizig_forward_stdio_to_logcat_once(void) {\n");
+    try out.appendSlice(arena, "}\n");
+    try out.appendSlice(arena, "#endif\n\n");
 
     try out.appendSlice(arena, "static void copy_slice_to_buffer(const uint8_t* ptr, size_t len, char* out, size_t cap) {\n");
     try out.appendSlice(arena, "    if (cap == 0) return;\n");
@@ -1876,6 +1959,7 @@ fn renderAndroidJniBridge(arena: std.mem.Allocator, spec: ApiSpec, compat: compa
         .{validate_jni_name},
     );
     try out.appendSlice(arena, "    (void)clazz;\n");
+    try out.appendSlice(arena, "    wizig_forward_stdio_to_logcat_once();\n");
     try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_bytes_free\")) return;\n");
     try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_ffi_abi_version\")) return;\n");
     try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_ffi_contract_hash_ptr\")) return;\n");
@@ -2244,5 +2328,8 @@ test "renderKotlinApi and renderAndroidJniBridge emit compatibility and structur
     try std.testing.expect(std.mem.indexOf(u8, jni_rendered, "extern const uint8_t* wizig_ffi_last_error_domain_ptr(void);") != null);
     try std.testing.expect(std.mem.indexOf(u8, jni_rendered, "throw_structured_error(env, \"wizig.compatibility\", 1002, message);") != null);
     try std.testing.expect(std.mem.indexOf(u8, jni_rendered, "ffi compatibility mismatch: expected abi=%u hash=%s got abi=%u hash=%s") != null);
+    try std.testing.expect(std.mem.indexOf(u8, jni_rendered, "#include <android/log.h>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, jni_rendered, "static void wizig_forward_stdio_to_logcat_once(void)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, jni_rendered, "wizig_forward_stdio_to_logcat_once();") != null);
     try std.testing.expect(std.mem.indexOf(u8, jni_rendered, compat_meta.contract_hash_hex) != null);
 }

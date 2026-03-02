@@ -45,7 +45,7 @@ def write_android_gradle_files(out_android_dir: Path, defaults: dict) -> None:
     )
 
     (out_android_dir / "app" / "build.gradle.kts").write_text(
-        f"""plugins {{\n    alias(libs.plugins.android.application)\n    alias(libs.plugins.kotlin.compose)\n}}\n\nandroid {{\n    namespace = \"{ANDROID_PACKAGE_TOKEN}\"\n    compileSdk = {compile_sdk}\n\n    defaultConfig {{\n        applicationId = \"{ANDROID_PACKAGE_TOKEN}\"\n        minSdk = {min_sdk}\n        targetSdk = {target_sdk}\n        versionCode = 1\n        versionName = \"1.0\"\n        testInstrumentationRunner = \"androidx.test.runner.AndroidJUnitRunner\"\n    }}\n\n    buildTypes {{\n        release {{\n            isMinifyEnabled = false\n            proguardFiles(\n                getDefaultProguardFile(\"proguard-android-optimize.txt\"),\n                \"proguard-rules.pro\"\n            )\n        }}\n    }}\n\n    compileOptions {{\n        sourceCompatibility = JavaVersion.VERSION_{java_version}\n        targetCompatibility = JavaVersion.VERSION_{java_version}\n    }}\n\n    buildFeatures {{\n        compose = true\n    }}\n\n    externalNativeBuild {{\n        cmake {{\n            path = rootProject.file(\"../.wizig/generated/android/jni/CMakeLists.txt\")\n        }}\n    }}\n\n    sourceSets {{\n        getByName(\"main\") {{\n            kotlin.directories.add(rootProject.file(\"../.wizig/sdk/android/src/main/kotlin\").path)\n            jniLibs.srcDir(rootProject.file(\"../.wizig/generated/android/jniLibs\"))\n        }}\n    }}\n\n    packaging {{\n        resources {{\n            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n        }}\n    }}\n}}\n\nkotlin {{\n    jvmToolchain({kotlin_target})\n}}\n\nfun registerWizigFfiTask(taskName: String, abi: String, zigTarget: String) = tasks.register<Exec>(taskName) {{\n    val appRoot = rootProject.file(\"..\")\n    val outDir = appRoot.resolve(\".wizig/generated/android/jniLibs/$abi\")\n    val generatedRoot = appRoot.resolve(\".wizig/generated/zig\")\n    val runtimeRoot = appRoot.resolve(\".wizig/runtime\")\n    val libRoot = appRoot.resolve(\"lib\")\n    doFirst {{\n        outDir.mkdirs()\n    }}\n    commandLine(\n        \"zig\",\n        \"build-lib\",\n        \"-OReleaseFast\",\n        \"-target\",\n        zigTarget,\n        \"--dep\",\n        \"wizig_core\",\n        \"--dep\",\n        \"wizig_app\",\n        \"-Mroot=${{generatedRoot.path}}/WizigGeneratedFfiRoot.zig\",\n        \"-Mwizig_core=${{runtimeRoot.path}}/core/src/root.zig\",\n        \"-Mwizig_app=${{libRoot.path}}/WizigGeneratedAppModule.zig\",\n        \"--name\",\n        \"wizigffi\",\n        \"-dynamic\",\n        \"-femit-bin=${{outDir.path}}/libwizigffi.so\",\n    )\n}}\n\nval buildWizigFfiArm64 = registerWizigFfiTask(\"buildWizigFfiArm64V8a\", \"arm64-v8a\", \"aarch64-linux-android\")\nval buildWizigFfiArmV7 = registerWizigFfiTask(\"buildWizigFfiArmeabiV7a\", \"armeabi-v7a\", \"arm-linux-androideabi\")\nval buildWizigFfiX64 = registerWizigFfiTask(\"buildWizigFfiX8664\", \"x86_64\", \"x86_64-linux-android\")\nval buildWizigFfiX86 = registerWizigFfiTask(\"buildWizigFfiX86\", \"x86\", \"x86-linux-android\")\n\ntasks.matching {{ it.name.startsWith(\"configureCMake\") || it.name.startsWith(\"buildCMake\") }}.configureEach {{\n    dependsOn(buildWizigFfiArm64, buildWizigFfiArmV7, buildWizigFfiX64, buildWizigFfiX86)\n}}\n\ndependencies {{\n    implementation(libs.androidx.core.ktx)\n    implementation(libs.androidx.lifecycle.runtime.ktx)\n    implementation(libs.androidx.activity.compose)\n    implementation(platform(libs.androidx.compose.bom))\n    implementation(libs.androidx.compose.ui)\n    implementation(libs.androidx.compose.ui.graphics)\n    implementation(libs.androidx.compose.ui.tooling.preview)\n    implementation(libs.androidx.compose.material3)\n    implementation(\"net.java.dev.jna:jna:5.14.0\")\n\n    testImplementation(libs.junit)\n    androidTestImplementation(libs.androidx.junit)\n    androidTestImplementation(libs.androidx.espresso.core)\n    androidTestImplementation(platform(libs.androidx.compose.bom))\n    androidTestImplementation(libs.androidx.compose.ui.test.junit4)\n\n    debugImplementation(libs.androidx.compose.ui.tooling)\n    debugImplementation(libs.androidx.compose.ui.test.manifest)\n}}\n""",
+        f"""plugins {{\n    alias(libs.plugins.android.application)\n    alias(libs.plugins.kotlin.compose)\n}}\n\nandroid {{\n    namespace = \"{ANDROID_PACKAGE_TOKEN}\"\n    compileSdk = {compile_sdk}\n\n    defaultConfig {{\n        applicationId = \"{ANDROID_PACKAGE_TOKEN}\"\n        minSdk = {min_sdk}\n        targetSdk = {target_sdk}\n        versionCode = 1\n        versionName = \"1.0\"\n        testInstrumentationRunner = \"androidx.test.runner.AndroidJUnitRunner\"\n    }}\n\n    buildTypes {{\n        release {{\n            isMinifyEnabled = false\n            proguardFiles(\n                getDefaultProguardFile(\"proguard-android-optimize.txt\"),\n                \"proguard-rules.pro\"\n            )\n        }}\n    }}\n\n    compileOptions {{\n        sourceCompatibility = JavaVersion.VERSION_{java_version}\n        targetCompatibility = JavaVersion.VERSION_{java_version}\n    }}\n\n    buildFeatures {{\n        compose = true\n    }}\n\n    externalNativeBuild {{\n        cmake {{\n            path = rootProject.file(\"../.wizig/generated/android/jni/CMakeLists.txt\")\n        }}\n    }}\n\n    sourceSets {{\n        getByName(\"main\") {{\n            kotlin.directories.add(rootProject.file(\"../.wizig/sdk/android/src/main/kotlin\").path)\n            jniLibs.directories.add(rootProject.file(\"../.wizig/generated/android/jniLibs\").path)\n        }}\n    }}\n\n    packaging {{\n        resources {{\n            excludes += \"/META-INF/{{AL2.0,LGPL2.1}}\"\n        }}\n    }}\n}}\n\nkotlin {{\n    jvmToolchain({kotlin_target})\n}}\n\nval wizigAbiTargets: Map<String, String> = mapOf(\n    \"arm64-v8a\" to \"aarch64-linux-android\",\n    \"armeabi-v7a\" to \"arm-linux-androideabi\",\n    \"x86_64\" to \"x86_64-linux-android\",\n    \"x86\" to \"x86-linux-android\",\n)\n\nval requestedWizigAbi: String? = providers.gradleProperty(\"wizig.ffi.abi\").orNull\nif (requestedWizigAbi != null && requestedWizigAbi !in wizigAbiTargets.keys) {{\n    throw org.gradle.api.GradleException(\n        \"Unsupported Wizig FFI ABI '${{requestedWizigAbi}}'. Supported values: ${{wizigAbiTargets.keys.joinToString(\", \")}}\"\n    )\n}}\n\nfun abiTaskSuffix(abi: String): String =\n    abi.split('-', '_').joinToString(\"\") {{ segment ->\n        segment.replaceFirstChar {{ ch ->\n            if (ch.isLowerCase()) ch.titlecase() else ch.toString()\n        }}\n    }}\n\nfun registerWizigFfiTask(abi: String, zigTarget: String) =\n    tasks.register<Exec>(\"buildWizigFfi${{abiTaskSuffix(abi)}}\") {{\n        val appRoot = rootProject.file(\"..\")\n        val outDir = appRoot.resolve(\".wizig/generated/android/jniLibs/$abi\")\n        val outFile = outDir.resolve(\"libwizigffi.so\")\n        val generatedRoot = appRoot.resolve(\".wizig/generated/zig\")\n        val runtimeRoot = appRoot.resolve(\".wizig/runtime\")\n        val libRoot = appRoot.resolve(\"lib\")\n\n        group = \"wizig\"\n        description = \"Build Wizig FFI for Android ABI $abi\"\n\n        inputs.file(generatedRoot.resolve(\"WizigGeneratedFfiRoot.zig\"))\n        inputs.file(runtimeRoot.resolve(\"core/src/root.zig\"))\n        inputs.file(libRoot.resolve(\"WizigGeneratedAppModule.zig\"))\n        inputs.property(\"abi\", abi)\n        inputs.property(\"zigTarget\", zigTarget)\n        outputs.file(outFile)\n\n        onlyIf {{ requestedWizigAbi == null || requestedWizigAbi == abi }}\n\n        doFirst {{\n            outDir.mkdirs()\n        }}\n\n        commandLine(\n            \"zig\",\n            \"build-lib\",\n            \"-OReleaseFast\",\n            \"-target\",\n            zigTarget,\n            \"--dep\",\n            \"wizig_core\",\n            \"--dep\",\n            \"wizig_app\",\n            \"-Mroot=${{generatedRoot.path}}/WizigGeneratedFfiRoot.zig\",\n            \"-Mwizig_core=${{runtimeRoot.path}}/core/src/root.zig\",\n            \"-Mwizig_app=${{libRoot.path}}/WizigGeneratedAppModule.zig\",\n            \"--name\",\n            \"wizigffi\",\n            \"-dynamic\",\n            \"-femit-bin=${{outFile.path}}\",\n        )\n    }}\n\nval buildWizigFfiTasks = wizigAbiTargets.map {{ (abi, zigTarget) ->\n    registerWizigFfiTask(abi, zigTarget)\n}}\n\ntasks.register(\"buildWizigFfi\") {{\n    group = \"wizig\"\n    description = \"Build Wizig FFI shared libraries for required Android ABI targets\"\n    dependsOn(buildWizigFfiTasks)\n}}\n\ntasks.matching {{ it.name.startsWith(\"configureCMake\") || it.name.startsWith(\"buildCMake\") }}.configureEach {{\n    dependsOn(\"buildWizigFfi\")\n}}\n\ntasks.matching {{ it.name.startsWith(\"merge\") && it.name.endsWith(\"JniLibFolders\") }}.configureEach {{\n    dependsOn(\"buildWizigFfi\")\n}}\n\ndependencies {{\n    implementation(libs.androidx.core.ktx)\n    implementation(libs.androidx.lifecycle.runtime.ktx)\n    implementation(libs.androidx.activity.compose)\n    implementation(platform(libs.androidx.compose.bom))\n    implementation(libs.androidx.compose.ui)\n    implementation(libs.androidx.compose.ui.graphics)\n    implementation(libs.androidx.compose.ui.tooling.preview)\n    implementation(libs.androidx.compose.material3)\n    implementation(\"net.java.dev.jna:jna:5.14.0\")\n\n    testImplementation(libs.junit)\n    androidTestImplementation(libs.androidx.junit)\n    androidTestImplementation(libs.androidx.espresso.core)\n    androidTestImplementation(platform(libs.androidx.compose.bom))\n    androidTestImplementation(libs.androidx.compose.ui.test.junit4)\n\n    debugImplementation(libs.androidx.compose.ui.tooling)\n    debugImplementation(libs.androidx.compose.ui.test.manifest)\n}}\n""",
         encoding="utf-8",
     )
 
@@ -119,6 +119,72 @@ def apply_android_toolchain_overrides(out_android_dir: Path, toolchains: dict) -
         f'implementation("net.java.dev.jna:jna:{versions["jna"]}")',
         app_text,
     )
+    app_text = app_text.replace(
+        '            "zig",\n',
+        '            discoverWizigZigBinary(),\n',
+    )
+    app_text = app_text.replace(
+        'commandLine("zig",',
+        'commandLine(discoverWizigZigBinary(),',
+    )
+    app_text = app_text.replace(
+        '            "-OReleaseFast",\n',
+        '            "-O${requestedWizigOptimize}",\n',
+    )
+    app_text = app_text.replace(
+        '"-OReleaseFast",',
+        '"-O${requestedWizigOptimize}",',
+    )
+
+    compatibility_marker = "fun abiTaskSuffix(abi: String): String ="
+    if "fun discoverWizigZigBinary(): String {" not in app_text and compatibility_marker in app_text:
+        compatibility_block = (
+            "val supportedWizigOptimizeModes: Set<String> = setOf(\"Debug\", \"ReleaseFast\", \"ReleaseSafe\", \"ReleaseSmall\")\n\n"
+            "val requestedWizigOptimize: String = providers.gradleProperty(\"wizig.ffi.optimize\").orNull ?: \"Debug\"\n"
+            "if (requestedWizigOptimize !in supportedWizigOptimizeModes) {\n"
+            "    throw org.gradle.api.GradleException(\n"
+            "        \"Unsupported Wizig FFI optimize mode '${requestedWizigOptimize}'. Supported values: ${supportedWizigOptimizeModes.joinToString(\", \")}\"\n"
+            "    )\n"
+            "}\n\n"
+            "fun discoverWizigZigBinary(): String {\n"
+            "    val explicit = providers.gradleProperty(\"wizig.zig.bin\").orNull ?: System.getenv(\"ZIG_BINARY\")\n"
+            "    if (!explicit.isNullOrBlank()) return explicit\n\n"
+            "    val localPropertiesFile = rootProject.file(\"local.properties\")\n"
+            "    if (localPropertiesFile.isFile) {\n"
+            "        val fromLocalProperties = runCatching {\n"
+            "            localPropertiesFile.readLines()\n"
+            "                .asSequence()\n"
+            "                .map { line -> line.trim() }\n"
+            "                .firstOrNull { line -> line.startsWith(\"wizig.zig.bin=\") }\n"
+            "                ?.substringAfter(\"=\")\n"
+            "                ?.trim()\n"
+            "        }.getOrNull()\n"
+            "        if (!fromLocalProperties.isNullOrBlank()) return fromLocalProperties\n"
+            "    }\n\n"
+            "    val pathProbe = runCatching {\n"
+            "        val process = ProcessBuilder(\"which\", \"zig\").redirectErrorStream(true).start()\n"
+            "        val output = process.inputStream.bufferedReader().readText().trim()\n"
+            "        if (process.waitFor() == 0 && output.isNotEmpty()) output else null\n"
+            "    }.getOrNull()\n"
+            "    if (!pathProbe.isNullOrBlank()) return pathProbe\n\n"
+            "    val home = System.getProperty(\"user.home\") ?: \"\"\n"
+            "    val candidates = listOf(\n"
+            "        \"$home/.zvm/master/zig\",\n"
+            "        \"$home/.zvm/bin/zig\",\n"
+            "        \"$home/.local/bin/zig\",\n"
+            "        \"/opt/homebrew/bin/zig\",\n"
+            "        \"/usr/local/bin/zig\",\n"
+            "    )\n"
+            "    for (candidate in candidates) {\n"
+            "        if (rootProject.file(candidate).canExecute()) return candidate\n"
+            "    }\n\n"
+            "    throw org.gradle.api.GradleException(\n"
+            "        \"zig is not installed or discoverable (PATH/wizig.zig.bin/ZIG_BINARY/common locations)\"\n"
+            "    )\n"
+            "}\n\n"
+        )
+        app_text = app_text.replace(compatibility_marker, compatibility_block + compatibility_marker, 1)
+
     app_build_kts.write_text(app_text, encoding="utf-8")
 
     write_android_gradle_wrapper(out_android_dir, toolchains)
