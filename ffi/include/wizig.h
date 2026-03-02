@@ -18,6 +18,28 @@ typedef enum WizigStatus {
   WIZIG_STATUS_INTERNAL_ERROR = 255,
 } WizigStatus;
 
+/*
+ * Compatibility handshake symbols.
+ *
+ * Hosts should verify ABI version and contract hash before invoking runtime
+ * API functions to prevent symbol/semantic drift at load time.
+ */
+uint32_t wizig_ffi_abi_version(void);
+const uint8_t* wizig_ffi_contract_hash_ptr(void);
+size_t wizig_ffi_contract_hash_len(void);
+
+/*
+ * Structured error envelope accessors.
+ *
+ * After a non-OK status result, callers can read domain/code/message from
+ * thread-local state to produce richer diagnostics.
+ */
+const uint8_t* wizig_ffi_last_error_domain_ptr(void);
+size_t wizig_ffi_last_error_domain_len(void);
+int32_t wizig_ffi_last_error_code(void);
+const uint8_t* wizig_ffi_last_error_message_ptr(void);
+size_t wizig_ffi_last_error_message_len(void);
+
 int32_t wizig_runtime_new(const uint8_t* app_name_ptr,
                          size_t app_name_len,
                          WizigRuntimeHandle** out_handle);

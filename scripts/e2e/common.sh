@@ -53,14 +53,21 @@ copy_packaged_root() {
   fi
 
   mkdir -p "$out_root"
+
+  # Mirror the installed SDK payload shape used by `wizig create --sdk-root`.
+  # The create flow now writes `.wizig/toolchain.lock.json`, which requires
+  # loading policy from `${sdk_root}/toolchains.toml` in addition to
+  # sdk/runtime/templates assets.
   cp -R "$source_root/sdk" "$out_root/sdk"
   cp -R "$source_root/runtime" "$out_root/runtime"
   cp -R "$source_root/templates" "$out_root/templates"
+  cp "$source_root/toolchains.toml" "$out_root/toolchains.toml"
 
   # Simulate a packaged install where developer seed/spec sources are absent.
   rm -rf "$out_root/templates/seeds" "$out_root/templates/spec"
 
   [[ -f "$out_root/templates/app/README.md" ]] || fail "packaged templates are incomplete: missing templates/app/README.md"
+  [[ -f "$out_root/toolchains.toml" ]] || fail "packaged SDK root is incomplete: missing toolchains.toml"
 }
 
 write_gradle_stub() {
