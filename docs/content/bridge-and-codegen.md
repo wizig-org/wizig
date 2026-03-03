@@ -47,6 +47,11 @@ Running `wizig codegen <project_root>` emits:
 - Zig: `.wizig/generated/zig/WizigGeneratedApi.zig`
 - Swift: `.wizig/generated/swift/WizigGeneratedApi.swift`
 - Kotlin: `.wizig/generated/kotlin/dev/wizig/WizigGeneratedApi.kt`
+- iOS C interop:
+  - `.wizig/generated/ios/wizig.h`
+  - `.wizig/generated/ios/WizigGeneratedApi.h`
+  - `.wizig/generated/ios/WizigFFI.h`
+  - `.wizig/generated/ios/module.modulemap`
 - SDK mirrors:
   - `.wizig/sdk/ios/Sources/Wizig/WizigGeneratedApi.swift`
   - `.wizig/sdk/android/src/main/kotlin/dev/wizig/WizigGeneratedApi.kt`

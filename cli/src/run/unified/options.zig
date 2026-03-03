@@ -35,6 +35,11 @@ pub fn parseUnifiedOptions(args: []const []const u8, stderr: *Io.Writer) !types.
             i += 1;
             continue;
         }
+        if (std.mem.eql(u8, arg, "--allow-toolchain-drift")) {
+            options.allow_toolchain_drift = true;
+            i += 1;
+            continue;
+        }
         if (std.mem.startsWith(u8, arg, "--monitor-timeout=")) {
             const raw = arg["--monitor-timeout=".len..];
             options.monitor_timeout_seconds = try parseMonitorTimeout(raw, stderr);
@@ -98,6 +103,7 @@ test "parseUnifiedOptions defaults" {
     try std.testing.expect(!options.non_interactive);
     try std.testing.expect(!options.once);
     try std.testing.expect(!options.regenerate_host);
+    try std.testing.expect(!options.allow_toolchain_drift);
 }
 
 test "parseUnifiedOptions parses project and flags" {
@@ -105,7 +111,7 @@ test "parseUnifiedOptions parses project and flags" {
     defer err_writer.deinit();
 
     const options = try parseUnifiedOptions(
-        &.{ "examples/app/WizigExample", "--device", "emulator-5554", "--debugger", "none", "--monitor-timeout", "75", "--once", "--regenerate-host" },
+        &.{ "examples/app/WizigExample", "--device", "emulator-5554", "--debugger", "none", "--monitor-timeout", "75", "--once", "--regenerate-host", "--allow-toolchain-drift" },
         &err_writer.writer,
     );
     try std.testing.expectEqualStrings("examples/app/WizigExample", options.project_root);
@@ -114,6 +120,7 @@ test "parseUnifiedOptions parses project and flags" {
     try std.testing.expectEqual(@as(?u64, 75), options.monitor_timeout_seconds);
     try std.testing.expect(options.once);
     try std.testing.expect(options.regenerate_host);
+    try std.testing.expect(options.allow_toolchain_drift);
 }
 
 test "parseUnifiedOptions parses inline monitor timeout form" {
@@ -121,7 +128,7 @@ test "parseUnifiedOptions parses inline monitor timeout form" {
     defer err_writer.deinit();
 
     const options = try parseUnifiedOptions(
-        &.{ "--monitor-timeout=30" },
+        &.{"--monitor-timeout=30"},
         &err_writer.writer,
     );
     try std.testing.expectEqual(@as(?u64, 30), options.monitor_timeout_seconds);

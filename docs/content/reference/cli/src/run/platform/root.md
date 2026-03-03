@@ -33,6 +33,24 @@ pub fn run(
 ) !void {
 ```
 
+### `runWithOptions` (fn)
+
+Executes platform run pipeline for already-normalized options.
+
+Unified run uses this typed entrypoint to avoid hidden string flag
+protocols between orchestration layers.
+
+```zig
+pub fn runWithOptions(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    parent_environ_map: *const std.process.Environ.Map,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    options: types.RunOptions,
+) !void {
+```
+
 ### `printUsage` (fn)
 
 Writes platform run usage help.

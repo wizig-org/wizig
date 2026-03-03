@@ -269,3 +269,22 @@ test "ffi structured error is populated for invalid arguments" {
     try std.testing.expectEqualStrings("wizig.argument", domain);
     try std.testing.expect(message.len > 0);
 }
+
+test "runtime vendored header stays in sync with canonical FFI header" {
+    const io = std.testing.io;
+    const canonical = try std.Io.Dir.cwd().readFileAlloc(
+        io,
+        "ffi/include/wizig.h",
+        std.testing.allocator,
+        .limited(128 * 1024),
+    );
+    defer std.testing.allocator.free(canonical);
+    const vendored = try std.Io.Dir.cwd().readFileAlloc(
+        io,
+        "runtime/ffi/include/wizig.h",
+        std.testing.allocator,
+        .limited(128 * 1024),
+    );
+    defer std.testing.allocator.free(vendored);
+    try std.testing.expectEqualStrings(canonical, vendored);
+}

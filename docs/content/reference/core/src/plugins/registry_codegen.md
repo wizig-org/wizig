@@ -11,15 +11,7 @@ Plugin registry collection and registrant source generation.
 Plugin file path paired with parsed manifest contents.
 
 ```zig
-pub const PluginRecord = struct {
-```
-
-### `deinit` (fn)
-
-Releases owned path/manifest data.
-
-```zig
-    pub fn deinit(self: *PluginRecord, allocator: std.mem.Allocator) void {
+pub const PluginRecord = types.PluginRecord;
 ```
 
 ### `Registry` (const)
@@ -27,57 +19,45 @@ Releases owned path/manifest data.
 In-memory registry of discovered plugins.
 
 ```zig
-pub const Registry = struct {
+pub const Registry = types.Registry;
 ```
 
-### `deinit` (fn)
-
-Releases all registry records and their owned allocations.
-
-```zig
-    pub fn deinit(self: *Registry, allocator: std.mem.Allocator) void {
-```
-
-### `collectFromDir` (fn)
+### `collectFromDir` (const)
 
 Collects plugin manifests from the given `plugins_dir`.
 
 ```zig
-pub fn collectFromDir(
-    allocator: std.mem.Allocator,
-    io: std.Io,
-    root_path: []const u8,
-) !Registry {
+pub const collectFromDir = collector.collectFromDir;
 ```
 
-### `renderLockfile` (fn)
+### `renderLockfile` (const)
 
-Renders deterministic JSON lockfile text for all plugin records.
+Renders deterministic lockfile text for all plugin records.
 
 ```zig
-pub fn renderLockfile(allocator: std.mem.Allocator, records: []const PluginRecord) ![]u8 {
+pub const renderLockfile = render_lockfile.renderLockfile;
 ```
 
-### `renderZigRegistrant` (fn)
+### `renderZigRegistrant` (const)
 
 Renders Zig registrant source from discovered plugins.
 
 ```zig
-pub fn renderZigRegistrant(allocator: std.mem.Allocator, records: []const PluginRecord) ![]u8 {
+pub const renderZigRegistrant = render_zig.renderZigRegistrant;
 ```
 
-### `renderSwiftRegistrant` (fn)
+### `renderSwiftRegistrant` (const)
 
 Renders Swift registrant source from discovered plugins.
 
 ```zig
-pub fn renderSwiftRegistrant(allocator: std.mem.Allocator, records: []const PluginRecord) ![]u8 {
+pub const renderSwiftRegistrant = render_swift.renderSwiftRegistrant;
 ```
 
-### `renderKotlinRegistrant` (fn)
+### `renderKotlinRegistrant` (const)
 
 Renders Kotlin registrant source from discovered plugins.
 
 ```zig
-pub fn renderKotlinRegistrant(allocator: std.mem.Allocator, records: []const PluginRecord) ![]u8 {
+pub const renderKotlinRegistrant = render_kotlin.renderKotlinRegistrant;
 ```

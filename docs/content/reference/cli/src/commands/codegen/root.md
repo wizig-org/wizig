@@ -2,24 +2,24 @@
 
 _Language: Zig_
 
-`wizig codegen` command and typed API binding generators.
+`wizig codegen` command orchestration and public wrappers.
 
 ## Public API
 
 ### `ApiContractSource` (const)
 
-Supported contract source formats.
+No declaration docs available.
 
 ```zig
-pub const ApiContractSource = enum {
+pub const ApiContractSource = contract_source.ApiContractSource;
 ```
 
 ### `ResolvedApiContract` (const)
 
-Resolved API contract file path and format.
+No declaration docs available.
 
 ```zig
-pub const ResolvedApiContract = struct {
+pub const ResolvedApiContract = contract_source.ResolvedApiContract;
 ```
 
 ### `run` (fn)
@@ -60,7 +60,7 @@ pub fn resolveApiContract(
 
 ### `generateProject` (fn)
 
-Generates Zig/Swift/Kotlin API bindings from optional contract + `lib/**/*.zig` discovery.
+Generates Zig/Swift/Kotlin API bindings from contract + `lib/**/*.zig` discovery.
 
 ```zig
 pub fn generateProject(

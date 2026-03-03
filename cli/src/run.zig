@@ -32,6 +32,7 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "  --once                      Launch and return without log/debug loop\n" ++
             "  --monitor-timeout <seconds> Stop log/console monitor automatically after timeout\n" ++
             "  --regenerate-host           Regenerate iOS xcodegen hosts from project.yml before run\n" ++
+            "  --allow-toolchain-drift    Bypass .wizig/toolchain.lock.json minimum-version enforcement\n" ++
             "\n" ++
             "Project-level behavior:\n" ++
             "  - Detects generated app hosts under <project_dir>/ios and <project_dir>/android\n" ++

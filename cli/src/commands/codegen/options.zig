@@ -27,6 +27,7 @@ pub const CodegenOptions = struct {
     api_override: ?[]const u8 = null,
     watch: bool = false,
     watch_interval_ms: u64 = default_watch_interval_ms,
+    allow_toolchain_drift: bool = false,
 };
 
 /// Parses raw CLI arguments into `CodegenOptions`.
@@ -63,6 +64,11 @@ pub fn parseCodegenOptions(args: []const []const u8, stderr: *Io.Writer) !Codege
         }
         if (std.mem.eql(u8, arg, "--watch")) {
             options.watch = true;
+            i += 1;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--allow-toolchain-drift")) {
+            options.allow_toolchain_drift = true;
             i += 1;
             continue;
         }
@@ -114,6 +120,7 @@ test "parseCodegenOptions defaults" {
     try std.testing.expect(options.api_override == null);
     try std.testing.expect(!options.watch);
     try std.testing.expectEqual(default_watch_interval_ms, options.watch_interval_ms);
+    try std.testing.expect(!options.allow_toolchain_drift);
 }
 
 test "parseCodegenOptions parses watch and interval forms" {
@@ -121,13 +128,14 @@ test "parseCodegenOptions parses watch and interval forms" {
     defer err_writer.deinit();
 
     const options = try parseCodegenOptions(
-        &.{ "/tmp/App", "--watch", "--watch-interval-ms=250", "--api", "/tmp/App/wizig.api.zig" },
+        &.{ "/tmp/App", "--watch", "--watch-interval-ms=250", "--api", "/tmp/App/wizig.api.zig", "--allow-toolchain-drift" },
         &err_writer.writer,
     );
     try std.testing.expectEqualStrings("/tmp/App", options.project_root);
     try std.testing.expect(options.watch);
     try std.testing.expectEqual(@as(u64, 250), options.watch_interval_ms);
     try std.testing.expectEqualStrings("/tmp/App/wizig.api.zig", options.api_override.?);
+    try std.testing.expect(options.allow_toolchain_drift);
 }
 
 test "parseCodegenOptions rejects zero watch interval" {

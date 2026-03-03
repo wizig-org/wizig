@@ -49,7 +49,6 @@ pub fn run(
     return error.InvalidArguments;
 }
 
-/// Writes usage help for the plugin command.
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Plugin:\n" ++

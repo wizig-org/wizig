@@ -77,9 +77,9 @@ fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
         "Wizig CLI\n\n" ++
             "Usage:\n" ++
             "  wizig create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]\n" ++
-            "  wizig run [project_dir] [options]\n" ++
+            "  wizig run [project_dir] [options] [--allow-toolchain-drift]\n" ++
             "  wizig plugin validate|sync|add ...\n" ++
-            "  wizig codegen [project_root] [--api <path>] [--watch] [--watch-interval-ms <milliseconds>]\n" ++
+            "  wizig codegen [project_root] [--api <path>] [--watch] [--watch-interval-ms <milliseconds>] [--allow-toolchain-drift]\n" ++
             "  wizig doctor [--sdk-root <path>]\n\n",
     );
 

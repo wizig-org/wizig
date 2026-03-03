@@ -4,8 +4,9 @@ _Language: Zig_
 
 Android platform run orchestration.
 
-This module coordinates target selection, FFI prep, Gradle build, install,
-launch, and optional debugger/log monitor attachment for Android runs.
+This module coordinates target selection, host-managed FFI planning, Gradle
+build, install, launch, and optional debugger/log monitor attachment for
+Android runs.
 
 ## Public API
 

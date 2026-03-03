@@ -22,7 +22,7 @@ pub fn run(
 
 ### `printUsage` (fn)
 
-Writes usage help for the plugin command.
+No declaration docs available.
 
 ```zig
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {

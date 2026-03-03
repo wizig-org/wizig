@@ -19,6 +19,7 @@ pub const UnifiedOptions = struct {
     once: bool = false,
     monitor_timeout_seconds: ?u64 = null,
     regenerate_host: bool = false,
+    allow_toolchain_drift: bool = false,
 };
 
 /// Candidate target selected from iOS/Android discovery results.

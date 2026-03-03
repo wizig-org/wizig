@@ -6,7 +6,10 @@ _Language: Kotlin_
 
 ### `WizigFfiException` (class)
 
-No declaration docs available.
+Exception returned by the legacy Android runtime shim.
+
+Android integrations are JNI-first: use generated bindings in
+`WizigGeneratedApi.kt` produced by `wizig codegen`.
 
 ```kotlin
 class WizigFfiException(
@@ -17,7 +20,10 @@ class WizigFfiException(
 
 ### `WizigRuntime` (class)
 
-No declaration docs available.
+Legacy runtime shim kept for source compatibility.
+
+Wizig no longer performs direct JNA-based calls on Android. Runtime access
+should go through JNI-backed generated bindings (`WizigGeneratedApi`).
 
 ```kotlin
 class WizigRuntime(
@@ -29,7 +35,7 @@ class WizigRuntime(
 No declaration docs available.
 
 ```kotlin
-    var lastError: WizigFfiException? = null
+    var lastError: WizigFfiException? = WizigFfiException(
 ```
 
 ### `isAvailable` (val)

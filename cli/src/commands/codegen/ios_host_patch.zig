@@ -83,7 +83,7 @@ fn patchProjectFile(arena: std.mem.Allocator, io: std.Io, pbx_path: []const u8) 
 fn patchProjectText(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
     const with_section = try upsertShellSection(arena, text);
     const with_ref = try injectAppBuildPhaseReference(arena, with_section);
-    return try disableUserScriptSandboxing(arena, with_ref);
+    return try disableUserScriptSandboxingForAppTarget(arena, with_ref);
 }
 
 fn upsertShellSection(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
@@ -135,20 +135,99 @@ fn injectAppBuildPhaseReference(arena: std.mem.Allocator, text: []const u8) ![]c
     });
 }
 
-fn disableUserScriptSandboxing(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
-    const needle = "ENABLE_USER_SCRIPT_SANDBOXING = YES;";
-    const replacement = "ENABLE_USER_SCRIPT_SANDBOXING = NO;";
-    if (std.mem.indexOf(u8, text, needle) == null) return text;
+/// Disables user script sandboxing only for the app target build configurations.
+///
+/// Invariant: project- or test-target configurations must remain untouched.
+fn disableUserScriptSandboxingForAppTarget(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
+    const app_product_type = "productType = \"com.apple.product-type.application\";";
+    const app_idx = std.mem.indexOf(u8, text, app_product_type) orelse return error.InvalidPbxproj;
+    const build_config_list_marker = "buildConfigurationList = ";
+    const list_idx = std.mem.lastIndexOf(u8, text[0..app_idx], build_config_list_marker) orelse return error.InvalidPbxproj;
+    const list_id_start = list_idx + build_config_list_marker.len;
+    const list_id_end_rel = std.mem.indexOfAny(u8, text[list_id_start..], " ;\n\t") orelse return error.InvalidPbxproj;
+    const config_list_id = std.mem.trim(u8, text[list_id_start .. list_id_start + list_id_end_rel], " \t");
+    if (config_list_id.len == 0) return error.InvalidPbxproj;
 
-    var out = std.ArrayList(u8).empty;
-    var cursor: usize = 0;
-    while (std.mem.indexOfPos(u8, text, cursor, needle)) |idx| {
-        try out.appendSlice(arena, text[cursor..idx]);
-        try out.appendSlice(arena, replacement);
-        cursor = idx + needle.len;
+    var config_ids = try appTargetBuildConfigIds(arena, text, config_list_id);
+    if (config_ids.items.len == 0) return error.InvalidPbxproj;
+
+    var updated = text;
+    for (config_ids.items) |config_id| {
+        updated = try upsertUserScriptSandboxingNoForConfig(arena, updated, config_id);
     }
-    try out.appendSlice(arena, text[cursor..]);
-    return out.toOwnedSlice(arena);
+    return updated;
+}
+
+/// Collects XCBuildConfiguration ids listed by one XCConfigurationList.
+fn appTargetBuildConfigIds(
+    arena: std.mem.Allocator,
+    text: []const u8,
+    config_list_id: []const u8,
+) !std.ArrayList([]const u8) {
+    var out = std.ArrayList([]const u8).empty;
+
+    const object_prefix = try std.fmt.allocPrint(arena, "\t\t{s} /* ", .{config_list_id});
+    const object_start = std.mem.indexOf(u8, text, object_prefix) orelse return error.InvalidPbxproj;
+    const object_end_rel = std.mem.indexOf(u8, text[object_start..], "\t\t};\n") orelse return error.InvalidPbxproj;
+    const object_end = object_start + object_end_rel + "\t\t};\n".len;
+    const object_slice = text[object_start..object_end];
+
+    const configs_marker = "buildConfigurations = (\n";
+    const configs_start_rel = std.mem.indexOf(u8, object_slice, configs_marker) orelse return error.InvalidPbxproj;
+    const configs_start = object_start + configs_start_rel + configs_marker.len;
+    const configs_end_rel = std.mem.indexOf(u8, text[configs_start..object_end], "\t\t\t);\n") orelse return error.InvalidPbxproj;
+    const configs_end = configs_start + configs_end_rel;
+
+    var lines = std.mem.splitScalar(u8, text[configs_start..configs_end], '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t");
+        if (trimmed.len == 0) continue;
+        const id_end = std.mem.indexOfAny(u8, trimmed, " \t,") orelse trimmed.len;
+        if (id_end == 0) continue;
+        const id_copy = try arena.dupe(u8, trimmed[0..id_end]);
+        try out.append(arena, id_copy);
+    }
+    return out;
+}
+
+/// Ensures one XCBuildConfiguration object has `ENABLE_USER_SCRIPT_SANDBOXING = NO`.
+fn upsertUserScriptSandboxingNoForConfig(
+    arena: std.mem.Allocator,
+    text: []const u8,
+    config_id: []const u8,
+) ![]const u8 {
+    const object_prefix = try std.fmt.allocPrint(arena, "\t\t{s} /* ", .{config_id});
+    const object_start = std.mem.indexOf(u8, text, object_prefix) orelse return error.InvalidPbxproj;
+    const object_end_rel = std.mem.indexOf(u8, text[object_start..], "\t\t};\n") orelse return error.InvalidPbxproj;
+    const object_end = object_start + object_end_rel + "\t\t};\n".len;
+    const object_slice = text[object_start..object_end];
+
+    const build_settings_marker = "buildSettings = {\n";
+    const build_start_rel = std.mem.indexOf(u8, object_slice, build_settings_marker) orelse return error.InvalidPbxproj;
+    const build_start = object_start + build_start_rel + build_settings_marker.len;
+    const build_end_rel = std.mem.indexOf(u8, text[build_start..object_end], "\t\t\t};\n") orelse return error.InvalidPbxproj;
+    const build_end = build_start + build_end_rel;
+    const build_slice = text[build_start..build_end];
+
+    const disabled = "ENABLE_USER_SCRIPT_SANDBOXING = NO;";
+    if (std.mem.indexOf(u8, build_slice, disabled) != null) return text;
+
+    const enabled = "ENABLE_USER_SCRIPT_SANDBOXING = YES;";
+    if (std.mem.indexOf(u8, build_slice, enabled)) |enabled_rel| {
+        const enabled_start = build_start + enabled_rel;
+        return try std.fmt.allocPrint(arena, "{s}{s}{s}", .{
+            text[0..enabled_start],
+            disabled,
+            text[enabled_start + enabled.len ..],
+        });
+    }
+
+    const insertion = "\t\t\t\tENABLE_USER_SCRIPT_SANDBOXING = NO;\n";
+    return try std.fmt.allocPrint(arena, "{s}{s}{s}", .{
+        text[0..build_end],
+        insertion,
+        text[build_end..],
+    });
 }
 
 test "patchProjectText injects shell section and app build phase reference" {
@@ -159,6 +238,7 @@ test "patchProjectText injects shell section and app build phase reference" {
     const input =
         "/* Begin PBXNativeTarget section */\n" ++
         "\t\tAPP /* App */ = {\n" ++
+        "\t\t\tbuildConfigurationList = APP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */;\n" ++
         "\t\t\tbuildPhases = (\n" ++
         "\t\t\t\tSRC /* Sources */,\n" ++
         "\t\t\t\tFRM /* Frameworks */,\n" ++
@@ -167,6 +247,33 @@ test "patchProjectText injects shell section and app build phase reference" {
         "\t\t\tproductType = \"com.apple.product-type.application\";\n" ++
         "\t\t};\n" ++
         "/* End PBXNativeTarget section */\n\n" ++
+        "/* Begin XCBuildConfiguration section */\n" ++
+        "\t\tAPP_DEBUG /* Debug */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Debug;\n" ++
+        "\t\t};\n" ++
+        "\t\tAPP_RELEASE /* Release */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Release;\n" ++
+        "\t\t};\n" ++
+        "/* End XCBuildConfiguration section */\n\n" ++
+        "/* Begin XCConfigurationList section */\n" ++
+        "\t\tAPP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */ = {\n" ++
+        "\t\t\tisa = XCConfigurationList;\n" ++
+        "\t\t\tbuildConfigurations = (\n" ++
+        "\t\t\t\tAPP_DEBUG /* Debug */,\n" ++
+        "\t\t\t\tAPP_RELEASE /* Release */,\n" ++
+        "\t\t\t);\n" ++
+        "\t\t\tdefaultConfigurationIsVisible = 0;\n" ++
+        "\t\t\tdefaultConfigurationName = Release;\n" ++
+        "\t\t};\n" ++
+        "/* End XCConfigurationList section */\n\n" ++
         "/* Begin PBXSourcesBuildPhase section */\n" ++
         "/* End PBXSourcesBuildPhase section */\n";
 
@@ -188,12 +295,40 @@ test "patchProjectText is idempotent when phase already present" {
         "/* End PBXShellScriptBuildPhase section */\n\n" ++
         "/* Begin PBXNativeTarget section */\n" ++
         "\t\tAPP /* App */ = {\n" ++
+        "\t\t\tbuildConfigurationList = APP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */;\n" ++
         "\t\t\tbuildPhases = (\n" ++
         phase_ref_line ++
         "\t\t\t);\n" ++
         "\t\t\tproductType = \"com.apple.product-type.application\";\n" ++
         "\t\t};\n" ++
-        "/* End PBXNativeTarget section */\n";
+        "/* End PBXNativeTarget section */\n\n" ++
+        "/* Begin XCBuildConfiguration section */\n" ++
+        "\t\tAPP_DEBUG /* Debug */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tENABLE_USER_SCRIPT_SANDBOXING = NO;\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Debug;\n" ++
+        "\t\t};\n" ++
+        "\t\tAPP_RELEASE /* Release */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tENABLE_USER_SCRIPT_SANDBOXING = NO;\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Release;\n" ++
+        "\t\t};\n" ++
+        "/* End XCBuildConfiguration section */\n\n" ++
+        "/* Begin XCConfigurationList section */\n" ++
+        "\t\tAPP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */ = {\n" ++
+        "\t\t\tisa = XCConfigurationList;\n" ++
+        "\t\t\tbuildConfigurations = (\n" ++
+        "\t\t\t\tAPP_DEBUG /* Debug */,\n" ++
+        "\t\t\t\tAPP_RELEASE /* Release */,\n" ++
+        "\t\t\t);\n" ++
+        "\t\t\tdefaultConfigurationIsVisible = 0;\n" ++
+        "\t\t\tdefaultConfigurationName = Release;\n" ++
+        "\t\t};\n" ++
+        "/* End XCConfigurationList section */\n";
 
     const output = try patchProjectText(arena, input);
 
@@ -204,25 +339,60 @@ test "phase_entry includes Zig discovery fallback locations" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, ".zvm/master/zig") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/opt/homebrew/bin/zig") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "ZIG_BINARY") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, ".wizig/toolchain.lock.json") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_ZIG_AUTO_INSTALL") != null);
 }
 
 test "phase_entry configures zig caches inside xcode temp directories" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "TARGET_TEMP_DIR") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "ZIG_LOCAL_CACHE_DIR") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "ZIG_GLOBAL_CACHE_DIR") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "TMP_FRAMEWORK_BIN") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "TMP_DEVICE_FRAMEWORK_BIN") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "TMP_SIM_ARM64_FRAMEWORK_BIN") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_FFI_OPTIMIZE") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_FFI_ALLOW_OPTIMIZE_OVERRIDE") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_FFI_ALLOW_TOOLCHAIN_DRIFT") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WizigFFI.xcframework") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "_CodeSignature/CodeResources") != null);
 }
 
+test "phase_entry builds device and simulator xcframework slices" {
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "xcrun --sdk iphoneos --show-sdk-path") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "xcrun --sdk iphonesimulator --show-sdk-path") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "build_ffi_slice \\\"aarch64-ios\\\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "build_ffi_slice \\\"aarch64-ios-simulator\\\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "build_ffi_slice \\\"x86_64-ios-simulator\\\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "xcrun lipo -create") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "-framework \\\"${TMP_DEVICE_FRAMEWORK_DIR}\\\" -framework \\\"${SIM_XC_FRAMEWORK_DIR}\\\"") != null);
+}
+
+test "phase_entry packages generated headers and modulemap into each framework slice" {
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "GENERATED_IOS_CANONICAL_HEADER") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "GENERATED_IOS_API_HEADER") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "GENERATED_IOS_FRAMEWORK_HEADER") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "GENERATED_IOS_MODULEMAP") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "prepare_framework_metadata()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "Headers/WizigFFI.h") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "Modules/module.modulemap") != null);
+}
+
 test "phase_entry signs device framework outputs when code signing is enabled" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY_NAME") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "CODE_SIGN_IDENTITY") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY_NAME") == null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "${CODE_SIGN_IDENTITY:-}") == null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "missing Xcode-resolved signing identity") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --force --sign") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --verify --strict") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "CODE_SIGNING_ALLOWED") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "-headerpad_max_install_names") != null);
+}
+
+test "phase_entry validates device slice architectures for app-store safety" {
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "xcrun lipo -info") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "device framework unexpectedly contains simulator architectures") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "must contain arm64 architecture") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "PrivateFrameworks") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_IOS_PRIVATE_SYMBOL_DENYLIST_REGEX") != null);
 }
 
 test "phase_entry assigns framework bundle identifier distinct from app" {
@@ -232,16 +402,62 @@ test "phase_entry assigns framework bundle identifier distinct from app" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "<string>dev.wizig.WizigFFI</string>") == null);
 }
 
-test "disableUserScriptSandboxing rewrites yes to no" {
+test "disableUserScriptSandboxingForAppTarget scopes rewrite to app target" {
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
 
     const input =
-        "ENABLE_USER_SCRIPT_SANDBOXING = YES;\n" ++
-        "ENABLE_USER_SCRIPT_SANDBOXING = YES;\n";
-    const output = try disableUserScriptSandboxing(arena, input);
+        "/* Begin PBXNativeTarget section */\n" ++
+        "\t\tAPP /* App */ = {\n" ++
+        "\t\t\tbuildConfigurationList = APP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */;\n" ++
+        "\t\t\tbuildPhases = (\n" ++
+        "\t\t\t);\n" ++
+        "\t\t\tproductType = \"com.apple.product-type.application\";\n" ++
+        "\t\t};\n" ++
+        "/* End PBXNativeTarget section */\n\n" ++
+        "/* Begin XCBuildConfiguration section */\n" ++
+        "\t\tAPP_DEBUG /* Debug */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Debug;\n" ++
+        "\t\t};\n" ++
+        "\t\tAPP_RELEASE /* Release */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tENABLE_USER_SCRIPT_SANDBOXING = YES;\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Release;\n" ++
+        "\t\t};\n" ++
+        "\t\tTEST_DEBUG /* Debug */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tENABLE_USER_SCRIPT_SANDBOXING = YES;\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Debug;\n" ++
+        "\t\t};\n" ++
+        "/* End XCBuildConfiguration section */\n\n" ++
+        "/* Begin XCConfigurationList section */\n" ++
+        "\t\tAPP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */ = {\n" ++
+        "\t\t\tisa = XCConfigurationList;\n" ++
+        "\t\t\tbuildConfigurations = (\n" ++
+        "\t\t\t\tAPP_DEBUG /* Debug */,\n" ++
+        "\t\t\t\tAPP_RELEASE /* Release */,\n" ++
+        "\t\t\t);\n" ++
+        "\t\t\tdefaultConfigurationIsVisible = 0;\n" ++
+        "\t\t\tdefaultConfigurationName = Release;\n" ++
+        "\t\t};\n" ++
+        "/* End XCConfigurationList section */\n";
 
-    try std.testing.expect(std.mem.indexOf(u8, output, "ENABLE_USER_SCRIPT_SANDBOXING = YES;") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "ENABLE_USER_SCRIPT_SANDBOXING = NO;") != null);
+    const output = try disableUserScriptSandboxingForAppTarget(arena, input);
+
+    const app_debug_start = std.mem.indexOf(u8, output, "APP_DEBUG /* Debug */ = {") orelse unreachable;
+    const app_release_start = std.mem.indexOf(u8, output, "APP_RELEASE /* Release */ = {") orelse unreachable;
+    const test_debug_start = std.mem.indexOf(u8, output, "TEST_DEBUG /* Debug */ = {") orelse unreachable;
+
+    try std.testing.expect(std.mem.indexOfPos(u8, output, app_debug_start, "ENABLE_USER_SCRIPT_SANDBOXING = NO;") != null);
+    try std.testing.expect(std.mem.indexOfPos(u8, output, app_release_start, "ENABLE_USER_SCRIPT_SANDBOXING = NO;") != null);
+    try std.testing.expect(std.mem.indexOfPos(u8, output, test_debug_start, "ENABLE_USER_SCRIPT_SANDBOXING = YES;") != null);
 }

@@ -73,11 +73,3 @@ Inputs used to build per-platform Wizig FFI artifacts.
 ```zig
 pub const FfiBuildInputs = struct {
 ```
-
-### `AndroidFfiArtifact` (const)
-
-Android FFI output metadata returned after staging artifacts.
-
-```zig
-pub const AndroidFfiArtifact = struct {
-```

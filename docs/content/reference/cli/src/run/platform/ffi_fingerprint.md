@@ -15,7 +15,7 @@ generated, and app Zig inputs.
 Cache key version for iOS simulator FFI artifacts.
 
 ```zig
-pub const ios_ffi_cache_version = "wizig-ios-ffi-cache-v2";
+pub const ios_ffi_cache_version = "wizig-ios-ffi-cache-v3";
 ```
 
 ### `android_ffi_cache_version` (const)

@@ -3,6 +3,7 @@ getting-started.md
 architecture.md
 cli-reference.md
 bridge-and-codegen.md
+ios-interop-roadmap.md
 zig-first-bridge.md
 plugin-system.md
 docs-pipeline.md

@@ -184,6 +184,7 @@ pub fn build(b: *std.Build) void {
     const e2e_step = b.step("e2e", "Run end-to-end scaffold/run checks");
     const e2e_cmd = b.addSystemCommand(&.{ "/bin/bash", "scripts/e2e/self_contained_template_pipeline.sh" });
     e2e_cmd.step.dependOn(b.getInstallStep());
+    e2e_cmd.setEnvironmentVariable("WIZIG_TESTS_ROOT", "/tmp/wizig-e2e");
     e2e_cmd.setEnvironmentVariable("WIZIG_E2E_TEST_ROOT", "/tmp/wizig-e2e");
     e2e_step.dependOn(&e2e_cmd.step);
 }

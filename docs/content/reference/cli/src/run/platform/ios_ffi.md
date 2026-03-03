@@ -4,14 +4,14 @@ _Language: Zig_
 
 iOS simulator FFI build and bundling support.
 
-This module builds cached simulator dylibs and installs them into app bundle
-locations expected by simulator launch environment variables.
+This module builds cached simulator framework binaries and installs
+`WizigFFI.framework` into app bundle locations expected by runtime loaders.
 
 ## Public API
 
 ### `buildIosSimulatorFfiLibrary` (fn)
 
-Builds or reuses cached iOS simulator FFI dylib for the current app.
+Builds or reuses cached iOS simulator FFI framework binary for the current app.
 
 ```zig
 pub fn buildIosSimulatorFfiLibrary(
@@ -25,7 +25,17 @@ pub fn buildIosSimulatorFfiLibrary(
 
 ### `bundleIosFfiLibraryForSimulator` (fn)
 
-Copies host dylib into simulator bundle and framework locations.
+Copies host framework into simulator app `Frameworks` location.
+
+## Incrementality
+Destination files are updated only when bytes differ, preserving filesystem
+metadata via `cp` while avoiding redundant writes.
+
+## Launch Stability
+On modern simulator runtimes, placing unmanaged dynamic libraries directly in
+app roots can fail installation preflight. This function stages the runtime
+as `WizigFFI.framework` and re-signs changed artifacts to satisfy launch
+policy checks.
 
 ```zig
 pub fn bundleIosFfiLibraryForSimulator(

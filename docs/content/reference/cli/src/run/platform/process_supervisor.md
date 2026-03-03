@@ -35,12 +35,52 @@ Parameters that describe a single child process invocation.
 pub const CommandSpec = struct {
 ```
 
+### `MonitorCommandSpec` (const)
+
+Monitor command spec for inherited watchdog execution.
+
+```zig
+pub const MonitorCommandSpec = monitor.MonitorCommandSpec;
+```
+
+### `LivenessProbe` (const)
+
+App liveness probe settings used by monitor watchdog execution.
+
+```zig
+pub const LivenessProbe = monitor.LivenessProbe;
+```
+
+### `MonitorWatchdog` (const)
+
+Watchdog controls for long-running monitor commands.
+
+```zig
+pub const MonitorWatchdog = monitor.MonitorWatchdog;
+```
+
+### `MonitorStopReason` (const)
+
+Reason why monitored command execution completed.
+
+```zig
+pub const MonitorStopReason = monitor.MonitorStopReason;
+```
+
+### `MonitoredTerm` (const)
+
+Result for monitored inherited command execution.
+
+```zig
+pub const MonitoredTerm = monitor.MonitoredTerm;
+```
+
 ### `runCapture` (fn)
 
 Executes a child process with captured stdout/stderr.
 
 This is intentionally used for short-lived commands whose output is parsed.
-For long-running monitors, use `runInheritTerm` to stream directly.
+For long-running monitors, use `runInheritTerm` or `runInheritMonitored`.
 
 ```zig
 pub fn runCapture(
@@ -81,6 +121,24 @@ pub fn runInheritTerm(
     stderr: *Io.Writer,
     spec: CommandSpec,
 ) !std.process.Child.Term {
+```
+
+### `runInheritMonitored` (fn)
+
+Runs an inherited command with watchdog timeout/liveness controls.
+
+This delegates to `process_monitor.zig` so monitor-specific logic remains
+isolated from short-lived command execution behavior.
+
+```zig
+pub fn runInheritMonitored(
+    arena: Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    spec: MonitorCommandSpec,
+    watchdog: MonitorWatchdog,
+) !MonitoredTerm {
 ```
 
 ### `runInheritChecked` (fn)

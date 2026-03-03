@@ -17,7 +17,7 @@ object GeneratedPluginRegistrant {
             id = "dev.wizig.hello",
             version = "0.1.0",
             apiVersion = 1u,
-            manifestPath = "examples/plugin-hello/wizig-plugin.toml",
+            manifestPath = "examples/plugin-hello/wizig-plugin.json",
             capabilities = listOf("log"),
             iosSpm = listOf(),
             androidMaven = listOf()

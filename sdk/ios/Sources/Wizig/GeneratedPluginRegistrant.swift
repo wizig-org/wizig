@@ -27,7 +27,7 @@ public enum GeneratedPluginRegistrant {
             id: "dev.wizig.hello",
             version: "0.1.0",
             apiVersion: 1,
-            manifestPath: "examples/plugin-hello/wizig-plugin.toml",
+            manifestPath: "examples/plugin-hello/wizig-plugin.json",
             capabilities: ["log"],
             iosSpm: [],
             androidMaven: []

@@ -57,11 +57,17 @@ This creates a portable project with app-local `.wizig/sdk`, `.wizig/runtime`, a
 zig build run -- run /tmp/MyApp --once
 ```
 
+By default, `wizig run` enforces `.wizig/toolchain.lock.json` minimum versions
+when that lock file exists. Use `--allow-toolchain-drift` to bypass.
+
 ## Codegen
 
 ```sh
 zig build run -- codegen /tmp/MyApp
 ```
+
+`wizig codegen` also enforces `.wizig/toolchain.lock.json` unless
+`--allow-toolchain-drift` is provided.
 
 Codegen discovery precedence:
 

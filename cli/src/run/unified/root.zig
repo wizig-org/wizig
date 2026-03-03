@@ -10,6 +10,7 @@ const discovery = @import("discovery.zig");
 const logging_codegen = @import("logging_codegen.zig");
 const options_mod = @import("options.zig");
 const platform_run = @import("../platform/root.zig");
+const lock_enforce = @import("../../support/toolchains/lock_enforce.zig");
 const types = @import("types.zig");
 
 /// Discovers available targets and runs the selected host flow.
@@ -52,12 +53,27 @@ pub fn run(
     try logging_codegen.appendLogLine(arena, &log_lines, "has_ios_host={s}\n", .{if (has_ios) "true" else "false"});
     try logging_codegen.appendLogLine(arena, &log_lines, "has_android_host={s}\n", .{if (has_android) "true" else "false"});
     if (!has_ios and !has_android) {
-        try stderr.print("error: no generated app hosts found under '{s}' (expected ios/ and/or android/)\n", .{project_root});
+        try writeNoHostError(stderr, project_root);
+        try stderr.flush();
         try logging_codegen.appendLogLine(arena, &log_lines, "status=failed\n", .{});
         try stdout.print("run log: {s}\n", .{log_path});
         try stdout.flush();
         return error.RunFailed;
     }
+
+    lock_enforce.enforceProjectLock(
+        arena,
+        io,
+        stderr,
+        project_root,
+        parsed.allow_toolchain_drift,
+    ) catch |err| {
+        try logging_codegen.appendLogLine(arena, &log_lines, "status=failed\n", .{});
+        try logging_codegen.appendLogLine(arena, &log_lines, "toolchain_lock=failed:{s}\n", .{@errorName(err)});
+        try stdout.print("run log: {s}\n", .{log_path});
+        try stdout.flush();
+        return error.RunFailed;
+    };
 
     try logging_codegen.runCodegenPreflight(arena, io, stderr, stdout, project_root, &log_lines);
 
@@ -117,21 +133,23 @@ pub fn run(
     try stdout.print("selected target: [{s}] {s} [{s}] ({s})\n", .{ types.platformLabel(selected.platform), selected.name, selected.id, selected.state });
     try stdout.flush();
 
-    var delegated_args = std.ArrayList([]const u8).empty;
-    defer delegated_args.deinit(arena);
+    const delegated_options: platform_run.types.RunOptions = .{
+        .platform = switch (selected.platform) {
+            .ios => .ios,
+            .android => .android,
+        },
+        .project_dir = selected.project_dir,
+        .device_selector = selected.id,
+        .debugger = try parseDelegatedDebugger(stderr, parsed.debugger_mode),
+        .non_interactive = true,
+        .once = parsed.once,
+        .monitor_timeout_seconds = parsed.monitor_timeout_seconds,
+        .regenerate_host = parsed.regenerate_host,
+        .skip_device_discovery = true,
+        .skip_codegen = true,
+    };
 
-    try delegated_args.append(arena, types.platformLabel(selected.platform));
-    try delegated_args.append(arena, selected.project_dir);
-    try delegated_args.appendSlice(arena, &.{ "--device", selected.id, "--non-interactive", "--__wizig-skip-device-discovery", "--__wizig-skip-codegen" });
-    if (parsed.once) try delegated_args.append(arena, "--once");
-    if (parsed.monitor_timeout_seconds) |seconds| {
-        const timeout_value = try std.fmt.allocPrint(arena, "{d}", .{seconds});
-        try delegated_args.appendSlice(arena, &.{ "--monitor-timeout", timeout_value });
-    }
-    if (parsed.regenerate_host) try delegated_args.append(arena, "--regenerate-host");
-    try delegated_args.appendSlice(arena, &.{ "--debugger", parsed.debugger_mode orelse "auto" });
-
-    platform_run.run(arena, io, parent_environ_map, stderr, stdout, delegated_args.items) catch |err| {
+    platform_run.runWithOptions(arena, io, parent_environ_map, stderr, stdout, delegated_options) catch |err| {
         try logging_codegen.appendLogLine(arena, &log_lines, "status=failed\n", .{});
         try logging_codegen.appendLogLine(arena, &log_lines, "error={s}\n", .{@errorName(err)});
         try stdout.print("run log: {s}\n", .{log_path});
@@ -147,7 +165,36 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Unified run options:\n" ++
-            "  wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once] [--monitor-timeout <seconds>] [--regenerate-host]\n" ++
+            "  wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once] [--monitor-timeout <seconds>] [--regenerate-host] [--allow-toolchain-drift]\n" ++
             "\n",
     );
+}
+
+fn writeNoHostError(stderr: *Io.Writer, project_root: []const u8) Io.Writer.Error!void {
+    try stderr.print(
+        "error: no generated app hosts found under '{s}' (expected ios/ and/or android/)\n" ++
+            "hint: choose a generated app directory that contains ios/ and/or android/\n",
+        .{project_root},
+    );
+}
+
+fn parseDelegatedDebugger(
+    stderr: *Io.Writer,
+    raw: ?[]const u8,
+) !platform_run.types.DebuggerMode {
+    if (raw == null) return .auto;
+    return std.meta.stringToEnum(platform_run.types.DebuggerMode, raw.?) orelse {
+        try stderr.print("error: invalid debugger mode '{s}'\n", .{raw.?});
+        return error.RunFailed;
+    };
+}
+
+test "writeNoHostError recommends choosing generated app directory" {
+    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer err_writer.deinit();
+
+    try writeNoHostError(&err_writer.writer, "/Users/arata/Developer/zig/tests");
+    const output = err_writer.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, output, "no generated app hosts found") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "choose a generated app directory") != null);
 }

@@ -29,7 +29,21 @@ pub fn run(
         return error.RunFailed;
     };
     const options = try options_mod.normalizeRunOptions(arena, io, parsed_options);
+    return runWithOptions(arena, io, parent_environ_map, stderr, stdout, options);
+}
 
+/// Executes platform run pipeline for already-normalized options.
+///
+/// Unified run uses this typed entrypoint to avoid hidden string flag
+/// protocols between orchestration layers.
+pub fn runWithOptions(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    parent_environ_map: *const std.process.Environ.Map,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    options: types.RunOptions,
+) !void {
     if (pathExists(io, "build.zig")) {
         try stdout.writeAll("building Zig artifacts...\n");
         try stdout.flush();

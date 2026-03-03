@@ -38,7 +38,7 @@ wizig create Runa /tmp/Runa --platforms ios,android
 ## `wizig run`
 
 ```sh
-wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once] [--monitor-timeout <seconds>]
+wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once] [--monitor-timeout <seconds>] [--allow-toolchain-drift]
 ```
 
 Behavior:
@@ -49,6 +49,7 @@ Behavior:
 4. Delegates to platform-specific build/install/launch.
 5. Applies monitor watchdog rules for terminal stream commands (timeout + app-liveness stop).
 6. Writes run log under `.wizig/logs/run.log`.
+7. Enforces `.wizig/toolchain.lock.json` minimum versions unless `--allow-toolchain-drift` is set.
 
 Examples:
 
@@ -61,7 +62,7 @@ wizig run /tmp/Runa --non-interactive --device 3BE718C0-8315-4698-8C04-7F62D2EE7
 ## `wizig codegen`
 
 ```sh
-wizig codegen [project_root] [--api <path>] [--watch] [--watch-interval-ms <milliseconds>]
+wizig codegen [project_root] [--api <path>] [--watch] [--watch-interval-ms <milliseconds>] [--allow-toolchain-drift]
 ```
 
 Contract resolution:
@@ -83,6 +84,7 @@ Watch mode:
 
 - `--watch` keeps a lightweight polling loop active and reruns codegen when `lib/**/*.zig` or contract files change.
 - `--watch-interval-ms` controls polling interval (default: `500`).
+- Lock enforcement defaults on when `.wizig/toolchain.lock.json` exists; use `--allow-toolchain-drift` to bypass.
 
 Examples:
 

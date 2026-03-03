@@ -2,13 +2,45 @@
 
 _Language: Zig_
 
-Runtime-packaged plugin manifest parser.
+Plugin manifest v2 schema parsing/validation.
 
 ## Public API
 
+### `SpmDependency` (const)
+
+Swift Package Manager dependency descriptor declared by a plugin.
+
+```zig
+pub const SpmDependency = struct {
+```
+
+### `deinit` (fn)
+
+Releases owned string fields.
+
+```zig
+    pub fn deinit(self: *SpmDependency, allocator: std.mem.Allocator) void {
+```
+
+### `MavenDependency` (const)
+
+Maven dependency descriptor declared by a plugin.
+
+```zig
+pub const MavenDependency = struct {
+```
+
+### `deinit` (fn)
+
+Releases owned string fields.
+
+```zig
+    pub fn deinit(self: *MavenDependency, allocator: std.mem.Allocator) void {
+```
+
 ### `PluginManifest` (const)
 
-Parsed plugin manifest for app-local runtime usage.
+Parsed plugin manifest with native dependency descriptors.
 
 ```zig
 pub const PluginManifest = struct {
@@ -16,7 +48,7 @@ pub const PluginManifest = struct {
 
 ### `parse` (fn)
 
-Parses and validates a plugin manifest JSON payload.
+Parses a JSON plugin manifest payload into a validated structure.
 
 ```zig
     pub fn parse(allocator: std.mem.Allocator, text: []const u8) !PluginManifest {

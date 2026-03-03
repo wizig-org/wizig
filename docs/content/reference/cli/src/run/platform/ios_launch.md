@@ -60,8 +60,10 @@ pub fn launchIosAppWithConsoleRetry(
     arena: std.mem.Allocator,
     io: std.Io,
     stderr: *Io.Writer,
+    stdout: *Io.Writer,
     udid: []const u8,
     bundle_id: []const u8,
     environ_map: ?*const std.process.Environ.Map,
+    monitor_timeout_seconds: ?u64,
 ) !void {
 ```

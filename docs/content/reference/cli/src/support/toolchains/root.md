@@ -17,6 +17,14 @@ No declaration docs available.
 pub const lockfile = @import("lockfile.zig");
 ```
 
+### `lock_enforce` (const)
+
+No declaration docs available.
+
+```zig
+pub const lock_enforce = @import("lock_enforce.zig");
+```
+
 ### `manifest` (const)
 
 No declaration docs available.
