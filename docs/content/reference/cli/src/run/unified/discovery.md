@@ -27,7 +27,8 @@ pub fn hasAndroidHost(io: std.Io, android_dir: []const u8) bool {
 
 ### `discoverIosDevicesNonShutdown` (fn)
 
-Discovers booted/available iOS simulators and excludes `Shutdown` state.
+Discovers booted/available iOS simulators and excludes `Shutdown` state,
+plus any connected physical iOS devices.
 
 ```zig
 pub fn discoverIosDevicesNonShutdown(

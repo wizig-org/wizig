@@ -1,7 +1,8 @@
-//! iOS simulator discovery and selection utilities.
+//! iOS simulator and physical device discovery and selection utilities.
 //!
-//! This module handles simulator enumeration, scheme destination filtering,
-//! selector matching, and interactive target selection for iOS runs.
+//! This module handles simulator enumeration, physical device discovery,
+//! scheme destination filtering, selector matching, and interactive target
+//! selection for iOS runs.
 const std = @import("std");
 const Io = std.Io;
 
@@ -93,6 +94,67 @@ pub fn discoverIosSupportedDestinationIds(
     return ids.toOwnedSlice(arena);
 }
 
+/// Lists connected physical iOS devices via `xcrun devicectl`.
+pub fn discoverIosPhysicalDevices(arena: std.mem.Allocator, io: std.Io) ![]types.IosDevice {
+    // devicectl is available on macOS 14+ (Xcode 15+).  Fall back gracefully
+    // when the tool is missing so that older hosts still work for simulators.
+    const result = process.runCapture(arena, io, .{
+        .argv = &.{ "xcrun", "devicectl", "list", "devices", "--json-output", "/dev/stdout" },
+        .label = "discover iOS physical devices",
+    }, .{}) catch return &[_]types.IosDevice{};
+
+    if (!process.termIsSuccess(result.term)) return &[_]types.IosDevice{};
+
+    const root = std.json.parseFromSliceLeaky(std.json.Value, arena, result.stdout, .{}) catch return &[_]types.IosDevice{};
+    if (root != .object) return &[_]types.IosDevice{};
+
+    // devicectl nests devices under result.devices[]
+    const result_obj = root.object.get("result") orelse return &[_]types.IosDevice{};
+    if (result_obj != .object) return &[_]types.IosDevice{};
+    const devices_value = result_obj.object.get("devices") orelse return &[_]types.IosDevice{};
+    if (devices_value != .array) return &[_]types.IosDevice{};
+
+    var devices = std.ArrayList(types.IosDevice).empty;
+    for (devices_value.array.items) |device_value| {
+        if (device_value != .object) continue;
+
+        const identifier = jsonObjectString(device_value.object, "identifier") orelse continue;
+
+        // Device name lives in deviceProperties.name
+        const props = device_value.object.get("deviceProperties") orelse continue;
+        if (props != .object) continue;
+        const name = jsonObjectString(props.object, "name") orelse continue;
+        const os_version_str = blk: {
+            if (props.object.get("osVersionNumber")) |v| {
+                if (v == .string) break :blk v.string;
+            }
+            break :blk "iOS";
+        };
+
+        // Connection state lives in connectionProperties.transportType
+        const conn = device_value.object.get("connectionProperties") orelse continue;
+        if (conn != .object) continue;
+        const transport = jsonObjectString(conn.object, "transportType") orelse "unknown";
+        _ = transport;
+
+        const state_str: []const u8 = if (device_value.object.get("visibilityClass")) |v| blk: {
+            if (v == .string) break :blk v.string;
+            break :blk "connected";
+        } else "connected";
+        _ = state_str;
+
+        try devices.append(arena, .{
+            .name = try arena.dupe(u8, name),
+            .udid = try arena.dupe(u8, identifier),
+            .runtime = try std.fmt.allocPrint(arena, "iOS.{s}", .{os_version_str}),
+            .state = try arena.dupe(u8, "Connected"),
+            .kind = .device,
+        });
+    }
+
+    return devices.toOwnedSlice(arena);
+}
+
 /// Filters discovered iOS devices by allowed destination IDs.
 pub fn filterIosDevicesBySupportedIds(
     arena: std.mem.Allocator,
@@ -119,19 +181,23 @@ pub fn chooseIosDevice(
 ) !types.IosDevice {
     if (selector) |needle| {
         if (selection.findIosDeviceBySelector(devices, needle)) |device| return device;
-        try stderr.print("error: iOS simulator '{s}' not found\n", .{needle});
+        try stderr.print("error: iOS target '{s}' not found\n", .{needle});
         return error.RunFailed;
     }
 
     if (devices.len == 1) return devices[0];
     if (non_interactive) {
-        try stderr.writeAll("error: multiple iOS simulators found; pass --device\n");
+        try stderr.writeAll("error: multiple iOS targets found; pass --device\n");
         return error.RunFailed;
     }
 
-    try stdout.writeAll("available iOS simulators:\n");
+    try stdout.writeAll("available iOS targets:\n");
     for (devices, 0..) |device, idx| {
-        try stdout.print("  {d}. {s} [{s}] ({s}, {s})\n", .{ idx + 1, device.name, device.udid, device.runtime, device.state });
+        const kind_label: []const u8 = switch (device.kind) {
+            .simulator => "sim",
+            .device => "dev",
+        };
+        try stdout.print("  {d}. [{s}] {s} [{s}] ({s}, {s})\n", .{ idx + 1, kind_label, device.name, device.udid, device.runtime, device.state });
     }
     try stdout.flush();
 

@@ -47,12 +47,19 @@ pub const RunOptions = struct {
     activity: ?[]const u8 = null,
 };
 
-/// iOS simulator selection model returned by discovery.
+/// Distinguishes iOS simulators from physical devices.
+pub const IosDeviceKind = enum {
+    simulator,
+    device,
+};
+
+/// iOS target selection model returned by discovery.
 pub const IosDevice = struct {
     name: []const u8,
     udid: []const u8,
     runtime: []const u8,
     state: []const u8,
+    kind: IosDeviceKind = .simulator,
 };
 
 /// Android target model returned by `adb devices -l` parsing.

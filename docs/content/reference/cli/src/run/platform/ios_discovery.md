@@ -2,10 +2,11 @@
 
 _Language: Zig_
 
-iOS simulator discovery and selection utilities.
+iOS simulator and physical device discovery and selection utilities.
 
-This module handles simulator enumeration, scheme destination filtering,
-selector matching, and interactive target selection for iOS runs.
+This module handles simulator enumeration, physical device discovery,
+scheme destination filtering, selector matching, and interactive target
+selection for iOS runs.
 
 ## Public API
 
@@ -30,6 +31,14 @@ pub fn discoverIosSupportedDestinationIds(
     xcode_project: []const u8,
     scheme: []const u8,
 ) ![]const []const u8 {
+```
+
+### `discoverIosPhysicalDevices` (fn)
+
+Lists connected physical iOS devices via `xcrun devicectl`.
+
+```zig
+pub fn discoverIosPhysicalDevices(arena: std.mem.Allocator, io: std.Io) ![]types.IosDevice {
 ```
 
 ### `filterIosDevicesBySupportedIds` (fn)

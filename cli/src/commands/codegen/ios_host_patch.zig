@@ -83,7 +83,8 @@ fn patchProjectFile(arena: std.mem.Allocator, io: std.Io, pbx_path: []const u8) 
 fn patchProjectText(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
     const with_section = try upsertShellSection(arena, text);
     const with_ref = try injectAppBuildPhaseReference(arena, with_section);
-    return try disableUserScriptSandboxingForAppTarget(arena, with_ref);
+    const with_sandbox = try disableUserScriptSandboxingForAppTarget(arena, with_ref);
+    return try enableAutomaticSigningForAppTarget(arena, with_sandbox);
 }
 
 fn upsertShellSection(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
@@ -230,6 +231,143 @@ fn upsertUserScriptSandboxingNoForConfig(
     });
 }
 
+/// Enables Xcode automatic code signing for the app target build configurations.
+///
+/// This ensures the WizigFFI.framework embedded inside the app bundle is
+/// properly signed when building for real iOS devices.  Automatic signing
+/// delegates identity and provisioning profile resolution to Xcode so that
+/// both simulator and device builds succeed without manual configuration.
+fn enableAutomaticSigningForAppTarget(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
+    const app_product_type = "productType = \"com.apple.product-type.application\";";
+    const app_idx = std.mem.indexOf(u8, text, app_product_type) orelse return error.InvalidPbxproj;
+    const build_config_list_marker = "buildConfigurationList = ";
+    const list_idx = std.mem.lastIndexOf(u8, text[0..app_idx], build_config_list_marker) orelse return error.InvalidPbxproj;
+    const list_id_start = list_idx + build_config_list_marker.len;
+    const list_id_end_rel = std.mem.indexOfAny(u8, text[list_id_start..], " ;\n\t") orelse return error.InvalidPbxproj;
+    const config_list_id = std.mem.trim(u8, text[list_id_start .. list_id_start + list_id_end_rel], " \t");
+    if (config_list_id.len == 0) return error.InvalidPbxproj;
+
+    var config_ids = try appTargetBuildConfigIds(arena, text, config_list_id);
+    if (config_ids.items.len == 0) return error.InvalidPbxproj;
+
+    var updated = text;
+    for (config_ids.items) |config_id| {
+        updated = try upsertAutomaticSigningForConfig(arena, updated, config_id);
+    }
+    return updated;
+}
+
+/// Ensures one XCBuildConfiguration object uses Xcode automatic signing.
+///
+/// Sets `CODE_SIGN_STYLE = Automatic`, `CODE_SIGNING_ALLOWED = YES`,
+/// `CODE_SIGNING_REQUIRED = YES`.  Removes explicit empty `CODE_SIGN_IDENTITY`
+/// and `DEVELOPMENT_TEAM` assignments that block automatic resolution.
+fn upsertAutomaticSigningForConfig(
+    arena: std.mem.Allocator,
+    text: []const u8,
+    config_id: []const u8,
+) ![]const u8 {
+    const object_prefix = try std.fmt.allocPrint(arena, "\t\t{s} /* ", .{config_id});
+    const object_start = std.mem.indexOf(u8, text, object_prefix) orelse return error.InvalidPbxproj;
+    const object_end_rel = std.mem.indexOf(u8, text[object_start..], "\t\t};\n") orelse return error.InvalidPbxproj;
+    const object_end = object_start + object_end_rel + "\t\t};\n".len;
+    const object_slice = text[object_start..object_end];
+
+    const build_settings_marker = "buildSettings = {\n";
+    const build_start_rel = std.mem.indexOf(u8, object_slice, build_settings_marker) orelse return error.InvalidPbxproj;
+    const build_start = object_start + build_start_rel + build_settings_marker.len;
+    const build_end_rel = std.mem.indexOf(u8, text[build_start..object_end], "\t\t\t};\n") orelse return error.InvalidPbxproj;
+    const build_end = build_start + build_end_rel;
+
+    // Work on the build settings block, applying removals and upserts in a
+    // single pass over a mutable copy.
+    var result = try arena.dupe(u8, text);
+    var delta: isize = 0;
+
+    // --- Remove stale explicit signing overrides that prevent automatic mode ---
+    const removals = [_][]const u8{
+        "CODE_SIGNING_ALLOWED = NO;",
+        "CODE_SIGNING_REQUIRED = NO;",
+        "CODE_SIGN_IDENTITY = \"\";",
+        "DEVELOPMENT_TEAM = \"\";",
+    };
+    for (removals) |pattern| {
+        const search_start: usize = @intCast(@as(isize, @intCast(build_start)) + delta);
+        const search_end: usize = @intCast(@as(isize, @intCast(build_end)) + delta);
+        if (std.mem.indexOf(u8, result[search_start..search_end], pattern)) |rel| {
+            // Find the full line boundaries for clean removal.
+            const abs = search_start + rel;
+            var line_start = abs;
+            while (line_start > 0 and result[line_start - 1] != '\n') {
+                line_start -= 1;
+            }
+            var line_end = abs + pattern.len;
+            while (line_end < result.len and result[line_end] != '\n') {
+                line_end += 1;
+            }
+            if (line_end < result.len) line_end += 1; // consume the newline
+            const removed_len = line_end - line_start;
+            result = try std.fmt.allocPrint(arena, "{s}{s}", .{
+                result[0..line_start],
+                result[line_end..],
+            });
+            delta -= @intCast(removed_len);
+        }
+    }
+
+    // --- Upsert required automatic signing keys ---
+    const required_settings = [_]struct { key: []const u8, value: []const u8 }{
+        .{ .key = "CODE_SIGN_STYLE", .value = "Automatic" },
+        .{ .key = "CODE_SIGNING_ALLOWED", .value = "YES" },
+        .{ .key = "CODE_SIGNING_REQUIRED", .value = "YES" },
+    };
+    for (required_settings) |setting| {
+        const search_start: usize = @intCast(@as(isize, @intCast(build_start)) + delta);
+        const search_end: usize = @intCast(@as(isize, @intCast(build_end)) + delta);
+        const desired = try std.fmt.allocPrint(arena, "{s} = {s};", .{ setting.key, setting.value });
+        const key_prefix = try std.fmt.allocPrint(arena, "{s} = ", .{setting.key});
+
+        if (std.mem.indexOf(u8, result[search_start..search_end], desired) != null) {
+            // Already present with the correct value.
+            continue;
+        }
+
+        if (std.mem.indexOf(u8, result[search_start..search_end], key_prefix)) |rel| {
+            // Key present with wrong value – replace the entire line.
+            const abs = search_start + rel;
+            var line_start = abs;
+            while (line_start > 0 and result[line_start - 1] != '\n') {
+                line_start -= 1;
+            }
+            var line_end = abs;
+            while (line_end < result.len and result[line_end] != '\n') {
+                line_end += 1;
+            }
+            if (line_end < result.len) line_end += 1;
+            const old_len = line_end - line_start;
+            const new_line = try std.fmt.allocPrint(arena, "\t\t\t\t{s}\n", .{desired});
+            result = try std.fmt.allocPrint(arena, "{s}{s}{s}", .{
+                result[0..line_start],
+                new_line,
+                result[line_end..],
+            });
+            delta += @as(isize, @intCast(new_line.len)) - @as(isize, @intCast(old_len));
+        } else {
+            // Key absent – insert before closing brace.
+            const insert_pos: usize = @intCast(@as(isize, @intCast(build_end)) + delta);
+            const new_line = try std.fmt.allocPrint(arena, "\t\t\t\t{s}\n", .{desired});
+            result = try std.fmt.allocPrint(arena, "{s}{s}{s}", .{
+                result[0..insert_pos],
+                new_line,
+                result[insert_pos..],
+            });
+            delta += @intCast(new_line.len);
+        }
+    }
+
+    return result;
+}
+
 test "patchProjectText injects shell section and app build phase reference" {
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();
@@ -306,6 +444,9 @@ test "patchProjectText is idempotent when phase already present" {
         "\t\tAPP_DEBUG /* Debug */ = {\n" ++
         "\t\t\tisa = XCBuildConfiguration;\n" ++
         "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tCODE_SIGNING_ALLOWED = YES;\n" ++
+        "\t\t\t\tCODE_SIGNING_REQUIRED = YES;\n" ++
+        "\t\t\t\tCODE_SIGN_STYLE = Automatic;\n" ++
         "\t\t\t\tENABLE_USER_SCRIPT_SANDBOXING = NO;\n" ++
         "\t\t\t};\n" ++
         "\t\t\tname = Debug;\n" ++
@@ -313,6 +454,9 @@ test "patchProjectText is idempotent when phase already present" {
         "\t\tAPP_RELEASE /* Release */ = {\n" ++
         "\t\t\tisa = XCBuildConfiguration;\n" ++
         "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tCODE_SIGNING_ALLOWED = YES;\n" ++
+        "\t\t\t\tCODE_SIGNING_REQUIRED = YES;\n" ++
+        "\t\t\t\tCODE_SIGN_STYLE = Automatic;\n" ++
         "\t\t\t\tENABLE_USER_SCRIPT_SANDBOXING = NO;\n" ++
         "\t\t\t};\n" ++
         "\t\t\tname = Release;\n" ++
@@ -380,11 +524,15 @@ test "phase_entry signs device framework outputs when code signing is enabled" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY_NAME") == null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "${CODE_SIGN_IDENTITY:-}") == null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "missing Xcode-resolved signing identity") != null);
+    // Missing identity now falls back to ad-hoc instead of hard-erroring.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "falling back to ad-hoc signing") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --force --sign") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --verify --strict") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "CODE_SIGNING_ALLOWED") != null);
+    // Signing is unconditional for iphoneos; no CODE_SIGNING_ALLOWED guard.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "PLATFORM_NAME") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "-headerpad_max_install_names") != null);
+    // Frameworks must not use --generate-entitlement-der (apps only).
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "--generate-entitlement-der") == null);
 }
 
 test "phase_entry validates device slice architectures for app-store safety" {
@@ -395,11 +543,168 @@ test "phase_entry validates device slice architectures for app-store safety" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_IOS_PRIVATE_SYMBOL_DENYLIST_REGEX") != null);
 }
 
+test "phase_entry applies Mach-O __TEXT page alignment fixup after zig build" {
+    // The zig linker may produce __TEXT segments with non-page-aligned vmsize/
+    // filesize.  Real iOS devices reject such binaries with "code signature
+    // invalid" because AMFI page-hash boundaries do not match segment limits.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "fix_macho_text_page_alignment") != null);
+    // The fixup function must be defined before it is called inside build_ffi_slice.
+    const fn_def = std.mem.indexOf(u8, phase_entry, "fix_macho_text_page_alignment()") orelse unreachable;
+    const first_call = std.mem.indexOf(u8, phase_entry, "fix_macho_text_page_alignment \\\"${OUTPUT_BIN}\\\"") orelse unreachable;
+    try std.testing.expect(fn_def < first_call);
+    // The fixup uses python3 to patch LC_SEGMENT_64 __TEXT fields in-place.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "python3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "__TEXT") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "FEEDFACF") != null);
+}
+
+test "phase_entry contains only properly escaped quotes for pbxproj embedding" {
+    // The phase_entry is placed inside a pbxproj `shellScript = "...";` value.
+    // Every double-quote character that is part of the shell content must appear
+    // as `\"` (backslash-quote) in the string.  A bare `"` that is not preceded
+    // by `\` would terminate the pbxproj string and corrupt the project file.
+    //
+    // Scan the interior of the shellScript value (between the outermost quotes
+    // added by the wrapping `\t\tshellScript = "` prefix and the `";\n` suffix)
+    // and verify every `"` is preceded by `\`.
+    const script_prefix = "shellScript = \"";
+    const script_start_idx = std.mem.indexOf(u8, phase_entry, script_prefix) orelse unreachable;
+    const content_start = script_start_idx + script_prefix.len;
+    // Find the closing `";` that ends the shellScript value.
+    const script_end = std.mem.lastIndexOf(u8, phase_entry, "\";\n") orelse unreachable;
+    const content = phase_entry[content_start..script_end];
+
+    var i: usize = 0;
+    while (i < content.len) : (i += 1) {
+        if (content[i] == '"') {
+            // Every `"` inside the content must be preceded by `\`.
+            if (i == 0 or content[i - 1] != '\\') {
+                std.debug.print("unescaped quote at content offset {d}: ...{s}...\n", .{
+                    i,
+                    content[if (i >= 20) i - 20 else 0..@min(i + 20, content.len)],
+                });
+                try std.testing.expect(false);
+            }
+        }
+    }
+}
+
 test "phase_entry assigns framework bundle identifier distinct from app" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "FRAMEWORK_BUNDLE_ID") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "PRODUCT_BUNDLE_IDENTIFIER") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, ".wizigffi") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "<string>dev.wizig.WizigFFI</string>") == null);
+}
+
+test "enableAutomaticSigningForAppTarget replaces disabled signing with automatic" {
+    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    const input =
+        "/* Begin PBXNativeTarget section */\n" ++
+        "\t\tAPP /* App */ = {\n" ++
+        "\t\t\tbuildConfigurationList = APP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */;\n" ++
+        "\t\t\tbuildPhases = (\n" ++
+        "\t\t\t);\n" ++
+        "\t\t\tproductType = \"com.apple.product-type.application\";\n" ++
+        "\t\t};\n" ++
+        "/* End PBXNativeTarget section */\n\n" ++
+        "/* Begin XCBuildConfiguration section */\n" ++
+        "\t\tAPP_DEBUG /* Debug */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tCODE_SIGNING_ALLOWED = NO;\n" ++
+        "\t\t\t\tCODE_SIGNING_REQUIRED = NO;\n" ++
+        "\t\t\t\tCODE_SIGN_IDENTITY = \"\";\n" ++
+        "\t\t\t\tDEVELOPMENT_TEAM = \"\";\n" ++
+        "\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Debug;\n" ++
+        "\t\t};\n" ++
+        "\t\tAPP_RELEASE /* Release */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tCODE_SIGNING_ALLOWED = NO;\n" ++
+        "\t\t\t\tCODE_SIGNING_REQUIRED = NO;\n" ++
+        "\t\t\t\tCODE_SIGN_IDENTITY = \"\";\n" ++
+        "\t\t\t\tDEVELOPMENT_TEAM = \"\";\n" ++
+        "\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Release;\n" ++
+        "\t\t};\n" ++
+        "/* End XCBuildConfiguration section */\n\n" ++
+        "/* Begin XCConfigurationList section */\n" ++
+        "\t\tAPP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */ = {\n" ++
+        "\t\t\tisa = XCConfigurationList;\n" ++
+        "\t\t\tbuildConfigurations = (\n" ++
+        "\t\t\t\tAPP_DEBUG /* Debug */,\n" ++
+        "\t\t\t\tAPP_RELEASE /* Release */,\n" ++
+        "\t\t\t);\n" ++
+        "\t\t\tdefaultConfigurationIsVisible = 0;\n" ++
+        "\t\t\tdefaultConfigurationName = Release;\n" ++
+        "\t\t};\n" ++
+        "/* End XCConfigurationList section */\n";
+
+    const output = try enableAutomaticSigningForAppTarget(arena, input);
+
+    // Stale overrides must be removed.
+    try std.testing.expect(std.mem.indexOf(u8, output, "CODE_SIGNING_ALLOWED = NO;") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "CODE_SIGNING_REQUIRED = NO;") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "CODE_SIGN_IDENTITY = \"\";") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "DEVELOPMENT_TEAM = \"\";") == null);
+
+    // Automatic signing keys must be present in both configs.
+    const debug_start = std.mem.indexOf(u8, output, "APP_DEBUG /* Debug */ = {") orelse unreachable;
+    const release_start = std.mem.indexOf(u8, output, "APP_RELEASE /* Release */ = {") orelse unreachable;
+    try std.testing.expect(std.mem.indexOfPos(u8, output, debug_start, "CODE_SIGN_STYLE = Automatic;") != null);
+    try std.testing.expect(std.mem.indexOfPos(u8, output, debug_start, "CODE_SIGNING_ALLOWED = YES;") != null);
+    try std.testing.expect(std.mem.indexOfPos(u8, output, debug_start, "CODE_SIGNING_REQUIRED = YES;") != null);
+    try std.testing.expect(std.mem.indexOfPos(u8, output, release_start, "CODE_SIGN_STYLE = Automatic;") != null);
+    try std.testing.expect(std.mem.indexOfPos(u8, output, release_start, "CODE_SIGNING_ALLOWED = YES;") != null);
+    try std.testing.expect(std.mem.indexOfPos(u8, output, release_start, "CODE_SIGNING_REQUIRED = YES;") != null);
+}
+
+test "enableAutomaticSigningForAppTarget is idempotent when already automatic" {
+    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    const input =
+        "/* Begin PBXNativeTarget section */\n" ++
+        "\t\tAPP /* App */ = {\n" ++
+        "\t\t\tbuildConfigurationList = APP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */;\n" ++
+        "\t\t\tbuildPhases = (\n" ++
+        "\t\t\t);\n" ++
+        "\t\t\tproductType = \"com.apple.product-type.application\";\n" ++
+        "\t\t};\n" ++
+        "/* End PBXNativeTarget section */\n\n" ++
+        "/* Begin XCBuildConfiguration section */\n" ++
+        "\t\tAPP_DEBUG /* Debug */ = {\n" ++
+        "\t\t\tisa = XCBuildConfiguration;\n" ++
+        "\t\t\tbuildSettings = {\n" ++
+        "\t\t\t\tCODE_SIGNING_ALLOWED = YES;\n" ++
+        "\t\t\t\tCODE_SIGNING_REQUIRED = YES;\n" ++
+        "\t\t\t\tCODE_SIGN_STYLE = Automatic;\n" ++
+        "\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n" ++
+        "\t\t\t};\n" ++
+        "\t\t\tname = Debug;\n" ++
+        "\t\t};\n" ++
+        "/* End XCBuildConfiguration section */\n\n" ++
+        "/* Begin XCConfigurationList section */\n" ++
+        "\t\tAPP_CFG_LIST /* Build configuration list for PBXNativeTarget \"App\" */ = {\n" ++
+        "\t\t\tisa = XCConfigurationList;\n" ++
+        "\t\t\tbuildConfigurations = (\n" ++
+        "\t\t\t\tAPP_DEBUG /* Debug */,\n" ++
+        "\t\t\t);\n" ++
+        "\t\t\tdefaultConfigurationIsVisible = 0;\n" ++
+        "\t\t\tdefaultConfigurationName = Release;\n" ++
+        "\t\t};\n" ++
+        "/* End XCConfigurationList section */\n";
+
+    const output = try enableAutomaticSigningForAppTarget(arena, input);
+
+    try std.testing.expectEqualStrings(input, output);
 }
 
 test "disableUserScriptSandboxingForAppTarget scopes rewrite to app target" {

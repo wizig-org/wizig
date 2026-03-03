@@ -42,9 +42,17 @@ Parsed and normalized options for platform run execution.
 pub const RunOptions = struct {
 ```
 
+### `IosDeviceKind` (const)
+
+Distinguishes iOS simulators from physical devices.
+
+```zig
+pub const IosDeviceKind = enum {
+```
+
 ### `IosDevice` (const)
 
-iOS simulator selection model returned by discovery.
+iOS target selection model returned by discovery.
 
 ```zig
 pub const IosDevice = struct {

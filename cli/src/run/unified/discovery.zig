@@ -41,7 +41,8 @@ pub fn hasAndroidHost(io: std.Io, android_dir: []const u8) bool {
     return fs_utils.pathExists(io, app_build);
 }
 
-/// Discovers booted/available iOS simulators and excludes `Shutdown` state.
+/// Discovers booted/available iOS simulators and excludes `Shutdown` state,
+/// plus any connected physical iOS devices.
 pub fn discoverIosDevicesNonShutdown(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -85,7 +86,56 @@ pub fn discoverIosDevicesNonShutdown(
         }
     }
 
+    // Also include connected physical devices.
+    const physical = discoverIosPhysicalDevicesUnified(arena, io) catch &[_]types.DeviceInfo{};
+    for (physical) |dev| {
+        try devices.append(arena, dev);
+    }
+
     std.mem.sort(types.DeviceInfo, devices.items, {}, types.lessDeviceInfo);
+    return devices.toOwnedSlice(arena);
+}
+
+/// Discovers connected physical iOS devices via `xcrun devicectl`.
+///
+/// Returns an empty slice when devicectl is unavailable (pre-Xcode 15) or
+/// when no devices are connected, so callers can fall back to simulators.
+fn discoverIosPhysicalDevicesUnified(
+    arena: std.mem.Allocator,
+    io: std.Io,
+) ![]types.DeviceInfo {
+    const result = process.runCapture(arena, io, .{
+        .argv = &.{ "xcrun", "devicectl", "list", "devices", "--json-output", "/dev/stdout" },
+        .label = "discover iOS physical devices (unified)",
+    }, .{}) catch return &[_]types.DeviceInfo{};
+
+    if (!process.termIsSuccess(result.term)) return &[_]types.DeviceInfo{};
+
+    const root = std.json.parseFromSliceLeaky(std.json.Value, arena, result.stdout, .{}) catch return &[_]types.DeviceInfo{};
+    if (root != .object) return &[_]types.DeviceInfo{};
+
+    const result_obj = root.object.get("result") orelse return &[_]types.DeviceInfo{};
+    if (result_obj != .object) return &[_]types.DeviceInfo{};
+    const devices_value = result_obj.object.get("devices") orelse return &[_]types.DeviceInfo{};
+    if (devices_value != .array) return &[_]types.DeviceInfo{};
+
+    var devices = std.ArrayList(types.DeviceInfo).empty;
+    for (devices_value.array.items) |device_value| {
+        if (device_value != .object) continue;
+
+        const identifier = jsonObjectString(device_value.object, "identifier") orelse continue;
+
+        const props = device_value.object.get("deviceProperties") orelse continue;
+        if (props != .object) continue;
+        const name = jsonObjectString(props.object, "name") orelse continue;
+
+        try devices.append(arena, .{
+            .id = try arena.dupe(u8, identifier),
+            .name = try std.fmt.allocPrint(arena, "{s} (device)", .{name}),
+            .state = try arena.dupe(u8, "Connected"),
+        });
+    }
+
     return devices.toOwnedSlice(arena);
 }
 
