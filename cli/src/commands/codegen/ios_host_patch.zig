@@ -1,15 +1,13 @@
 //! iOS host project patching for direct Xcode FFI builds.
 //!
 //! ## Problem
-//! Direct Xcode builds do not run `wizig run`, so the simulator app bundle can
-//! miss the per-app Wizig FFI dylib (`Frameworks/wizigffi`).
+//! Direct Xcode builds do not run `wizig run`, so host projects can miss
+//! per-app FFI packaging updates unless codegen patches build wiring.
 //!
 //! ## Approach
 //! This module patches generated host `.xcodeproj/project.pbxproj` files with a
-//! deterministic `PBXShellScriptBuildPhase` that:
-//! - builds the Zig FFI dylib for the active Apple SDK/arch,
-//! - emits to `$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/wizigffi`,
-//! - declares input/output paths for Xcode incremental dependency analysis.
+//! deterministic `PBXShellScriptBuildPhase` that builds and embeds a framework
+//! artifact and mirrors it into a generated `.xcframework`.
 //!
 //! ## Safety
 //! Patching is idempotent: if the phase already exists, no changes are written.
@@ -17,6 +15,7 @@ const std = @import("std");
 const Io = std.Io;
 
 const fs_util = @import("../../support/fs.zig");
+const ios_host_phase_entry = @import("ios_host_phase_entry.zig");
 const path_util = @import("../../support/path.zig");
 
 /// Summary of iOS host project patching work performed in one codegen pass.
@@ -27,95 +26,16 @@ pub const PatchSummary = struct {
     patched_projects: usize = 0,
 };
 
-const phase_name = "Wizig Build iOS FFI";
-const phase_id = "D0A0A0A0A0A0A0A0A0A0AF01";
-const phase_ref_line = "\t\t\t\t" ++ phase_id ++ " /* " ++ phase_name ++ " */,\n";
+const phase_name = ios_host_phase_entry.phase_name;
+const phase_id = ios_host_phase_entry.phase_id;
+const phase_ref_line = ios_host_phase_entry.phase_ref_line;
+const phase_entry = ios_host_phase_entry.phase_entry;
 
 const section_markers = struct {
     const begin_shell = "/* Begin PBXShellScriptBuildPhase section */";
     const end_shell = "/* End PBXShellScriptBuildPhase section */";
     const begin_sources = "/* Begin PBXSourcesBuildPhase section */";
 };
-
-const phase_entry =
-    "\t\t" ++ phase_id ++ " /* " ++ phase_name ++ " */ = {\n" ++
-    "\t\t\tisa = PBXShellScriptBuildPhase;\n" ++
-    "\t\t\tbuildActionMask = 2147483647;\n" ++
-    "\t\t\tfiles = (\n" ++
-    "\t\t\t);\n" ++
-    "\t\t\tinputPaths = (\n" ++
-    "\t\t\t\t\"$(SRCROOT)/../.wizig/generated/zig/WizigGeneratedFfiRoot.zig\",\n" ++
-    "\t\t\t\t\"$(SRCROOT)/../.wizig/runtime/core/src/root.zig\",\n" ++
-    "\t\t\t\t\"$(SRCROOT)/../lib/WizigGeneratedAppModule.zig\",\n" ++
-    "\t\t\t);\n" ++
-    "\t\t\tname = \"" ++ phase_name ++ "\";\n" ++
-    "\t\t\toutputPaths = (\n" ++
-    "\t\t\t\t\"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/wizigffi\",\n" ++
-    "\t\t\t);\n" ++
-    "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n" ++
-    "\t\t\tshellPath = /bin/sh;\n" ++
-    "\t\t\tshellScript = \"set -eu\\n" ++
-    "APP_ROOT=\\\"${SRCROOT}/..\\\"\\n" ++
-    "GENERATED_ROOT=\\\"${APP_ROOT}/.wizig/generated/zig\\\"\\n" ++
-    "RUNTIME_ROOT=\\\"${APP_ROOT}/.wizig/runtime\\\"\\n" ++
-    "LIB_ROOT=\\\"${APP_ROOT}/lib\\\"\\n" ++
-    "OUT_DIR=\\\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\\\"\\n" ++
-    "OUT_LIB=\\\"${OUT_DIR}/wizigffi\\\"\\n" ++
-    "TMP_OUT_LIB=\\\"${TARGET_TEMP_DIR:-${TEMP_DIR:-/tmp}}/wizigffi\\\"\\n" ++
-    "mkdir -p \\\"${OUT_DIR}\\\"\\n" ++
-    "CACHE_BASE=\\\"${TARGET_TEMP_DIR:-${TEMP_DIR:-/tmp}}\\\"\\n" ++
-    "ZIG_LOCAL_CACHE_DIR=\\\"${CACHE_BASE}/wizig-zig-local-cache\\\"\\n" ++
-    "ZIG_GLOBAL_CACHE_DIR=\\\"${CACHE_BASE}/wizig-zig-global-cache\\\"\\n" ++
-    "mkdir -p \\\"${ZIG_LOCAL_CACHE_DIR}\\\" \\\"${ZIG_GLOBAL_CACHE_DIR}\\\"\\n" ++
-    "export ZIG_LOCAL_CACHE_DIR\\n" ++
-    "export ZIG_GLOBAL_CACHE_DIR\\n" ++
-    "ZIG_OPTIMIZE=\\\"${WIZIG_FFI_OPTIMIZE:-ReleaseFast}\\\"\\n" ++
-    "if [ -z \\\"${WIZIG_FFI_OPTIMIZE:-}\\\" ]; then\\n" ++
-    "  case \\\"${CONFIGURATION:-}\\\" in\\n" ++
-    "    Debug|*Debug*) ZIG_OPTIMIZE=\\\"Debug\\\" ;;\\n" ++
-    "  esac\\n" ++
-    "fi\\n" ++
-    "ARCH_VALUE=\\\"${CURRENT_ARCH:-}\\\"\\n" ++
-    "if [ -z \\\"${ARCH_VALUE}\\\" ] || [ \\\"${ARCH_VALUE}\\\" = \\\"undefined_arch\\\" ]; then\\n" ++
-    "  ARCH_VALUE=\\\"${NATIVE_ARCH_ACTUAL:-}\\\"\\n" ++
-    "fi\\n" ++
-    "if [ -z \\\"${ARCH_VALUE}\\\" ] || [ \\\"${ARCH_VALUE}\\\" = \\\"undefined_arch\\\" ]; then\\n" ++
-    "  set -- ${ARCHS:-}\\n" ++
-    "  ARCH_VALUE=\\\"${1:-}\\\"\\n" ++
-    "fi\\n" ++
-    "if [ \\\"${PLATFORM_NAME}\\\" = \\\"iphonesimulator\\\" ]; then\\n" ++
-    "  case \\\"${ARCH_VALUE}\\\" in\\n" ++
-    "    arm64) ZIG_TARGET=\\\"aarch64-ios-simulator\\\" ;;\\n" ++
-    "    x86_64) ZIG_TARGET=\\\"x86_64-ios-simulator\\\" ;;\\n" ++
-    "    *) echo \\\"error: unsupported iOS simulator arch '${ARCH_VALUE}' for Wizig FFI build\\\" >&2; exit 1 ;;\\n" ++
-    "  esac\\n" ++
-    "elif [ \\\"${PLATFORM_NAME}\\\" = \\\"iphoneos\\\" ]; then\\n" ++
-    "  ZIG_TARGET=\\\"aarch64-ios\\\"\\n" ++
-    "else\\n" ++
-    "  echo \\\"error: unsupported Apple platform '${PLATFORM_NAME}' for Wizig FFI build\\\" >&2\\n" ++
-    "  exit 1\\n" ++
-    "fi\\n" ++
-    "ZIG_BIN=\\\"${ZIG_BINARY:-}\\\"\\n" ++
-    "if [ -z \\\"${ZIG_BIN}\\\" ]; then\\n" ++
-    "  if command -v zig >/dev/null 2>&1; then\\n" ++
-    "    ZIG_BIN=\\\"$(command -v zig)\\\"\\n" ++
-    "  fi\\n" ++
-    "fi\\n" ++
-    "if [ -z \\\"${ZIG_BIN}\\\" ]; then\\n" ++
-    "  for candidate in \\\"${HOME}/.zvm/master/zig\\\" \\\"${HOME}/.zvm/bin/zig\\\" \\\"${HOME}/.local/bin/zig\\\" \\\"/opt/homebrew/bin/zig\\\" \\\"/usr/local/bin/zig\\\"; do\\n" ++
-    "    if [ -x \\\"${candidate}\\\" ]; then\\n" ++
-    "      ZIG_BIN=\\\"${candidate}\\\"\\n" ++
-    "      break\\n" ++
-    "    fi\\n" ++
-    "  done\\n" ++
-    "fi\\n" ++
-    "if [ -z \\\"${ZIG_BIN}\\\" ]; then\\n" ++
-    "  echo \\\"error: zig is not installed or discoverable (PATH/ZIG_BINARY/common locations); required for Wizig iOS FFI build\\\" >&2\\n" ++
-    "  exit 1\\n" ++
-    "fi\\n" ++
-    "\\\"${ZIG_BIN}\\\" build-lib -O\\\"${ZIG_OPTIMIZE}\\\" -fno-error-tracing -fno-unwind-tables -fstrip -target \\\"${ZIG_TARGET}\\\" --dep wizig_core --dep wizig_app -Mroot=\\\"${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig\\\" -Mwizig_core=\\\"${RUNTIME_ROOT}/core/src/root.zig\\\" -Mwizig_app=\\\"${LIB_ROOT}/WizigGeneratedAppModule.zig\\\" --name wizigffi -dynamic -install_name @rpath/libwizigffi.dylib --sysroot \\\"${SDKROOT}\\\" -L/usr/lib -F/System/Library/Frameworks -lc -femit-bin=\\\"${TMP_OUT_LIB}\\\"\\n" ++
-    "cp -f \\\"${TMP_OUT_LIB}\\\" \\\"${OUT_LIB}\\\"\\n\";\n" ++
-    "\t\t};\n";
 
 /// Ensures all discovered iOS host projects include Wizig's FFI build phase.
 pub fn ensureIosHostBuildPhase(
@@ -162,7 +82,8 @@ fn patchProjectFile(arena: std.mem.Allocator, io: std.Io, pbx_path: []const u8) 
 
 fn patchProjectText(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
     const with_section = try upsertShellSection(arena, text);
-    return try injectAppBuildPhaseReference(arena, with_section);
+    const with_ref = try injectAppBuildPhaseReference(arena, with_section);
+    return try disableUserScriptSandboxing(arena, with_ref);
 }
 
 fn upsertShellSection(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
@@ -212,6 +133,22 @@ fn injectAppBuildPhaseReference(arena: std.mem.Allocator, text: []const u8) ![]c
         phase_ref_line,
         text[close_idx..],
     });
+}
+
+fn disableUserScriptSandboxing(arena: std.mem.Allocator, text: []const u8) ![]const u8 {
+    const needle = "ENABLE_USER_SCRIPT_SANDBOXING = YES;";
+    const replacement = "ENABLE_USER_SCRIPT_SANDBOXING = NO;";
+    if (std.mem.indexOf(u8, text, needle) == null) return text;
+
+    var out = std.ArrayList(u8).empty;
+    var cursor: usize = 0;
+    while (std.mem.indexOfPos(u8, text, cursor, needle)) |idx| {
+        try out.appendSlice(arena, text[cursor..idx]);
+        try out.appendSlice(arena, replacement);
+        cursor = idx + needle.len;
+    }
+    try out.appendSlice(arena, text[cursor..]);
+    return out.toOwnedSlice(arena);
 }
 
 test "patchProjectText injects shell section and app build phase reference" {
@@ -273,6 +210,38 @@ test "phase_entry configures zig caches inside xcode temp directories" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "TARGET_TEMP_DIR") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "ZIG_LOCAL_CACHE_DIR") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "ZIG_GLOBAL_CACHE_DIR") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "TMP_OUT_LIB") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "TMP_FRAMEWORK_BIN") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_FFI_OPTIMIZE") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WizigFFI.xcframework") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "_CodeSignature/CodeResources") != null);
+}
+
+test "phase_entry signs device framework outputs when code signing is enabled" {
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY_NAME") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "CODE_SIGN_IDENTITY") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --force --sign") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "CODE_SIGNING_ALLOWED") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "-headerpad_max_install_names") != null);
+}
+
+test "phase_entry assigns framework bundle identifier distinct from app" {
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "FRAMEWORK_BUNDLE_ID") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "PRODUCT_BUNDLE_IDENTIFIER") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, ".wizigffi") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "<string>dev.wizig.WizigFFI</string>") == null);
+}
+
+test "disableUserScriptSandboxing rewrites yes to no" {
+    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    const input =
+        "ENABLE_USER_SCRIPT_SANDBOXING = YES;\n" ++
+        "ENABLE_USER_SCRIPT_SANDBOXING = YES;\n";
+    const output = try disableUserScriptSandboxing(arena, input);
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "ENABLE_USER_SCRIPT_SANDBOXING = YES;") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "ENABLE_USER_SCRIPT_SANDBOXING = NO;") != null);
 }

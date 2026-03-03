@@ -71,6 +71,7 @@
 			buildPhases = (
 				A6C3C48763BA7972EF9AA893 /* Sources */,
 				90C9D7B0447B1E575AA4793F /* Frameworks */,
+				D0A0A0A0A0A0A0A0A0A0AF01 /* Wizig Build iOS FFI */,
 			);
 			buildRules = (
 			);
@@ -119,6 +120,30 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D0A0A0A0A0A0A0A0A0A0AF01 /* Wizig Build iOS FFI */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../.wizig/generated/zig/WizigGeneratedFfiRoot.zig",
+				"$(SRCROOT)/../.wizig/runtime/core/src/root.zig",
+				"$(SRCROOT)/../lib/WizigGeneratedAppModule.zig",
+			);
+			name = "Wizig Build iOS FFI";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WizigFFI.framework/WizigFFI",
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WizigFFI.framework/Info.plist",
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WizigFFI.framework/_CodeSignature/CodeResources",
+				"$(SRCROOT)/../.wizig/generated/ios/WizigFFI.xcframework/Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nAPP_ROOT=\"${SRCROOT}/..\"\nGENERATED_ROOT=\"${APP_ROOT}/.wizig/generated/zig\"\nRUNTIME_ROOT=\"${APP_ROOT}/.wizig/runtime\"\nLIB_ROOT=\"${APP_ROOT}/lib\"\nGENERATED_IOS_ROOT=\"${APP_ROOT}/.wizig/generated/ios\"\nOUT_DIR=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nOUT_FRAMEWORK_DIR=\"${OUT_DIR}/WizigFFI.framework\"\nOUT_FRAMEWORK_BIN=\"${OUT_FRAMEWORK_DIR}/WizigFFI\"\nOUT_FRAMEWORK_INFO=\"${OUT_FRAMEWORK_DIR}/Info.plist\"\nTMP_BASE=\"${TARGET_TEMP_DIR:-${TEMP_DIR:-/tmp}}\"\nTMP_FRAMEWORK_DIR=\"${TMP_BASE}/WizigFFI.framework\"\nTMP_FRAMEWORK_BIN=\"${TMP_FRAMEWORK_DIR}/WizigFFI\"\nTMP_FRAMEWORK_INFO=\"${TMP_FRAMEWORK_DIR}/Info.plist\"\nTMP_XCFRAMEWORK_DIR=\"${TMP_BASE}/WizigFFI.xcframework\"\nXCFRAMEWORK_DIR=\"${GENERATED_IOS_ROOT}/WizigFFI.xcframework\"\nmkdir -p \"${OUT_DIR}\" \"${GENERATED_IOS_ROOT}\"\nrm -rf \"${TMP_FRAMEWORK_DIR}\" \"${TMP_XCFRAMEWORK_DIR}\"\nmkdir -p \"${TMP_FRAMEWORK_DIR}\"\nCACHE_BASE=\"${TMP_BASE}\"\nZIG_LOCAL_CACHE_DIR=\"${CACHE_BASE}/wizig-zig-local-cache\"\nZIG_GLOBAL_CACHE_DIR=\"${CACHE_BASE}/wizig-zig-global-cache\"\nmkdir -p \"${ZIG_LOCAL_CACHE_DIR}\" \"${ZIG_GLOBAL_CACHE_DIR}\"\nexport ZIG_LOCAL_CACHE_DIR\nexport ZIG_GLOBAL_CACHE_DIR\nZIG_OPTIMIZE=\"${WIZIG_FFI_OPTIMIZE:-ReleaseFast}\"\nif [ -z \"${WIZIG_FFI_OPTIMIZE:-}\" ]; then\n  case \"${CONFIGURATION:-}\" in\n    Debug|*Debug*) ZIG_OPTIMIZE=\"Debug\" ;;\n  esac\nfi\nARCH_VALUE=\"${CURRENT_ARCH:-}\"\nif [ -z \"${ARCH_VALUE}\" ] || [ \"${ARCH_VALUE}\" = \"undefined_arch\" ]; then\n  ARCH_VALUE=\"${NATIVE_ARCH_ACTUAL:-}\"\nfi\nif [ -z \"${ARCH_VALUE}\" ] || [ \"${ARCH_VALUE}\" = \"undefined_arch\" ]; then\n  set -- ${ARCHS:-}\n  ARCH_VALUE=\"${1:-}\"\nfi\nif [ \"${PLATFORM_NAME}\" = \"iphonesimulator\" ]; then\n  case \"${ARCH_VALUE}\" in\n    arm64) ZIG_TARGET=\"aarch64-ios-simulator\" ;;\n    x86_64) ZIG_TARGET=\"x86_64-ios-simulator\" ;;\n    *) echo \"error: unsupported iOS simulator arch '${ARCH_VALUE}' for Wizig FFI build\" >&2; exit 1 ;;\n  esac\nelif [ \"${PLATFORM_NAME}\" = \"iphoneos\" ]; then\n  ZIG_TARGET=\"aarch64-ios\"\nelse\n  echo \"error: unsupported Apple platform '${PLATFORM_NAME}' for Wizig FFI build\" >&2\n  exit 1\nfi\nZIG_BIN=\"${ZIG_BINARY:-}\"\nif [ -z \"${ZIG_BIN}\" ]; then\n  if command -v zig >/dev/null 2>&1; then\n    ZIG_BIN=\"$(command -v zig)\"\n  fi\nfi\nif [ -z \"${ZIG_BIN}\" ]; then\n  for candidate in \"${HOME}/.zvm/master/zig\" \"${HOME}/.zvm/bin/zig\" \"${HOME}/.local/bin/zig\" \"/opt/homebrew/bin/zig\" \"/usr/local/bin/zig\"; do\n    if [ -x \"${candidate}\" ]; then\n      ZIG_BIN=\"${candidate}\"\n      break\n    fi\n  done\nfi\nif [ -z \"${ZIG_BIN}\" ]; then\n  echo \"error: zig is not installed or discoverable (PATH/ZIG_BINARY/common locations); required for Wizig iOS FFI build\" >&2\n  exit 1\nfi\n\"${ZIG_BIN}\" build-lib -O\"${ZIG_OPTIMIZE}\" -fno-error-tracing -fno-unwind-tables -fstrip -target \"${ZIG_TARGET}\" --dep wizig_core --dep wizig_app -Mroot=\"${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig\" -Mwizig_core=\"${RUNTIME_ROOT}/core/src/root.zig\" -Mwizig_app=\"${LIB_ROOT}/WizigGeneratedAppModule.zig\" --name WizigFFI -dynamic -install_name @rpath/WizigFFI.framework/WizigFFI -headerpad_max_install_names --sysroot \"${SDKROOT}\" -L/usr/lib -F/System/Library/Frameworks -lc -femit-bin=\"${TMP_FRAMEWORK_BIN}\"\nFRAMEWORK_BUNDLE_ID=\"dev.wizig.WizigFFI.framework\"\nif [ -n \"${PRODUCT_BUNDLE_IDENTIFIER:-}\" ]; then\n  FRAMEWORK_BUNDLE_ID=\"${PRODUCT_BUNDLE_IDENTIFIER}.wizigffi\"\nfi\ncat > \"${TMP_FRAMEWORK_INFO}\" <<EOF\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n    <key>CFBundleDevelopmentRegion</key>\n    <string>en</string>\n    <key>CFBundleExecutable</key>\n    <string>WizigFFI</string>\n    <key>CFBundleIdentifier</key>\n    <string>${FRAMEWORK_BUNDLE_ID}</string>\n    <key>CFBundleInfoDictionaryVersion</key>\n    <string>6.0</string>\n    <key>CFBundleName</key>\n    <string>WizigFFI</string>\n    <key>CFBundlePackageType</key>\n    <string>FMWK</string>\n    <key>CFBundleShortVersionString</key>\n    <string>1.0</string>\n    <key>CFBundleVersion</key>\n    <string>1</string>\n</dict>\n</plist>\nEOF\nmkdir -p \"${OUT_FRAMEWORK_DIR}\"\ncp -f \"${TMP_FRAMEWORK_BIN}\" \"${OUT_FRAMEWORK_BIN}\"\ncp -f \"${TMP_FRAMEWORK_INFO}\" \"${OUT_FRAMEWORK_INFO}\"\nif [ \"${PLATFORM_NAME}\" = \"iphoneos\" ] && [ \"${CODE_SIGNING_ALLOWED:-NO}\" = \"YES\" ]; then\n  SIGNED=0\n  for SIGN_IDENTITY in \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" \"${EXPANDED_CODE_SIGN_IDENTITY_NAME:-}\" \"${CODE_SIGN_IDENTITY:-}\"; do\n    if [ -z \"${SIGN_IDENTITY}\" ]; then\n      continue\n    fi\n    if /usr/bin/codesign --force --sign \"${SIGN_IDENTITY}\" --timestamp=none --generate-entitlement-der \"${OUT_FRAMEWORK_DIR}\"; then\n      SIGNED=1\n      break\n    fi\n  done\n  if [ \"${SIGNED}\" != \"1\" ]; then\n    echo \"error: failed to sign WizigFFI.framework (tried EXPANDED_CODE_SIGN_IDENTITY, EXPANDED_CODE_SIGN_IDENTITY_NAME, CODE_SIGN_IDENTITY)\" >&2\n    exit 1\n  fi\nfi\nxcodebuild -create-xcframework -framework \"${TMP_FRAMEWORK_DIR}\" -output \"${TMP_XCFRAMEWORK_DIR}\" >/dev/null\nrm -rf \"${XCFRAMEWORK_DIR}\"\nmkdir -p \"${XCFRAMEWORK_DIR}\"\ncp -R \"${TMP_XCFRAMEWORK_DIR}/.\" \"${XCFRAMEWORK_DIR}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A6C3C48763BA7972EF9AA893 /* Sources */ = {

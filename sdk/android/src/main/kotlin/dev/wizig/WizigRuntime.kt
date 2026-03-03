@@ -35,7 +35,7 @@ private interface WizigFfi : Library {
 class WizigRuntime(
     val plugins: List<PluginDescriptor> = GeneratedPluginRegistrant.plugins,
     appName: String = "wizig-android",
-    libraryName: String = System.getenv("WIZIG_FFI_LIB") ?: "wizigffi",
+    libraryName: String = "wizigffi",
 ) : AutoCloseable {
     private var ffi: WizigFfi? = null
     private var handle: Pointer? = null

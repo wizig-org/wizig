@@ -72,26 +72,47 @@ private final class WizigFFI {
         _ = dlclose(libraryHandle)
     }
 
+    private static func defaultLibraryCandidates() -> [String] {
+        var values = [String]()
+        if let fromEnv = ProcessInfo.processInfo.environment["WIZIG_FFI_LIB"], !fromEnv.isEmpty {
+            values.append(fromEnv)
+        }
+        if let frameworksPath = Bundle.main.privateFrameworksPath, !frameworksPath.isEmpty {
+            values.append((frameworksPath as NSString).appendingPathComponent("WizigFFI.framework/WizigFFI"))
+        }
+        values.append(Bundle.main.bundleURL.appendingPathComponent("Frameworks/WizigFFI.framework/WizigFFI").path)
+        if let executableDir = Bundle.main.executableURL?.deletingLastPathComponent().path {
+            values.append((executableDir as NSString).appendingPathComponent("Frameworks/WizigFFI.framework/WizigFFI"))
+        }
+        values.append(contentsOf: [
+            "@rpath/WizigFFI.framework/WizigFFI",
+            "@executable_path/Frameworks/WizigFFI.framework/WizigFFI",
+        ])
+        var seen = Set<String>()
+        return values.filter { candidate in
+            guard !candidate.isEmpty else { return false }
+            return seen.insert(candidate).inserted
+        }
+    }
+
     static func load(libraryPath: String?) throws -> WizigFFI {
         let pathCandidates: [String] = {
             if let libraryPath, !libraryPath.isEmpty {
                 return [libraryPath]
             }
-
-            var values = [String]()
-            if let fromEnv = ProcessInfo.processInfo.environment["WIZIG_FFI_LIB"], !fromEnv.isEmpty {
-                values.append(fromEnv)
-            }
-            values.append(contentsOf: ["libwizigffi.dylib", "wizigffi"])
-            return values
+            return defaultLibraryCandidates()
         }()
 
-        var lastError = "no candidate library path"
+        var attempts = [String]()
 
         for candidate in pathCandidates {
             _ = dlerror()
             guard let handle = dlopen(candidate, RTLD_NOW | RTLD_LOCAL) else {
-                lastError = String(cString: dlerror())
+                if let err = dlerror() {
+                    attempts.append("\(candidate): \(String(cString: err))")
+                } else {
+                    attempts.append("\(candidate): unknown dlopen error")
+                }
                 continue
             }
 
@@ -110,11 +131,13 @@ private final class WizigFFI {
                 )
             } catch {
                 _ = dlclose(handle)
-                throw error
+                attempts.append("\(candidate): \(error)")
+                continue
             }
         }
 
-        throw WizigRuntimeError.ffiLibraryLoadFailed(lastError)
+        let details = attempts.isEmpty ? "no candidate library path" : attempts.joined(separator: " | ")
+        throw WizigRuntimeError.ffiLibraryLoadFailed(details)
     }
 
     private static func loadSymbol<T>(_ handle: UnsafeMutableRawPointer, name: String) throws -> T {

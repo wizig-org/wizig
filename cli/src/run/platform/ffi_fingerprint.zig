@@ -9,7 +9,7 @@ const fs_utils = @import("fs_utils.zig");
 const text_utils = @import("text_utils.zig");
 
 /// Cache key version for iOS simulator FFI artifacts.
-pub const ios_ffi_cache_version = "wizig-ios-ffi-cache-v2";
+pub const ios_ffi_cache_version = "wizig-ios-ffi-cache-v3";
 
 /// Cache key version for Android FFI artifacts.
 pub const android_ffi_cache_version = "wizig-android-ffi-cache-v2";

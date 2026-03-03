@@ -179,6 +179,7 @@ pub fn generateProject(
     const android_jni_cmake_file = try path_util.join(arena, android_jni_dir, "CMakeLists.txt");
     const ios_mirror_swift_file = try resolveIosMirrorSwiftFile(arena, io, project_root);
     const sdk_swift_file = try resolveSdkSwiftApiFile(arena, io, project_root);
+    const sdk_ios_runtime_file = try resolveSdkIosRuntimeFile(arena, io, project_root);
     const sdk_kotlin_file = try resolveSdkKotlinApiFile(arena, io, project_root);
 
     const zig_changed = try fs_util.writeFileIfChanged(arena, io, zig_file, zig_out);
@@ -196,6 +197,18 @@ pub fn generateProject(
         try fs_util.writeFileIfChanged(arena, io, sdk_path, swift_out)
     else
         false;
+    var sdk_ios_runtime_changed = false;
+    if (sdk_ios_runtime_file) |sdk_path| {
+        if (try resolveBundledIosRuntimeSource(arena, io)) |source_path| {
+            const runtime_source = std.Io.Dir.cwd().readFileAlloc(io, source_path, arena, .limited(1024 * 1024)) catch |err| blk: {
+                try stderr.print("warning: failed to read iOS runtime source '{s}': {s}\n", .{ source_path, @errorName(err) });
+                break :blk null;
+            };
+            if (runtime_source) |content| {
+                sdk_ios_runtime_changed = try fs_util.writeFileIfChanged(arena, io, sdk_path, content);
+            }
+        }
+    }
     const sdk_kotlin_changed = if (sdk_kotlin_file) |sdk_path|
         try fs_util.writeFileIfChanged(arena, io, sdk_path, kotlin_out)
     else
@@ -218,7 +231,7 @@ pub fn generateProject(
     else
         android_gradle_migration.MigrationSummary{};
 
-    if (zig_changed or zig_ffi_changed or zig_app_module_changed or swift_changed or kotlin_changed or android_jni_bridge_changed or android_jni_cmake_changed or ios_mirror_changed or sdk_swift_changed or sdk_kotlin_changed) {
+    if (zig_changed or zig_ffi_changed or zig_app_module_changed or swift_changed or kotlin_changed or android_jni_bridge_changed or android_jni_cmake_changed or ios_mirror_changed or sdk_swift_changed or sdk_ios_runtime_changed or sdk_kotlin_changed) {
         try stdout.print("generated API bindings ({s})\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}\n- {s}", .{
             if (maybe_source) |source| if (source == .zig) "zig contract + discovery" else "json contract + discovery" else "auto-discovery",
             zig_file,
@@ -233,6 +246,9 @@ pub fn generateProject(
             try stdout.print("\n- {s}", .{mirror_path});
         }
         if (sdk_swift_file) |sdk_path| {
+            try stdout.print("\n- {s}", .{sdk_path});
+        }
+        if (sdk_ios_runtime_file) |sdk_path| {
             try stdout.print("\n- {s}", .{sdk_path});
         }
         if (sdk_kotlin_file) |sdk_path| {
@@ -311,6 +327,52 @@ fn resolveSdkSwiftApiFile(
     if (!fs_util.pathExists(io, sdk_dir)) return null;
     const path = try path_util.join(arena, sdk_dir, "WizigGeneratedApi.swift");
     return @as(?[]const u8, path);
+}
+
+fn resolveSdkIosRuntimeFile(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    project_root: []const u8,
+) !?[]const u8 {
+    const sdk_dir = try path_util.join(arena, project_root, ".wizig/sdk/ios/Sources/Wizig");
+    if (!fs_util.pathExists(io, sdk_dir)) return null;
+    const path = try path_util.join(arena, sdk_dir, "WizigRuntime.swift");
+    return @as(?[]const u8, path);
+}
+
+fn resolveBundledIosRuntimeSource(
+    arena: std.mem.Allocator,
+    io: std.Io,
+) !?[]const u8 {
+    const exe_path = std.process.executablePathAlloc(io, arena) catch return null;
+    const exe_dir = std.fs.path.dirname(exe_path) orelse return null;
+
+    const install_candidate = try std.fs.path.resolve(arena, &.{
+        exe_dir,
+        "..",
+        "share",
+        "wizig",
+        "sdk",
+        "ios",
+        "Sources",
+        "Wizig",
+        "WizigRuntime.swift",
+    });
+    if (fs_util.pathExists(io, install_candidate)) return install_candidate;
+
+    const dev_candidate = try std.fs.path.resolve(arena, &.{
+        exe_dir,
+        "..",
+        "..",
+        "sdk",
+        "ios",
+        "Sources",
+        "Wizig",
+        "WizigRuntime.swift",
+    });
+    if (fs_util.pathExists(io, dev_candidate)) return dev_candidate;
+
+    return null;
 }
 
 fn resolveSdkKotlinApiFile(
@@ -813,6 +875,19 @@ fn renderZigFfiRoot(arena: std.mem.Allocator, spec: ApiSpec, compat: compatibili
     try out.appendSlice(arena, "threadlocal var last_error: LastError = .{};\n\n");
 
     try out.appendSlice(arena, "const allocator = std.heap.page_allocator;\n\n");
+    try out.appendSlice(arena, "pub const WizigRuntimeHandle = opaque {};\n\n");
+    try out.appendSlice(arena, "const RuntimeBox = struct {\n");
+    try out.appendSlice(arena, "    app_name: []u8,\n");
+    try out.appendSlice(arena, "};\n\n");
+
+    try out.appendSlice(arena, "fn toBox(handle: *WizigRuntimeHandle) *RuntimeBox {\n");
+    try out.appendSlice(arena, "    return @ptrCast(@alignCast(handle));\n");
+    try out.appendSlice(arena, "}\n\n");
+
+    try out.appendSlice(arena, "fn toHandle(box: *RuntimeBox) *WizigRuntimeHandle {\n");
+    try out.appendSlice(arena, "    return @ptrCast(box);\n");
+    try out.appendSlice(arena, "}\n\n");
+
     try out.appendSlice(arena, "pub export fn getauxval(_: usize) usize {\n");
     try out.appendSlice(arena, "    return 0;\n");
     try out.appendSlice(arena, "}\n\n");
@@ -871,6 +946,43 @@ fn renderZigFfiRoot(arena: std.mem.Allocator, spec: ApiSpec, compat: compatibili
 
     try out.appendSlice(arena, "pub export fn wizig_ffi_last_error_message_len() usize {\n");
     try out.appendSlice(arena, "    return last_error.message.len;\n");
+    try out.appendSlice(arena, "}\n\n");
+
+    try out.appendSlice(arena, "pub export fn wizig_runtime_new(app_name_ptr: [*]const u8, app_name_len: usize, out_handle: ?*?*WizigRuntimeHandle) i32 {\n");
+    try out.appendSlice(arena, "    if (out_handle == null) return setLastError(.argument, statusCode(.null_argument), \"null out_handle\");\n");
+    try out.appendSlice(arena, "    const output = out_handle.?;\n");
+    try out.appendSlice(arena, "    output.* = null;\n");
+    try out.appendSlice(arena, "    if (app_name_len == 0) return setLastError(.argument, statusCode(.invalid_argument), \"empty app name\");\n");
+    try out.appendSlice(arena, "    const app_name = app_name_ptr[0..app_name_len];\n");
+    try out.appendSlice(arena, "    const box = allocator.create(RuntimeBox) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
+    try out.appendSlice(arena, "    errdefer allocator.destroy(box);\n");
+    try out.appendSlice(arena, "    const owned_app_name = allocator.dupe(u8, app_name) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
+    try out.appendSlice(arena, "    box.* = .{ .app_name = owned_app_name };\n");
+    try out.appendSlice(arena, "    output.* = toHandle(box);\n");
+    try out.appendSlice(arena, "    clearLastError();\n");
+    try out.appendSlice(arena, "    return statusCode(.ok);\n");
+    try out.appendSlice(arena, "}\n\n");
+
+    try out.appendSlice(arena, "pub export fn wizig_runtime_free(handle: ?*WizigRuntimeHandle) void {\n");
+    try out.appendSlice(arena, "    if (handle == null) return;\n");
+    try out.appendSlice(arena, "    const box = toBox(handle.?);\n");
+    try out.appendSlice(arena, "    allocator.free(box.app_name);\n");
+    try out.appendSlice(arena, "    allocator.destroy(box);\n");
+    try out.appendSlice(arena, "}\n\n");
+
+    try out.appendSlice(arena, "pub export fn wizig_runtime_echo(handle: ?*WizigRuntimeHandle, input_ptr: [*]const u8, input_len: usize, out_ptr: ?*?[*]u8, out_len: ?*usize) i32 {\n");
+    try out.appendSlice(arena, "    if (handle == null or out_ptr == null or out_len == null) return setLastError(.argument, statusCode(.null_argument), \"null argument\");\n");
+    try out.appendSlice(arena, "    const output_ptr = out_ptr.?;\n");
+    try out.appendSlice(arena, "    const output_len = out_len.?;\n");
+    try out.appendSlice(arena, "    output_ptr.* = null;\n");
+    try out.appendSlice(arena, "    output_len.* = 0;\n");
+    try out.appendSlice(arena, "    const box = toBox(handle.?);\n");
+    try out.appendSlice(arena, "    const input = input_ptr[0..input_len];\n");
+    try out.appendSlice(arena, "    const echoed = std.fmt.allocPrint(allocator, \"{s}:{s}\", .{ box.app_name, input }) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
+    try out.appendSlice(arena, "    output_ptr.* = echoed.ptr;\n");
+    try out.appendSlice(arena, "    output_len.* = echoed.len;\n");
+    try out.appendSlice(arena, "    clearLastError();\n");
+    try out.appendSlice(arena, "    return statusCode(.ok);\n");
     try out.appendSlice(arena, "}\n\n");
 
     try out.appendSlice(arena, "pub export fn wizig_bytes_free(ptr: ?[*]u8, len: usize) void {\n");
@@ -1351,43 +1463,74 @@ fn renderSwiftApi(arena: std.mem.Allocator, spec: ApiSpec, compat: compatibility
     try out.appendSlice(arena, "    let lastErrorMessagePtr: LastErrorMessagePtrFn\n");
     try out.appendSlice(arena, "    let lastErrorMessageLen: LastErrorMessageLenFn\n");
     try out.appendSlice(arena, "    private let libraryHandle: UnsafeMutableRawPointer\n\n");
+    try out.appendSlice(arena, "    private static func defaultLibraryCandidates() -> [String] {\n");
+    try out.appendSlice(arena, "        var values = [String]()\n");
+    try out.appendSlice(arena, "        if let fromEnv = ProcessInfo.processInfo.environment[\"WIZIG_FFI_LIB\"], !fromEnv.isEmpty {\n");
+    try out.appendSlice(arena, "            values.append(fromEnv)\n");
+    try out.appendSlice(arena, "        }\n");
+    try out.appendSlice(arena, "        if let frameworksPath = Bundle.main.privateFrameworksPath, !frameworksPath.isEmpty {\n");
+    try out.appendSlice(arena, "            values.append((frameworksPath as NSString).appendingPathComponent(\"WizigFFI.framework/WizigFFI\"))\n");
+    try out.appendSlice(arena, "        }\n");
+    try out.appendSlice(arena, "        values.append(Bundle.main.bundleURL.appendingPathComponent(\"Frameworks/WizigFFI.framework/WizigFFI\").path)\n");
+    try out.appendSlice(arena, "        if let executableDir = Bundle.main.executableURL?.deletingLastPathComponent().path {\n");
+    try out.appendSlice(arena, "            values.append((executableDir as NSString).appendingPathComponent(\"Frameworks/WizigFFI.framework/WizigFFI\"))\n");
+    try out.appendSlice(arena, "        }\n");
+    try out.appendSlice(arena, "        values.append(contentsOf: [\n");
+    try out.appendSlice(arena, "            \"@rpath/WizigFFI.framework/WizigFFI\",\n");
+    try out.appendSlice(arena, "            \"@executable_path/Frameworks/WizigFFI.framework/WizigFFI\",\n");
+    try out.appendSlice(arena, "        ])\n");
+    try out.appendSlice(arena, "        var seen = Set<String>()\n");
+    try out.appendSlice(arena, "        return values.filter { candidate in\n");
+    try out.appendSlice(arena, "            guard !candidate.isEmpty else { return false }\n");
+    try out.appendSlice(arena, "            return seen.insert(candidate).inserted\n");
+    try out.appendSlice(arena, "        }\n");
+    try out.appendSlice(arena, "    }\n\n");
     try out.appendSlice(arena, "    init(libraryPath: String?) throws {\n");
     try out.appendSlice(arena, "        let candidates: [String] = {\n");
     try out.appendSlice(arena, "            if let libraryPath, !libraryPath.isEmpty {\n");
     try out.appendSlice(arena, "                return [libraryPath]\n");
     try out.appendSlice(arena, "            }\n");
-    try out.appendSlice(arena, "            var values = [String]()\n");
-    try out.appendSlice(arena, "            if let fromEnv = ProcessInfo.processInfo.environment[\"WIZIG_FFI_LIB\"], !fromEnv.isEmpty {\n");
-    try out.appendSlice(arena, "                values.append(fromEnv)\n");
-    try out.appendSlice(arena, "            }\n");
-    try out.appendSlice(arena, "            values.append(contentsOf: [\"libwizigffi.dylib\", \"wizigffi\"])\n");
-    try out.appendSlice(arena, "            return values\n");
+    try out.appendSlice(arena, "            return Self.defaultLibraryCandidates()\n");
     try out.appendSlice(arena, "        }()\n\n");
-    try out.appendSlice(arena, "        var lastError = \"no candidate library path\"\n");
-    try out.appendSlice(arena, "        var handle: UnsafeMutableRawPointer?\n");
+    try out.appendSlice(arena, "        var attempts = [String]()\n");
     try out.appendSlice(arena, "        for candidate in candidates {\n");
     try out.appendSlice(arena, "            _ = dlerror()\n");
-    try out.appendSlice(arena, "            if let loaded = dlopen(candidate, RTLD_NOW | RTLD_LOCAL) {\n");
-    try out.appendSlice(arena, "                handle = loaded\n");
-    try out.appendSlice(arena, "                break\n");
+    try out.appendSlice(arena, "            guard let loaded = dlopen(candidate, RTLD_NOW | RTLD_LOCAL) else {\n");
+    try out.appendSlice(arena, "                if let err = dlerror() {\n");
+    try out.appendSlice(arena, "                    attempts.append(\"\\(candidate): \\(String(cString: err))\")\n");
+    try out.appendSlice(arena, "                } else {\n");
+    try out.appendSlice(arena, "                    attempts.append(\"\\(candidate): unknown dlopen error\")\n");
+    try out.appendSlice(arena, "                }\n");
+    try out.appendSlice(arena, "                continue\n");
     try out.appendSlice(arena, "            }\n");
-    try out.appendSlice(arena, "            if let err = dlerror() {\n");
-    try out.appendSlice(arena, "                lastError = String(cString: err)\n");
+    try out.appendSlice(arena, "            do {\n");
+    try out.appendSlice(arena, "                let bytesFree: BytesFreeFn = try Self.loadSymbol(loaded, name: \"wizig_bytes_free\")\n");
+    try out.appendSlice(arena, "                let abiVersion: AbiVersionFn = try Self.loadSymbol(loaded, name: \"wizig_ffi_abi_version\")\n");
+    try out.appendSlice(arena, "                let contractHashPtr: ContractHashPtrFn = try Self.loadSymbol(loaded, name: \"wizig_ffi_contract_hash_ptr\")\n");
+    try out.appendSlice(arena, "                let contractHashLen: ContractHashLenFn = try Self.loadSymbol(loaded, name: \"wizig_ffi_contract_hash_len\")\n");
+    try out.appendSlice(arena, "                let lastErrorDomainPtr: LastErrorDomainPtrFn = try Self.loadSymbol(loaded, name: \"wizig_ffi_last_error_domain_ptr\")\n");
+    try out.appendSlice(arena, "                let lastErrorDomainLen: LastErrorDomainLenFn = try Self.loadSymbol(loaded, name: \"wizig_ffi_last_error_domain_len\")\n");
+    try out.appendSlice(arena, "                let lastErrorCode: LastErrorCodeFn = try Self.loadSymbol(loaded, name: \"wizig_ffi_last_error_code\")\n");
+    try out.appendSlice(arena, "                let lastErrorMessagePtr: LastErrorMessagePtrFn = try Self.loadSymbol(loaded, name: \"wizig_ffi_last_error_message_ptr\")\n");
+    try out.appendSlice(arena, "                let lastErrorMessageLen: LastErrorMessageLenFn = try Self.loadSymbol(loaded, name: \"wizig_ffi_last_error_message_len\")\n");
+    try out.appendSlice(arena, "                self.libraryHandle = loaded\n");
+    try out.appendSlice(arena, "                self.bytesFree = bytesFree\n");
+    try out.appendSlice(arena, "                self.abiVersion = abiVersion\n");
+    try out.appendSlice(arena, "                self.contractHashPtr = contractHashPtr\n");
+    try out.appendSlice(arena, "                self.contractHashLen = contractHashLen\n");
+    try out.appendSlice(arena, "                self.lastErrorDomainPtr = lastErrorDomainPtr\n");
+    try out.appendSlice(arena, "                self.lastErrorDomainLen = lastErrorDomainLen\n");
+    try out.appendSlice(arena, "                self.lastErrorCode = lastErrorCode\n");
+    try out.appendSlice(arena, "                self.lastErrorMessagePtr = lastErrorMessagePtr\n");
+    try out.appendSlice(arena, "                self.lastErrorMessageLen = lastErrorMessageLen\n");
+    try out.appendSlice(arena, "                return\n");
+    try out.appendSlice(arena, "            } catch {\n");
+    try out.appendSlice(arena, "                _ = dlclose(loaded)\n");
+    try out.appendSlice(arena, "                attempts.append(\"\\(candidate): \\(error)\")\n");
     try out.appendSlice(arena, "            }\n");
     try out.appendSlice(arena, "        }\n\n");
-    try out.appendSlice(arena, "        guard let handle else {\n");
-    try out.appendSlice(arena, "            throw WizigGeneratedApiError.ffiLibraryLoadFailed(lastError)\n");
-    try out.appendSlice(arena, "        }\n");
-    try out.appendSlice(arena, "        self.libraryHandle = handle\n");
-    try out.appendSlice(arena, "        self.bytesFree = try Self.loadSymbol(handle, name: \"wizig_bytes_free\")\n");
-    try out.appendSlice(arena, "        self.abiVersion = try Self.loadSymbol(handle, name: \"wizig_ffi_abi_version\")\n");
-    try out.appendSlice(arena, "        self.contractHashPtr = try Self.loadSymbol(handle, name: \"wizig_ffi_contract_hash_ptr\")\n");
-    try out.appendSlice(arena, "        self.contractHashLen = try Self.loadSymbol(handle, name: \"wizig_ffi_contract_hash_len\")\n");
-    try out.appendSlice(arena, "        self.lastErrorDomainPtr = try Self.loadSymbol(handle, name: \"wizig_ffi_last_error_domain_ptr\")\n");
-    try out.appendSlice(arena, "        self.lastErrorDomainLen = try Self.loadSymbol(handle, name: \"wizig_ffi_last_error_domain_len\")\n");
-    try out.appendSlice(arena, "        self.lastErrorCode = try Self.loadSymbol(handle, name: \"wizig_ffi_last_error_code\")\n");
-    try out.appendSlice(arena, "        self.lastErrorMessagePtr = try Self.loadSymbol(handle, name: \"wizig_ffi_last_error_message_ptr\")\n");
-    try out.appendSlice(arena, "        self.lastErrorMessageLen = try Self.loadSymbol(handle, name: \"wizig_ffi_last_error_message_len\")\n");
+    try out.appendSlice(arena, "        let details = attempts.isEmpty ? \"no candidate library path\" : attempts.joined(separator: \" | \")\n");
+    try out.appendSlice(arena, "        throw WizigGeneratedApiError.ffiLibraryLoadFailed(details)\n");
     try out.appendSlice(arena, "    }\n\n");
     try out.appendSlice(arena, "    deinit {\n");
     try out.appendSlice(arena, "        _ = dlclose(libraryHandle)\n");
@@ -2265,6 +2408,9 @@ test "renderZigFfiRoot emits compatibility handshake and structured error symbol
     try std.testing.expect(std.mem.indexOf(u8, rendered, "pub export fn wizig_ffi_contract_hash_ptr() [*]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "pub export fn wizig_ffi_last_error_domain_ptr() [*]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "pub export fn wizig_ffi_last_error_code() i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "pub export fn wizig_runtime_new(app_name_ptr: [*]const u8, app_name_len: usize, out_handle: ?*?*WizigRuntimeHandle) i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "pub export fn wizig_runtime_echo(handle: ?*WizigRuntimeHandle, input_ptr: [*]const u8, input_len: usize, out_ptr: ?*?[*]u8, out_len: ?*usize) i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "std.fmt.allocPrint(allocator, \"{s}:{s}\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "fn setLastError(domain: ErrorDomain, code: i32, message: []const u8) i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, compat_meta.contract_hash_hex) != null);
 }
@@ -2294,6 +2440,8 @@ test "renderSwiftApi emits compatibility checks and structured ffi error mapping
     try std.testing.expect(std.mem.indexOf(u8, rendered, "wizig_ffi_last_error_domain_ptr") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "wizig_ffi_last_error_message_ptr") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "func readLastError() -> (domain: String, code: Int32, message: String)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "WizigFFI.framework/WizigFFI") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "Self.defaultLibraryCandidates()") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, compat_meta.contract_hash_hex) != null);
 }
 

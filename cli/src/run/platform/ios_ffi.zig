@@ -1,7 +1,7 @@
 //! iOS simulator FFI build and bundling support.
 //!
-//! This module builds cached simulator dylibs and installs them into app bundle
-//! locations expected by simulator launch environment variables.
+//! This module builds cached simulator framework binaries and installs
+//! `WizigFFI.framework` into app bundle locations expected by runtime loaders.
 const std = @import("std");
 const Io = std.Io;
 
@@ -10,7 +10,7 @@ const fs_utils = @import("fs_utils.zig");
 const process = @import("process_supervisor.zig");
 const workspace_runtime = @import("workspace_runtime.zig");
 
-/// Builds or reuses cached iOS simulator FFI dylib for the current app.
+/// Builds or reuses cached iOS simulator FFI framework binary for the current app.
 pub fn buildIosSimulatorFfiLibrary(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -42,8 +42,15 @@ pub fn buildIosSimulatorFfiLibrary(
     const out_dir = try std.fmt.allocPrint(arena, "/tmp/wizig-ffi-iossim-cache/{s}", .{fingerprint});
     std.Io.Dir.cwd().createDirPath(io, out_dir) catch {};
 
-    const out_path = try std.fmt.allocPrint(arena, "{s}{s}wizigffi", .{ out_dir, std.fs.path.sep_str });
+    const framework_dir = try std.fmt.allocPrint(arena, "{s}{s}WizigFFI.framework", .{ out_dir, std.fs.path.sep_str });
+    std.Io.Dir.cwd().createDirPath(io, framework_dir) catch {};
+
+    const out_path = try std.fmt.allocPrint(arena, "{s}{s}WizigFFI", .{ framework_dir, std.fs.path.sep_str });
+    const info_plist = try std.fmt.allocPrint(arena, "{s}{s}Info.plist", .{ framework_dir, std.fs.path.sep_str });
     if (fs_utils.pathExists(io, out_path)) {
+        // Keep cached framework metadata fresh so installer validations do not
+        // inherit stale identifiers from old cache versions.
+        try writeFrameworkInfoPlist(io, info_plist);
         return out_path;
     }
 
@@ -74,10 +81,11 @@ pub fn buildIosSimulatorFfiLibrary(
     }
     try argv.appendSlice(arena, &.{
         "--name",
-        "wizigffi",
+        "WizigFFI",
         "-dynamic",
         "-install_name",
-        "@rpath/libwizigffi.dylib",
+        "@rpath/WizigFFI.framework/WizigFFI",
+        "-headerpad_max_install_names",
         "--sysroot",
         sdk_path,
         "-L/usr/lib",
@@ -90,20 +98,21 @@ pub fn buildIosSimulatorFfiLibrary(
         .argv = argv.items,
         .label = "build iOS simulator Wizig FFI library",
     }, .{});
+    try writeFrameworkInfoPlist(io, info_plist);
 
     return out_path;
 }
 
-/// Copies host dylib into simulator app Frameworks location.
+/// Copies host framework into simulator app `Frameworks` location.
 ///
 /// ## Incrementality
 /// Destination files are updated only when bytes differ, preserving filesystem
 /// metadata via `cp` while avoiding redundant writes.
 ///
 /// ## Launch Stability
-/// On modern simulator runtimes, placing unmanaged dylibs in the app bundle
-/// root can fail installation preflight. This function stages the Wizig runtime
-/// only in `Frameworks/` and re-signs changed artifacts to satisfy launch
+/// On modern simulator runtimes, placing unmanaged dynamic libraries directly in
+/// app roots can fail installation preflight. This function stages the runtime
+/// as `WizigFFI.framework` and re-signs changed artifacts to satisfy launch
 /// policy checks.
 pub fn bundleIosFfiLibraryForSimulator(
     arena: std.mem.Allocator,
@@ -115,40 +124,33 @@ pub fn bundleIosFfiLibraryForSimulator(
     const frameworks_dir = try std.fmt.allocPrint(arena, "{s}{s}Frameworks", .{ app_path, std.fs.path.sep_str });
     std.Io.Dir.cwd().createDirPath(io, frameworks_dir) catch {};
 
-    const frameworks_ffi = try std.fmt.allocPrint(arena, "{s}{s}wizigffi", .{ frameworks_dir, std.fs.path.sep_str });
+    const src_framework_dir = std.fs.path.dirname(host_ffi_path) orelse {
+        try stderr.writeAll("error: invalid host iOS FFI framework path\n");
+        return error.RunFailed;
+    };
+    const dst_framework_dir = try std.fmt.allocPrint(arena, "{s}{s}WizigFFI.framework", .{ frameworks_dir, std.fs.path.sep_str });
+    const frameworks_ffi = try std.fmt.allocPrint(arena, "{s}{s}WizigFFI", .{ dst_framework_dir, std.fs.path.sep_str });
+    const src_info = try std.fmt.allocPrint(arena, "{s}{s}Info.plist", .{ src_framework_dir, std.fs.path.sep_str });
+    const dst_info = try std.fmt.allocPrint(arena, "{s}{s}Info.plist", .{ dst_framework_dir, std.fs.path.sep_str });
 
-    const changed_frameworks = try copyFileWithCpIfChanged(
-        arena,
-        io,
-        stderr,
-        host_ffi_path,
-        frameworks_ffi,
-        "copy Wizig FFI into iOS app Frameworks",
-    );
+    const binary_changed = !try filesEqual(arena, io, host_ffi_path, frameworks_ffi);
+    const plist_changed = !try filesEqual(arena, io, src_info, dst_info);
+    const changed_frameworks = binary_changed or plist_changed;
 
     if (changed_frameworks) {
-        try codesignPath(arena, io, stderr, frameworks_ffi, "codesign staged Wizig FFI in iOS Frameworks");
+        _ = process.runCapture(arena, io, .{
+            .argv = &.{ "rm", "-rf", dst_framework_dir },
+            .label = "remove previous iOS framework staging",
+        }, .{}) catch {};
+        _ = try process.runCaptureChecked(arena, io, stderr, .{
+            .argv = &.{ "cp", "-R", src_framework_dir, dst_framework_dir },
+            .label = "copy Wizig framework into iOS app Frameworks",
+        }, .{});
+        try codesignPath(arena, io, stderr, dst_framework_dir, "codesign staged Wizig framework in iOS Frameworks");
         try codesignPath(arena, io, stderr, app_path, "codesign iOS app after staging Wizig FFI");
     }
 
-    return "@executable_path/Frameworks/wizigffi";
-}
-
-fn copyFileWithCpIfChanged(
-    arena: std.mem.Allocator,
-    io: std.Io,
-    stderr: *Io.Writer,
-    src_path: []const u8,
-    dst_path: []const u8,
-    label: []const u8,
-) !bool {
-    if (try filesEqual(arena, io, src_path, dst_path)) return false;
-
-    _ = try process.runCaptureChecked(arena, io, stderr, .{
-        .argv = &.{ "cp", src_path, dst_path },
-        .label = label,
-    }, .{});
-    return true;
+    return "@executable_path/Frameworks/WizigFFI.framework/WizigFFI";
 }
 
 fn filesEqual(
@@ -178,6 +180,33 @@ fn codesignPath(
     }, .{});
 }
 
+fn writeFrameworkInfoPlist(io: std.Io, out_path: []const u8) !void {
+    const contents =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" ++
+        "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n" ++
+        "<plist version=\"1.0\">\n" ++
+        "<dict>\n" ++
+        "    <key>CFBundleDevelopmentRegion</key>\n" ++
+        "    <string>en</string>\n" ++
+        "    <key>CFBundleExecutable</key>\n" ++
+        "    <string>WizigFFI</string>\n" ++
+        "    <key>CFBundleIdentifier</key>\n" ++
+        "    <string>dev.wizig.WizigFFI.framework</string>\n" ++
+        "    <key>CFBundleInfoDictionaryVersion</key>\n" ++
+        "    <string>6.0</string>\n" ++
+        "    <key>CFBundleName</key>\n" ++
+        "    <string>WizigFFI</string>\n" ++
+        "    <key>CFBundlePackageType</key>\n" ++
+        "    <string>FMWK</string>\n" ++
+        "    <key>CFBundleShortVersionString</key>\n" ++
+        "    <string>1.0</string>\n" ++
+        "    <key>CFBundleVersion</key>\n" ++
+        "    <string>1</string>\n" ++
+        "</dict>\n" ++
+        "</plist>\n";
+    try fs_utils.writeFileAtomically(io, out_path, contents);
+}
+
 /// Resolves existing iOS FFI library path from environment or default output.
 pub fn resolveIosFfiLibraryPath(
     arena: std.mem.Allocator,
@@ -195,6 +224,8 @@ pub fn resolveIosFfiLibraryPath(
     }
 
     const cwd = try std.process.currentPathAlloc(io, arena);
+    const framework_guess = try std.fs.path.resolve(arena, &.{ cwd, "zig-out", "lib", "WizigFFI.framework", "WizigFFI" });
+    if (fs_utils.pathExists(io, framework_guess)) return framework_guess;
     const guessed = try std.fs.path.resolve(arena, &.{ cwd, "zig-out", "lib", "libwizigffi.dylib" });
     if (fs_utils.pathExists(io, guessed)) return guessed;
     return null;

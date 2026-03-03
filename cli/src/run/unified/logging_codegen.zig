@@ -8,7 +8,7 @@ const Io = std.Io;
 const codegen_cmd = @import("../../commands/codegen/root.zig");
 const fs_utils = @import("../platform/fs_utils.zig");
 
-const codegen_fingerprint_version = "wizig-codegen-v6";
+const codegen_fingerprint_version = "wizig-codegen-v7";
 
 /// Builds the unified run log path under `<project>/.wizig/logs/run.log`.
 pub fn buildLogPath(arena: std.mem.Allocator, io: std.Io, project_root: []const u8) ![]const u8 {

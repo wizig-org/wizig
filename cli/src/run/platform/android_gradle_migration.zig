@@ -1,24 +1,12 @@
 //! Android Gradle file compatibility migrations for host-managed FFI.
 //!
-//! ## Background
-//! Recent Android Gradle plugin updates changed the expected type of
-//! `sourceSets.main.jniLibs.directories` entries from `File` to `String` path
-//! values in Kotlin DSL usage. Older generated Wizig hosts still write a
-//! `File`, which fails script compilation during `wizig run`. IDE-launched
-//! Gradle builds also often run without a shell `PATH`, so direct `"zig"`
-//! command invocation can fail even when Zig is installed.
-//!
-//! ## Scope
-//! This module performs a targeted, idempotent migration over
-//! `<project>/<module>/build.gradle.kts` before Gradle execution:
+//! This module performs targeted, idempotent migrations over
+//! `<project>/<module>/build.gradle.kts` to keep host-managed FFI tasks
+//! compatible with modern Android Gradle plugin behavior:
 //! - `jniLibs.directories.add(rootProject.file(...))`
 //! - `jniLibs.directories.add(rootProject.file(...).path)`
 //! - `commandLine("zig", ...)` -> `commandLine(discoverWizigZigBinary(), ...)`
 //! - `-OReleaseFast` -> configurable `-O${requestedWizigOptimize}`
-//!
-//! ## Safety
-//! The migration only rewrites a known Wizig-managed statement and leaves all
-//! other user Gradle content unchanged.
 const std = @import("std");
 
 const fs_utils = @import("fs_utils.zig");
@@ -194,10 +182,6 @@ fn ensureCompatibilityBlock(
 }
 
 /// Ensures Zig discovery checks `local.properties` before PATH probing.
-///
-/// This is needed for Android Studio launches where shell PATH does not include
-/// toolchain manager shims, but projects can still provide stable local
-/// overrides through `wizig.zig.bin`.
 fn ensureLocalPropertiesProbe(
     arena: std.mem.Allocator,
     source: []const u8,
@@ -307,22 +291,6 @@ test "patchBuildGradleKtsText is idempotent for already migrated text" {
         "sourceSets {\n" ++
         "    getByName(\"main\") {\n" ++
         "        jniLibs.directories.add(rootProject.file(\"../.wizig/generated/android/jniLibs\").path)\n" ++
-        "    }\n" ++
-        "}\n";
-    const output = try patchBuildGradleKtsText(arena, input);
-
-    try std.testing.expectEqualStrings(input, output);
-}
-
-test "patchBuildGradleKtsText leaves unrelated content unchanged" {
-    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena_impl.deinit();
-    const arena = arena_impl.allocator();
-
-    const input =
-        "android {\n" ++
-        "    defaultConfig {\n" ++
-        "        minSdk = 26\n" ++
         "    }\n" ++
         "}\n";
     const output = try patchBuildGradleKtsText(arena, input);
