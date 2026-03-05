@@ -40,6 +40,7 @@ pub const phase_entry =
     "\t\t\toutputPaths = (\n" ++
     "\t\t\t\t\"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WizigFFI.framework/WizigFFI\",\n" ++
     "\t\t\t\t\"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WizigFFI.framework/Info.plist\",\n" ++
+    "\t\t\t\t\"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WizigFFI.framework/_CodeSignature/CodeResources\",\n" ++
     "\t\t\t\t\"$(SRCROOT)/../.wizig/generated/ios/WizigFFI.xcframework/Info.plist\",\n" ++
     "\t\t\t);\n" ++
     "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n" ++
@@ -188,6 +189,10 @@ pub const phase_entry =
     "cp -f \\\"${ACTIVE_FRAMEWORK_BIN}\\\" \\\"${OUT_FRAMEWORK_BIN}\\\"\\n" ++
     "cp -f \\\"${TMP_FRAMEWORK_INFO}\\\" \\\"${OUT_FRAMEWORK_INFO}\\\"\\n" ++
     "if [ \\\"${PLATFORM_NAME}\\\" = \\\"iphoneos\\\" ]; then\\n" ++
+    "  if [ \\\"${CODE_SIGNING_ALLOWED:-NO}\\\" != \\\"YES\\\" ]; then\\n" ++
+    "    echo \\\"error: Xcode device build must allow code signing so WizigFFI.framework can be embedded\\\" >&2\\n" ++
+    "    exit 1\\n" ++
+    "  fi\\n" ++
     "  ARCH_INFO=\\\"$(xcrun lipo -info \\\"${OUT_FRAMEWORK_BIN}\\\" 2>/dev/null || true)\\\"\\n" ++
     "  if [ -z \\\"${ARCH_INFO}\\\" ]; then\\n" ++
     "    echo \\\"error: failed to inspect device framework architectures for App Store safety checks\\\" >&2\\n" ++
@@ -199,6 +204,20 @@ pub const phase_entry =
     "  fi\\n" ++
     "  if printf '%s' \\\"${ARCH_INFO}\\\" | grep -Eq 'x86_64|i386'; then\\n" ++
     "    echo \\\"error: device framework unexpectedly contains simulator architectures (got: ${ARCH_INFO})\\\" >&2\\n" ++
+    "    exit 1\\n" ++
+    "  fi\\n" ++
+    "  SIGNED=0\\n" ++
+    "  for SIGN_IDENTITY in \\\"${EXPANDED_CODE_SIGN_IDENTITY:-}\\\" \\\"${EXPANDED_CODE_SIGN_IDENTITY_NAME:-}\\\" \\\"${CODE_SIGN_IDENTITY:-}\\\"; do\\n" ++
+    "    if [ -z \\\"${SIGN_IDENTITY}\\\" ]; then\\n" ++
+    "      continue\\n" ++
+    "    fi\\n" ++
+    "    if /usr/bin/codesign --force --sign \\\"${SIGN_IDENTITY}\\\" --timestamp=none \\\"${OUT_FRAMEWORK_DIR}\\\"; then\\n" ++
+    "      SIGNED=1\\n" ++
+    "      break\\n" ++
+    "    fi\\n" ++
+    "  done\\n" ++
+    "  if [ \\\"${SIGNED}\\\" != \\\"1\\\" ]; then\\n" ++
+    "    echo \\\"error: failed to sign WizigFFI.framework (tried EXPANDED_CODE_SIGN_IDENTITY, EXPANDED_CODE_SIGN_IDENTITY_NAME, CODE_SIGN_IDENTITY)\\\" >&2\\n" ++
     "    exit 1\\n" ++
     "  fi\\n" ++
     "fi\\n" ++

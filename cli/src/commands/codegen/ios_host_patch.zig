@@ -519,12 +519,14 @@ test "phase_entry packages generated headers and modulemap into each framework s
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "Modules/module.modulemap") != null);
 }
 
-test "phase_entry uses dynamic libraries and avoids explicit framework signing commands" {
-    // Framework binaries are dynamic Mach-O files and are signed by Xcode as
-    // part of the app bundle codesign flow. The script must not hardcode
-    // ad-hoc framework signing commands.
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --force --sign") == null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --verify --strict") == null);
+test "phase_entry signs embedded device frameworks with the app identity" {
+    // The generated phase writes a framework bundle directly into the app's
+    // Frameworks directory, so Xcode will not automatically apply the nested
+    // framework signature for us. Device builds must sign the bundle here.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --force --sign") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "CODE_SIGNING_ALLOWED") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "_CodeSignature/CodeResources") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "PLATFORM_NAME") != null);
     // Dynamic framework builds must explicitly request dynamic output.
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "-dynamic") != null);
