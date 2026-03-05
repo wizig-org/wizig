@@ -13,10 +13,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve Zig version
+        id: zig-version
+        run: |
+          VERSION="$(awk -F'"' '/minimum_zig_version/ { print $2; exit }' build.zig.zon)"
+          if [ -z "$VERSION" ]; then
+            echo "failed to read minimum_zig_version from build.zig.zon" >&2
+            exit 1
+          fi
+          echo "Resolved Zig version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: master
+          version: ${{ steps.zig-version.outputs.version }}
 
       - name: Setup Python
         uses: actions/setup-python@v5

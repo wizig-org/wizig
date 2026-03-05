@@ -32,9 +32,7 @@ Or with Homebrew:
 brew install wizig-org/tap/wizig
 ```
 
-## Why Wizig
-
-Wizig is built for teams that want native platform UX without duplicating core application logic.
+Wizig is built for those that want native platform UX without duplicating core application logic.
 
 - Native hosts stay native: SwiftUI for iOS, Jetpack Compose for Android.
 - Shared runtime and domain logic live in Zig under `lib/`.
