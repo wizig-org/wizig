@@ -5,6 +5,7 @@ const compatibility = @import("../compatibility.zig");
 const api = @import("../model/api.zig");
 const helpers = @import("helpers.zig");
 const preamble = @import("zig_ffi_root_preamble.zig");
+const type_defs = @import("zig_ffi_types.zig");
 const methods = @import("zig_ffi_root_methods.zig");
 
 pub fn renderZigFfiRoot(
@@ -23,6 +24,7 @@ pub fn renderZigFfiRoot(
     try helpers.appendFmt(&out, arena, "const wizig_generated_contract_hash: []const u8 = \"{s}\";\n\n", .{compat.contract_hash_hex});
 
     try preamble.appendPrelude(&out, arena);
+    try type_defs.appendUserTypeDefinitions(&out, arena, spec.structs, spec.enums);
     try methods.appendMethodExports(&out, arena, spec.methods);
 
     return out.toOwnedSlice(arena);

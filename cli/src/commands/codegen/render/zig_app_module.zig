@@ -37,7 +37,7 @@ pub fn renderZigAppModule(
     };
 
     for (spec.methods) |method| {
-        const shape = zigWrapperShape(method);
+        const shape = try zigWrapperShape(arena, method);
         if (shape.args.len == 0) {
             try helpers.appendFmt(&out, arena, "pub fn {s}() {s} {{\n", .{ method.name, shape.return_ty });
         } else {
@@ -118,12 +118,11 @@ pub fn renderZigAppModule(
     return out.toOwnedSlice(arena);
 }
 
-fn zigWrapperShape(method: api.ApiMethod) ZigWrapperShape {
+fn zigWrapperShape(arena: std.mem.Allocator, method: api.ApiMethod) !ZigWrapperShape {
+    const output_ty = helpers.zigType(method.output);
     const return_ty = switch (method.output) {
-        .string => "![]const u8",
-        .int => "!i64",
-        .bool => "!bool",
         .void => "!void",
+        else => try std.fmt.allocPrint(arena, "!{s}", .{output_ty}),
     };
 
     return switch (method.input) {
@@ -143,5 +142,29 @@ fn zigWrapperShape(method: api.ApiMethod) ZigWrapperShape {
             .{ .args = "input: bool, allocator: std.mem.Allocator", .call_args = "input, allocator", .return_ty = return_ty }
         else
             .{ .args = "input: bool", .call_args = "input", .return_ty = return_ty },
+        .user_struct => |name| if (method.output == .string)
+            .{
+                .args = try std.fmt.allocPrint(arena, "input: {s}, allocator: std.mem.Allocator", .{name}),
+                .call_args = "input, allocator",
+                .return_ty = return_ty,
+            }
+        else
+            .{
+                .args = try std.fmt.allocPrint(arena, "input: {s}", .{name}),
+                .call_args = "input",
+                .return_ty = return_ty,
+            },
+        .user_enum => |name| if (method.output == .string)
+            .{
+                .args = try std.fmt.allocPrint(arena, "input: {s}, allocator: std.mem.Allocator", .{name}),
+                .call_args = "input, allocator",
+                .return_ty = return_ty,
+            }
+        else
+            .{
+                .args = try std.fmt.allocPrint(arena, "input: {s}", .{name}),
+                .call_args = "input",
+                .return_ty = return_ty,
+            },
     };
 }

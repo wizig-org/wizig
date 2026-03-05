@@ -3,6 +3,14 @@
 const std = @import("std");
 const api = @import("../model/api.zig");
 
+/// Logical ABI wire categories used by generated host and bridge code.
+pub const WireKind = enum {
+    string,
+    int,
+    bool,
+    void,
+};
+
 pub fn appendFmt(
     out: *std.ArrayList(u8),
     allocator: std.mem.Allocator,
@@ -20,6 +28,8 @@ pub fn zigType(value: api.ApiType) []const u8 {
         .int => "i64",
         .bool => "bool",
         .void => "void",
+        .user_struct => |name| name,
+        .user_enum => |name| name,
     };
 }
 
@@ -29,6 +39,8 @@ pub fn swiftType(value: api.ApiType) []const u8 {
         .int => "Int64",
         .bool => "Bool",
         .void => "Void",
+        .user_struct => |name| name,
+        .user_enum => |name| name,
     };
 }
 
@@ -38,11 +50,13 @@ pub fn kotlinType(value: api.ApiType) []const u8 {
         .int => "Long",
         .bool => "Boolean",
         .void => "Unit",
+        .user_struct => |name| name,
+        .user_enum => |name| name,
     };
 }
 
 pub fn jniCType(value: api.ApiType) []const u8 {
-    return switch (value) {
+    return switch (wireKind(value)) {
         .string => "jstring",
         .int => "jlong",
         .bool => "jboolean",
@@ -56,6 +70,8 @@ pub fn zigDefaultValue(value: api.ApiType) []const u8 {
         .int => "0",
         .bool => "false",
         .void => "{}",
+        .user_struct => "undefined",
+        .user_enum => "undefined",
     };
 }
 
@@ -97,4 +113,23 @@ pub fn upperCamel(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     }
 
     return out.toOwnedSlice(allocator);
+}
+
+/// Returns true if the type is a scalar that can use the existing
+/// method codegen paths directly.
+pub fn isScalarType(value: api.ApiType) bool {
+    return switch (value) {
+        .string, .int, .bool, .void => true,
+        .user_struct, .user_enum => false,
+    };
+}
+
+/// Maps high-level API type tags to C-ABI transport categories.
+pub fn wireKind(value: api.ApiType) WireKind {
+    return switch (value) {
+        .string, .user_struct => .string,
+        .int, .user_enum => .int,
+        .bool => .bool,
+        .void => .void,
+    };
 }

@@ -1,4 +1,6 @@
 .zig-cache/
+ISSUES.md
+problems.md
 zig-out/
 .gradle/
 __pycache__
@@ -142,6 +144,7 @@ playground.xcworkspace
 
 .build/
 docs/site/
+site/
 
 # CocoaPods
 #

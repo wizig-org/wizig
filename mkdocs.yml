@@ -1,0 +1,68 @@
+site_name: Wizig Documentation
+site_description: Mobile-first framework — native SwiftUI & Jetpack Compose UIs with shared Zig runtime logic
+site_url: https://wizig.dev/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+  - attr_list
+  - def_list
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quick-start.md
+      - Development Requirements: getting-started/development-requirements.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Runtime Layers: architecture/runtime-layers.md
+      - FFI Design: architecture/ffi-design.md
+      - SDK Resolution: architecture/sdk-resolution.md
+  - User Guide:
+      - Bridge & Codegen: guide/bridge-and-codegen.md
+      - Zig-First Bridge Design: guide/zig-first-bridge.md
+      - Plugin System: guide/plugin-system.md
+      - iOS Interop: guide/ios-interop.md
+      - Toolchain Governance: guide/toolchain-governance.md
+  - CLI Reference: cli-reference.md
+  - Reference:
+      - Toolchain Manifest: reference/toolchain-manifest.md
+      - API Reference: reference/api/index.md
+  - Contributing:
+      - How to Contribute: contributing/index.md
+      - Project Structure: contributing/project-structure.md
+      - Code Style & Conventions: contributing/code-style.md
+      - Documentation Guide: contributing/documentation.md

@@ -8,7 +8,9 @@ const Io = std.Io;
 const codegen_cmd = @import("../../commands/codegen/root.zig");
 const fs_utils = @import("../platform/fs_utils.zig");
 
-const codegen_fingerprint_version = "wizig-codegen-v7";
+// Bump when generated output semantics change but app source/contract inputs
+// stay identical. This forces one regeneration so host/sdk artifacts converge.
+const codegen_fingerprint_version = "wizig-codegen-v8";
 
 /// Builds the unified run log path under `<project>/.wizig/logs/run.log`.
 pub fn buildLogPath(arena: std.mem.Allocator, io: std.Io, project_root: []const u8) ![]const u8 {

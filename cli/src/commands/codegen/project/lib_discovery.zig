@@ -10,6 +10,16 @@ pub fn discoverLibApiMethods(
     io: std.Io,
     project_root: []const u8,
 ) ![]const api.ApiMethod {
+    return discoverLibApiMethodsWithTypes(arena, io, project_root, &.{}, &.{});
+}
+
+pub fn discoverLibApiMethodsWithTypes(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    project_root: []const u8,
+    known_struct_names: []const []const u8,
+    known_enum_names: []const []const u8,
+) ![]const api.ApiMethod {
     const lib_dir = try path_util.join(arena, project_root, "lib");
     if (!fs_util.pathExists(io, lib_dir)) return &.{};
 
@@ -45,7 +55,7 @@ pub fn discoverLibApiMethods(
     for (rel_paths.items) |rel_path| {
         const abs_path = try path_util.join(arena, lib_dir, rel_path);
         const source = std.Io.Dir.cwd().readFileAlloc(io, abs_path, arena, .limited(2 * 1024 * 1024)) catch continue;
-        const methods = try parseApiMethodsFromLibSource(arena, source);
+        const methods = try parseApiMethodsFromLibSource(arena, source, known_struct_names, known_enum_names);
         for (methods) |method| {
             var exists = false;
             for (discovered.items) |existing| {
@@ -98,7 +108,12 @@ pub fn collectLibModuleImports(
     return imports.toOwnedSlice(arena);
 }
 
-fn parseApiMethodsFromLibSource(arena: std.mem.Allocator, source: []const u8) ![]const api.ApiMethod {
+fn parseApiMethodsFromLibSource(
+    arena: std.mem.Allocator,
+    source: []const u8,
+    known_struct_names: []const []const u8,
+    known_enum_names: []const []const u8,
+) ![]const api.ApiMethod {
     var methods = std.ArrayList(api.ApiMethod).empty;
     errdefer methods.deinit(arena);
 
@@ -135,7 +150,7 @@ fn parseApiMethodsFromLibSource(arena: std.mem.Allocator, source: []const u8) ![
         if (cursor <= return_start) continue;
         const return_raw = std.mem.trim(u8, source[return_start..cursor], " \t\r\n");
 
-        if (try methodFromLibSignature(arena, name, source[params_start..params_end], return_raw)) |method| {
+        if (try methodFromLibSignature(arena, name, source[params_start..params_end], return_raw, known_struct_names, known_enum_names)) |method| {
             try methods.append(arena, method);
         }
     }
@@ -148,6 +163,8 @@ fn methodFromLibSignature(
     name: []const u8,
     params_raw: []const u8,
     return_raw: []const u8,
+    known_struct_names: []const []const u8,
+    known_enum_names: []const []const u8,
 ) !?api.ApiMethod {
     if (return_raw.len == 0) return null;
 
@@ -174,11 +191,11 @@ fn methodFromLibSignature(
             if (isAllocatorType(param_types.items[0])) {
                 allocator_param = true;
             } else {
-                input_type = parseLibParamType(param_types.items[0]) orelse return null;
+                input_type = parseLibParamTypeWithKnown(param_types.items[0], known_struct_names, known_enum_names) orelse return null;
             }
         },
         2 => {
-            input_type = parseLibParamType(param_types.items[0]) orelse return null;
+            input_type = parseLibParamTypeWithKnown(param_types.items[0], known_struct_names, known_enum_names) orelse return null;
             if (!isAllocatorType(param_types.items[1])) return null;
             allocator_param = true;
         },
@@ -189,10 +206,11 @@ fn methodFromLibSignature(
     if (ret.len == 0) return null;
     if (ret[0] == '!') ret = std.mem.trim(u8, ret[1..], " \t\r\n");
     const ret_norm = try normalizeTypeToken(arena, ret);
-    const output_type = parseLibReturnType(ret_norm) orelse return null;
+    const output_type = parseLibReturnTypeWithKnown(ret_norm, known_struct_names, known_enum_names) orelse return null;
 
-    if (output_type == .string and !allocator_param) return null;
-    if (output_type != .string and allocator_param) return null;
+    const needs_alloc = output_type == .string;
+    if (needs_alloc and !allocator_param) return null;
+    if (!needs_alloc and allocator_param) return null;
 
     return .{
         .name = try arena.dupe(u8, name),
@@ -216,17 +234,45 @@ fn isAllocatorType(ty: []const u8) bool {
 }
 
 fn parseLibParamType(ty: []const u8) ?api.ApiType {
-    if (std.mem.eql(u8, ty, "[]constu8") or std.mem.eql(u8, ty, "[]u8")) return .string;
-    if (std.mem.eql(u8, ty, "i64")) return .int;
-    if (std.mem.eql(u8, ty, "bool")) return .bool;
-    return null;
+    return parseLibParamTypeWithKnown(ty, &.{}, &.{});
 }
 
 fn parseLibReturnType(ty: []const u8) ?api.ApiType {
+    return parseLibReturnTypeWithKnown(ty, &.{}, &.{});
+}
+
+fn parseLibParamTypeWithKnown(
+    ty: []const u8,
+    known_struct_names: []const []const u8,
+    known_enum_names: []const []const u8,
+) ?api.ApiType {
+    if (std.mem.eql(u8, ty, "[]constu8") or std.mem.eql(u8, ty, "[]u8")) return .string;
+    if (std.mem.eql(u8, ty, "i64")) return .int;
+    if (std.mem.eql(u8, ty, "bool")) return .bool;
+    for (known_struct_names) |name| {
+        if (std.mem.eql(u8, ty, name)) return .{ .user_struct = name };
+    }
+    for (known_enum_names) |name| {
+        if (std.mem.eql(u8, ty, name)) return .{ .user_enum = name };
+    }
+    return null;
+}
+
+fn parseLibReturnTypeWithKnown(
+    ty: []const u8,
+    known_struct_names: []const []const u8,
+    known_enum_names: []const []const u8,
+) ?api.ApiType {
     if (std.mem.eql(u8, ty, "[]constu8") or std.mem.eql(u8, ty, "[]u8")) return .string;
     if (std.mem.eql(u8, ty, "i64")) return .int;
     if (std.mem.eql(u8, ty, "bool")) return .bool;
     if (std.mem.eql(u8, ty, "void")) return .void;
+    for (known_struct_names) |name| {
+        if (std.mem.eql(u8, ty, name)) return .{ .user_struct = name };
+    }
+    for (known_enum_names) |name| {
+        if (std.mem.eql(u8, ty, name)) return .{ .user_enum = name };
+    }
     return null;
 }
 

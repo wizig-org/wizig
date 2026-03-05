@@ -27,10 +27,15 @@ pub fn appendPrelude(out: *std.ArrayList(u8), arena: std.mem.Allocator) !void {
 
     try out.appendSlice(arena, "threadlocal var last_error: LastError = .{};\n\n");
 
-    try out.appendSlice(arena, "const allocator = std.heap.page_allocator;\n\n");
+    try out.appendSlice(arena, "const bootstrap_allocator = std.heap.page_allocator;\n\n");
     try out.appendSlice(arena, "pub const WizigRuntimeHandle = opaque {};\n\n");
     try out.appendSlice(arena, "const RuntimeBox = struct {\n");
     try out.appendSlice(arena, "    app_name: []u8,\n");
+    try out.appendSlice(arena, "    gpa: std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }),\n");
+    try out.appendSlice(arena, "\n");
+    try out.appendSlice(arena, "    fn allocator(self: *RuntimeBox) std.mem.Allocator {\n");
+    try out.appendSlice(arena, "        return self.gpa.allocator();\n");
+    try out.appendSlice(arena, "    }\n");
     try out.appendSlice(arena, "};\n\n");
 
     try out.appendSlice(arena, "fn toBox(handle: *WizigRuntimeHandle) *RuntimeBox {\n");
@@ -107,10 +112,12 @@ pub fn appendPrelude(out: *std.ArrayList(u8), arena: std.mem.Allocator) !void {
     try out.appendSlice(arena, "    output.* = null;\n");
     try out.appendSlice(arena, "    if (app_name_len == 0) return setLastError(.argument, statusCode(.invalid_argument), \"empty app name\");\n");
     try out.appendSlice(arena, "    const app_name = app_name_ptr[0..app_name_len];\n");
-    try out.appendSlice(arena, "    const box = allocator.create(RuntimeBox) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
-    try out.appendSlice(arena, "    errdefer allocator.destroy(box);\n");
-    try out.appendSlice(arena, "    const owned_app_name = allocator.dupe(u8, app_name) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
-    try out.appendSlice(arena, "    box.* = .{ .app_name = owned_app_name };\n");
+    try out.appendSlice(arena, "    const box = bootstrap_allocator.create(RuntimeBox) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
+    try out.appendSlice(arena, "    errdefer bootstrap_allocator.destroy(box);\n");
+    try out.appendSlice(arena, "    box.gpa = .init;\n");
+    try out.appendSlice(arena, "    const gpa_allocator = box.gpa.allocator();\n");
+    try out.appendSlice(arena, "    const owned_app_name = gpa_allocator.dupe(u8, app_name) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
+    try out.appendSlice(arena, "    box.app_name = owned_app_name;\n");
     try out.appendSlice(arena, "    output.* = toHandle(box);\n");
     try out.appendSlice(arena, "    clearLastError();\n");
     try out.appendSlice(arena, "    return statusCode(.ok);\n");
@@ -119,8 +126,9 @@ pub fn appendPrelude(out: *std.ArrayList(u8), arena: std.mem.Allocator) !void {
     try out.appendSlice(arena, "pub export fn wizig_runtime_free(handle: ?*WizigRuntimeHandle) void {\n");
     try out.appendSlice(arena, "    if (handle == null) return;\n");
     try out.appendSlice(arena, "    const box = toBox(handle.?);\n");
-    try out.appendSlice(arena, "    allocator.free(box.app_name);\n");
-    try out.appendSlice(arena, "    allocator.destroy(box);\n");
+    try out.appendSlice(arena, "    box.gpa.allocator().free(box.app_name);\n");
+    try out.appendSlice(arena, "    _ = box.gpa.deinit();\n");
+    try out.appendSlice(arena, "    bootstrap_allocator.destroy(box);\n");
     try out.appendSlice(arena, "}\n\n");
 
     try out.appendSlice(arena, "pub export fn wizig_runtime_echo(handle: ?*WizigRuntimeHandle, input_ptr: [*]const u8, input_len: usize, out_ptr: ?*?[*]u8, out_len: ?*usize) i32 {\n");
@@ -131,7 +139,7 @@ pub fn appendPrelude(out: *std.ArrayList(u8), arena: std.mem.Allocator) !void {
     try out.appendSlice(arena, "    output_len.* = 0;\n");
     try out.appendSlice(arena, "    const box = toBox(handle.?);\n");
     try out.appendSlice(arena, "    const input = input_ptr[0..input_len];\n");
-    try out.appendSlice(arena, "    const echoed = std.fmt.allocPrint(allocator, \"{s}:{s}\", .{ box.app_name, input }) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
+    try out.appendSlice(arena, "    const echoed = std.fmt.allocPrint(bootstrap_allocator, \"{s}:{s}\", .{ box.app_name, input }) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
     try out.appendSlice(arena, "    output_ptr.* = echoed.ptr;\n");
     try out.appendSlice(arena, "    output_len.* = echoed.len;\n");
     try out.appendSlice(arena, "    clearLastError();\n");
@@ -140,7 +148,7 @@ pub fn appendPrelude(out: *std.ArrayList(u8), arena: std.mem.Allocator) !void {
 
     try out.appendSlice(arena, "pub export fn wizig_bytes_free(ptr: ?[*]u8, len: usize) void {\n");
     try out.appendSlice(arena, "    if (ptr == null) return;\n");
-    try out.appendSlice(arena, "    allocator.free(ptr.?[0..len]);\n");
+    try out.appendSlice(arena, "    bootstrap_allocator.free(ptr.?[0..len]);\n");
     try out.appendSlice(arena, "}\n\n");
 
     try out.appendSlice(arena, "fn mapError(err: anyerror) i32 {\n");

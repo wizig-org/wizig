@@ -108,9 +108,11 @@ pub fn build(b: *std.Build) void {
 
     const docs_step = b.step("docs", "Generate Wizig documentation site");
     const docs_toolchains_cmd = b.addSystemCommand(&.{ "python3", "tools/toolchains/render_docs.py" });
-    const docs_cmd = b.addSystemCommand(&.{ "python3", "scripts/docs_build.py" });
-    docs_cmd.step.dependOn(&docs_toolchains_cmd.step);
-    docs_step.dependOn(&docs_cmd.step);
+    const docs_ref_cmd = b.addSystemCommand(&.{ "python3", "scripts/docs_build.py", "--reference-only" });
+    docs_ref_cmd.step.dependOn(&docs_toolchains_cmd.step);
+    const docs_mkdocs_cmd = b.addSystemCommand(&.{ "mkdocs", "build" });
+    docs_mkdocs_cmd.step.dependOn(&docs_ref_cmd.step);
+    docs_step.dependOn(&docs_mkdocs_cmd.step);
 
     const core_tests = b.addTest(.{
         .name = "core-tests",

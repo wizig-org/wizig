@@ -1,10 +1,16 @@
 //! Renderer for `WizigGeneratedApi.kt`.
+//!
+//! User type wire mapping:
+//! - `user_struct` <-> JSON `String`
+//! - `user_enum`   <-> `Long` raw value
 
 const std = @import("std");
 const compatibility = @import("../compatibility.zig");
 const api = @import("../model/api.zig");
 const helpers = @import("helpers.zig");
+const user_types = @import("kotlin/user_types.zig");
 
+/// Renders the generated Kotlin API facade and native bridge declarations.
 pub fn renderKotlinApi(
     arena: std.mem.Allocator,
     spec: api.ApiSpec,
@@ -18,6 +24,7 @@ pub fn renderKotlinApi(
 
     try helpers.appendFmt(&out, arena, "private const val WIZIG_EXPECTED_ABI_VERSION: Int = {d}\n", .{compat.abi_version});
     try helpers.appendFmt(&out, arena, "private const val WIZIG_EXPECTED_CONTRACT_HASH: String = \"{s}\"\n\n", .{compat.contract_hash_hex});
+    try user_types.appendKotlinTypeDefinitions(&out, arena, spec.structs, spec.enums);
 
     try out.appendSlice(arena, "interface WizigGeneratedEventSink {\n");
     for (spec.events) |event| {
@@ -39,14 +46,15 @@ pub fn renderKotlinApi(
     try out.appendSlice(arena, "    @JvmStatic external fun wizig_validate_bindings()\n");
     for (spec.methods) |method| {
         const ffi_name = try std.fmt.allocPrint(arena, "wizig_api_{s}", .{method.name});
+        const output_wire_ty = kotlinWireType(method.output);
         if (method.input == .void) {
-            try helpers.appendFmt(&out, arena, "    @JvmStatic external fun {s}(): {s}\n", .{ ffi_name, helpers.kotlinType(method.output) });
+            try helpers.appendFmt(&out, arena, "    @JvmStatic external fun {s}(): {s}\n", .{ ffi_name, output_wire_ty });
         } else {
             try helpers.appendFmt(
                 &out,
                 arena,
                 "    @JvmStatic external fun {s}(input: {s}): {s}\n",
-                .{ ffi_name, helpers.kotlinType(method.input), helpers.kotlinType(method.output) },
+                .{ ffi_name, kotlinWireType(method.input), output_wire_ty },
             );
         }
     }
@@ -64,25 +72,7 @@ pub fn renderKotlinApi(
     try out.appendSlice(arena, "    }\n\n");
 
     for (spec.methods) |method| {
-        const ffi_name = try std.fmt.allocPrint(arena, "wizig_api_{s}", .{method.name});
-        if (method.input == .void) {
-            if (method.output == .void) {
-                try helpers.appendFmt(&out, arena, "    fun {s}() {{\n", .{method.name});
-                try helpers.appendFmt(&out, arena, "        WizigGeneratedNativeBridge.{s}()\n", .{ffi_name});
-            } else {
-                try helpers.appendFmt(&out, arena, "    fun {s}(): {s} {{\n", .{ method.name, helpers.kotlinType(method.output) });
-                try helpers.appendFmt(&out, arena, "        return WizigGeneratedNativeBridge.{s}()\n", .{ffi_name});
-            }
-        } else {
-            if (method.output == .void) {
-                try helpers.appendFmt(&out, arena, "    fun {s}(input: {s}) {{\n", .{ method.name, helpers.kotlinType(method.input) });
-                try helpers.appendFmt(&out, arena, "        WizigGeneratedNativeBridge.{s}(input)\n", .{ffi_name});
-            } else {
-                try helpers.appendFmt(&out, arena, "    fun {s}(input: {s}): {s} {{\n", .{ method.name, helpers.kotlinType(method.input), helpers.kotlinType(method.output) });
-                try helpers.appendFmt(&out, arena, "        return WizigGeneratedNativeBridge.{s}(input)\n", .{ffi_name});
-            }
-        }
-        try out.appendSlice(arena, "    }\n\n");
+        try appendApiMethod(&out, arena, method);
     }
 
     for (spec.events) |event| {
@@ -94,4 +84,78 @@ pub fn renderKotlinApi(
 
     try out.appendSlice(arena, "}\n");
     return out.toOwnedSlice(arena);
+}
+
+fn appendApiMethod(out: *std.ArrayList(u8), arena: std.mem.Allocator, method: api.ApiMethod) !void {
+    const ffi_name = try std.fmt.allocPrint(arena, "wizig_api_{s}", .{method.name});
+    if (method.input == .void) {
+        if (method.output == .void) {
+            try helpers.appendFmt(out, arena, "    fun {s}() {{\n", .{method.name});
+            try helpers.appendFmt(out, arena, "        WizigGeneratedNativeBridge.{s}()\n", .{ffi_name});
+            try out.appendSlice(arena, "    }\n\n");
+            return;
+        }
+        try helpers.appendFmt(out, arena, "    fun {s}(): {s} {{\n", .{ method.name, helpers.kotlinType(method.output) });
+        const call_expr = try std.fmt.allocPrint(arena, "WizigGeneratedNativeBridge.{s}()", .{ffi_name});
+        try appendOutputReturn(out, arena, method.output, call_expr);
+        try out.appendSlice(arena, "    }\n\n");
+        return;
+    }
+
+    try helpers.appendFmt(out, arena, "    fun {s}(input: {s})", .{ method.name, helpers.kotlinType(method.input) });
+    if (method.output != .void) {
+        try helpers.appendFmt(out, arena, ": {s}", .{helpers.kotlinType(method.output)});
+    }
+    try out.appendSlice(arena, " {\n");
+
+    const wire_input = switch (method.input) {
+        .user_struct => |name| blk: {
+            _ = name;
+            try out.appendSlice(arena, "        val wireInput = input.toJson()\n");
+            break :blk "wireInput";
+        },
+        .user_enum => blk: {
+            try out.appendSlice(arena, "        val wireInput = input.rawValue\n");
+            break :blk "wireInput";
+        },
+        else => "input",
+    };
+
+    const call_expr = try std.fmt.allocPrint(arena, "WizigGeneratedNativeBridge.{s}({s})", .{ ffi_name, wire_input });
+    if (method.output == .void) {
+        try helpers.appendFmt(out, arena, "        {s}\n", .{call_expr});
+    } else {
+        try appendOutputReturn(out, arena, method.output, call_expr);
+    }
+    try out.appendSlice(arena, "    }\n\n");
+}
+
+fn appendOutputReturn(
+    out: *std.ArrayList(u8),
+    arena: std.mem.Allocator,
+    output: api.ApiType,
+    call_expr: []const u8,
+) !void {
+    switch (output) {
+        .user_struct => |name| {
+            try helpers.appendFmt(out, arena, "        val wireOutput = {s}\n", .{call_expr});
+            try helpers.appendFmt(out, arena, "        return {s}.fromJson(wireOutput)\n", .{name});
+        },
+        .user_enum => |name| {
+            try helpers.appendFmt(out, arena, "        val wireOutput = {s}\n", .{call_expr});
+            try helpers.appendFmt(out, arena, "        return {s}.fromRaw(wireOutput)\n", .{name});
+        },
+        else => {
+            try helpers.appendFmt(out, arena, "        return {s}\n", .{call_expr});
+        },
+    }
+}
+
+fn kotlinWireType(value: api.ApiType) []const u8 {
+    return switch (helpers.wireKind(value)) {
+        .string => "String",
+        .int => "Long",
+        .bool => "Boolean",
+        .void => "Unit",
+    };
 }

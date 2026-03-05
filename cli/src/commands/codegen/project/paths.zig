@@ -94,6 +94,28 @@ pub fn resolveBundledIosRuntimeSource(
     return null;
 }
 
+/// Returns the SDK iOS WizigFFI include directory for C header mirroring.
+pub fn resolveSdkIosFfiIncludeDir(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    project_root: []const u8,
+) !?[]const u8 {
+    const sdk_dir = try path_util.join(arena, project_root, ".wizig/sdk/ios/Sources/WizigFFI/include");
+    if (!fs_util.pathExists(io, sdk_dir)) return null;
+    return @as(?[]const u8, sdk_dir);
+}
+
+/// Returns the SDK iOS WizigFFI C shim file path when present.
+pub fn resolveSdkIosFfiStubSource(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    project_root: []const u8,
+) !?[]const u8 {
+    const path = try path_util.join(arena, project_root, ".wizig/sdk/ios/Sources/WizigFFI/stub.c");
+    if (!fs_util.pathExists(io, path)) return null;
+    return @as(?[]const u8, path);
+}
+
 pub fn resolveSdkKotlinApiFile(
     arena: std.mem.Allocator,
     io: std.Io,

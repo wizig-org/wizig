@@ -1,5 +1,4 @@
 //! `wizig codegen` command orchestration and public wrappers.
-
 const std = @import("std");
 const Io = std.Io;
 const fs_util = @import("../../support/fs.zig");
@@ -11,13 +10,14 @@ const ios_host_patch = @import("ios_host_patch.zig");
 const options = @import("options.zig");
 const targets = @import("targets.zig");
 const watch_runner = @import("watch/runner.zig");
-
 const contract_source = @import("contract/source.zig");
 const contract_resolve = @import("contract/resolve.zig");
 const contract_parse = @import("contract/parse.zig");
 const project_ios_c_artifacts = @import("project/ios_c_artifacts.zig");
+const project_ios_sdk_ffi_mirror = @import("project/ios_sdk_ffi_mirror.zig");
 const project_spec = @import("project/spec.zig");
 const project_lib_discovery = @import("project/lib_discovery.zig");
+const project_type_discovery = @import("project/type_discovery.zig");
 const project_paths = @import("project/paths.zig");
 const render_zig_api = @import("render/zig_api.zig");
 const render_zig_ffi_root = @import("render/zig_ffi_root.zig");
@@ -26,10 +26,8 @@ const render_swift_api = @import("render/swift_api.zig");
 const render_kotlin_api = @import("render/kotlin_api.zig");
 const render_android_jni_bridge = @import("render/android_jni_bridge.zig");
 const render_android_jni_cmake = @import("render/android_jni_cmake.zig");
-
 pub const ApiContractSource = contract_source.ApiContractSource;
 pub const ResolvedApiContract = contract_source.ResolvedApiContract;
-
 /// Parses codegen CLI options and triggers project generation.
 pub fn run(
     arena: std.mem.Allocator,
@@ -133,9 +131,22 @@ pub fn generateProject(
         };
     } else try project_spec.defaultApiSpecForProject(arena, project_root);
 
-    const discovered_methods = try project_lib_discovery.discoverLibApiMethods(arena, io, project_root);
-    const spec = try project_spec.mergeSpecWithDiscoveredMethods(arena, base_spec, discovered_methods);
-    const compat = try compatibility.buildMetadata(arena, spec.namespace, spec.methods, spec.events);
+    const discovered_types = try project_type_discovery.discoverLibTypes(arena, io, project_root);
+    const discovered_methods = try project_lib_discovery.discoverLibApiMethodsWithTypes(
+        arena,
+        io,
+        project_root,
+        discovered_types.struct_names,
+        discovered_types.enum_names,
+    );
+    const spec = try project_spec.mergeSpecWithDiscoveredTypes(
+        arena,
+        base_spec,
+        discovered_methods,
+        discovered_types.structs,
+        discovered_types.enums,
+    );
+    const compat = try compatibility.buildMetadata(arena, spec);
 
     const generated_root = try path_util.join(arena, project_root, ".wizig/generated");
     const zig_dir = try path_util.join(arena, generated_root, "zig");
@@ -204,6 +215,8 @@ pub fn generateProject(
         try fs_util.writeFileIfChanged(arena, io, sdk_path, kotlin_out)
     else
         false;
+
+    try project_ios_sdk_ffi_mirror.mirrorGeneratedIosFfiArtifacts(arena, io, project_root, spec);
 
     const ios_host_patch_summary = ios_host_patch.ensureIosHostBuildPhase(arena, io, project_root) catch |err| blk: {
         try stderr.print("warning: failed to patch iOS host project for Wizig FFI build phase: {s}\n", .{@errorName(err)});
@@ -282,7 +295,6 @@ fn resolveApiPathForWatch(
     const contract = try resolveApiContract(arena, io, stderr, project_root, api_override);
     return if (contract) |resolved| resolved.path else null;
 }
-
 test {
     _ = @import("render/tests.zig");
 }

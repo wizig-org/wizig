@@ -7,7 +7,8 @@ const std = @import("std");
 const api = @import("../model/api.zig");
 const helpers = @import("helpers.zig");
 
-/// Renders C declarations for all generated `wizig_api_*` exports.
+/// Renders C declarations for all generated `wizig_api_*` exports plus runtime
+/// and FFI infrastructure symbols needed by `import WizigFFI`.
 pub fn renderGeneratedApiHeader(arena: std.mem.Allocator, spec: api.ApiSpec) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(arena);
@@ -19,11 +20,14 @@ pub fn renderGeneratedApiHeader(arena: std.mem.Allocator, spec: api.ApiSpec) ![]
     try out.appendSlice(arena, "#include <stdint.h>\n\n");
     try out.appendSlice(arena, "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n");
 
+    // Generated API method symbols
+    // (Runtime and FFI infrastructure symbols are declared in wizig.h)
+    try out.appendSlice(arena, "// Generated API methods\n");
     for (spec.methods) |method| {
         try helpers.appendFmt(&out, arena, "int32_t wizig_api_{s}(", .{method.name});
 
         var need_comma = false;
-        switch (method.input) {
+        switch (helpers.wireKind(method.input)) {
             .void => {},
             .string => {
                 try out.appendSlice(arena, "const uint8_t* input_ptr, size_t input_len");
@@ -39,7 +43,7 @@ pub fn renderGeneratedApiHeader(arena: std.mem.Allocator, spec: api.ApiSpec) ![]
             },
         }
 
-        switch (method.output) {
+        switch (helpers.wireKind(method.output)) {
             .string => {
                 if (need_comma) try out.appendSlice(arena, ", ");
                 try out.appendSlice(arena, "uint8_t** out_ptr, size_t* out_len");
