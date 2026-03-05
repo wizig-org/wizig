@@ -1,9 +1,15 @@
 //! Swift API method and event emitter renderer.
+//!
+//! Methods call C exports through the static `WizigFFI` import. User structs and
+//! enums are translated to wire representations automatically:
+//! - structs -> JSON string wire
+//! - enums   -> Int64 raw value wire
 
 const std = @import("std");
 const api = @import("../../model/api.zig");
 const helpers = @import("../helpers.zig");
 
+/// Appends generated API methods plus sink event forwarding methods.
 pub fn appendApiClassMethods(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
@@ -22,142 +28,148 @@ pub fn appendApiClassMethods(
             try helpers.appendFmt(out, arena, "    public func {s}{s} throws -> {s} {{\n", .{ method.name, params, helpers.swiftType(method.output) });
         }
 
-        if (method.output == .string) {
-            switch (method.input) {
-                .void => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?, UnsafeMutablePointer<Int>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try helpers.appendFmt(out, arena, "        return try callStringOutput(function: \"{s}\") {{ outPtr, outLen in\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(outPtr, outLen)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .string => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UnsafePointer<UInt8>, Int, UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?, UnsafeMutablePointer<Int>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try out.appendSlice(arena, "        return try withUTF8Pointer(input) { inputPtr, inputLen in\n");
-                    try helpers.appendFmt(out, arena, "            try callStringOutput(function: \"{s}\") {{ outPtr, outLen in\n", .{symbol_name});
-                    try out.appendSlice(arena, "                fn(inputPtr, inputLen, outPtr, outLen)\n");
-                    try out.appendSlice(arena, "            }\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .int => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (Int64, UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?, UnsafeMutablePointer<Int>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try helpers.appendFmt(out, arena, "        return try callStringOutput(function: \"{s}\") {{ outPtr, outLen in\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(input, outPtr, outLen)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .bool => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UInt8, UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?, UnsafeMutablePointer<Int>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try out.appendSlice(arena, "        let inputFlag: UInt8 = input ? 1 : 0\n");
-                    try helpers.appendFmt(out, arena, "        return try callStringOutput(function: \"{s}\") {{ outPtr, outLen in\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(inputFlag, outPtr, outLen)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-            }
-        } else if (method.output == .int) {
-            switch (method.input) {
-                .void => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UnsafeMutablePointer<Int64>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try helpers.appendFmt(out, arena, "        return try callIntOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(outValue)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .string => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UnsafePointer<UInt8>, Int, UnsafeMutablePointer<Int64>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try out.appendSlice(arena, "        return try withUTF8Pointer(input) { inputPtr, inputLen in\n");
-                    try helpers.appendFmt(out, arena, "            try callIntOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
-                    try out.appendSlice(arena, "                fn(inputPtr, inputLen, outValue)\n");
-                    try out.appendSlice(arena, "            }\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .int => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (Int64, UnsafeMutablePointer<Int64>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try helpers.appendFmt(out, arena, "        return try callIntOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(input, outValue)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .bool => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UInt8, UnsafeMutablePointer<Int64>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try out.appendSlice(arena, "        let inputFlag: UInt8 = input ? 1 : 0\n");
-                    try helpers.appendFmt(out, arena, "        return try callIntOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(inputFlag, outValue)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-            }
-        } else if (method.output == .bool) {
-            switch (method.input) {
-                .void => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UnsafeMutablePointer<UInt8>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try helpers.appendFmt(out, arena, "        return try callBoolOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(outValue)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .string => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UnsafePointer<UInt8>, Int, UnsafeMutablePointer<UInt8>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try out.appendSlice(arena, "        return try withUTF8Pointer(input) { inputPtr, inputLen in\n");
-                    try helpers.appendFmt(out, arena, "            try callBoolOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
-                    try out.appendSlice(arena, "                fn(inputPtr, inputLen, outValue)\n");
-                    try out.appendSlice(arena, "            }\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .int => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (Int64, UnsafeMutablePointer<UInt8>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try helpers.appendFmt(out, arena, "        return try callBoolOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(input, outValue)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .bool => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UInt8, UnsafeMutablePointer<UInt8>?) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try out.appendSlice(arena, "        let inputFlag: UInt8 = input ? 1 : 0\n");
-                    try helpers.appendFmt(out, arena, "        return try callBoolOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(inputFlag, outValue)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-            }
-        } else {
-            switch (method.input) {
-                .void => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) () -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try helpers.appendFmt(out, arena, "        try callVoidOutput(function: \"{s}\") {{\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn()\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .string => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UnsafePointer<UInt8>, Int) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try out.appendSlice(arena, "        try withUTF8Pointer(input) { inputPtr, inputLen in\n");
-                    try helpers.appendFmt(out, arena, "            try callVoidOutput(function: \"{s}\") {{\n", .{symbol_name});
-                    try out.appendSlice(arena, "                fn(inputPtr, inputLen)\n");
-                    try out.appendSlice(arena, "            }\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .int => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (Int64) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try helpers.appendFmt(out, arena, "        try callVoidOutput(function: \"{s}\") {{\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(input)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-                .bool => {
-                    try out.appendSlice(arena, "        typealias Fn = @convention(c) (UInt8) -> Int32\n");
-                    try helpers.appendFmt(out, arena, "        let fn: Fn = try ffi.loadSymbol(\"{s}\")\n", .{symbol_name});
-                    try out.appendSlice(arena, "        let inputFlag: UInt8 = input ? 1 : 0\n");
-                    try helpers.appendFmt(out, arena, "        try callVoidOutput(function: \"{s}\") {{\n", .{symbol_name});
-                    try out.appendSlice(arena, "            fn(inputFlag)\n");
-                    try out.appendSlice(arena, "        }\n");
-                },
-            }
+        const input_wire = helpers.wireKind(method.input);
+        const output_wire = helpers.wireKind(method.output);
+        const input_is_user_struct = switch (method.input) {
+            .user_struct => true,
+            else => false,
+        };
+        const input_is_user_enum = switch (method.input) {
+            .user_enum => true,
+            else => false,
+        };
+        const output_is_user_struct = switch (method.output) {
+            .user_struct => true,
+            else => false,
+        };
+        const output_is_user_enum = switch (method.output) {
+            .user_enum => true,
+            else => false,
+        };
+
+        if (input_is_user_struct) {
+            try helpers.appendFmt(out, arena, "        let encodedInput = try encodeStructInput(input, function: \"{s}\")\n", .{symbol_name});
+        } else if (input_is_user_enum) {
+            try out.appendSlice(arena, "        let enumRawInput = input.rawValue\n");
+        } else if (input_wire == .bool) {
+            try out.appendSlice(arena, "        let inputFlag: UInt8 = input ? 1 : 0\n");
+        }
+
+        switch (output_wire) {
+            .string => {
+                const call_name = if (output_is_user_struct) "callStructOutput" else "callStringOutput";
+                switch (input_wire) {
+                    .void => {
+                        try helpers.appendFmt(out, arena, "        return try {s}(function: \"{s}\") {{ outPtr, outLen in\n", .{ call_name, symbol_name });
+                        try helpers.appendFmt(out, arena, "            {s}(outPtr, outLen)\n", .{symbol_name});
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .string => {
+                        const source = if (input_is_user_struct) "encodedInput" else "input";
+                        try helpers.appendFmt(out, arena, "        return try withUTF8Pointer({s}) {{ inputPtr, inputLen in\n", .{source});
+                        try helpers.appendFmt(out, arena, "            try {s}(function: \"{s}\") {{ outPtr, outLen in\n", .{ call_name, symbol_name });
+                        try helpers.appendFmt(out, arena, "                {s}(inputPtr, inputLen, outPtr, outLen)\n", .{symbol_name});
+                        try out.appendSlice(arena, "            }\n");
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .int => {
+                        const arg = if (input_is_user_enum) "enumRawInput" else "input";
+                        try helpers.appendFmt(out, arena, "        return try {s}(function: \"{s}\") {{ outPtr, outLen in\n", .{ call_name, symbol_name });
+                        try helpers.appendFmt(out, arena, "            {s}({s}, outPtr, outLen)\n", .{ symbol_name, arg });
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .bool => {
+                        try helpers.appendFmt(out, arena, "        return try {s}(function: \"{s}\") {{ outPtr, outLen in\n", .{ call_name, symbol_name });
+                        try helpers.appendFmt(out, arena, "            {s}(inputFlag, outPtr, outLen)\n", .{symbol_name});
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                }
+            },
+            .int => {
+                const call_name = if (output_is_user_enum) "callEnumOutput" else "callIntOutput";
+                switch (input_wire) {
+                    .void => {
+                        try helpers.appendFmt(out, arena, "        return try {s}(function: \"{s}\") {{ outValue in\n", .{ call_name, symbol_name });
+                        try helpers.appendFmt(out, arena, "            {s}(outValue)\n", .{symbol_name});
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .string => {
+                        const source = if (input_is_user_struct) "encodedInput" else "input";
+                        try helpers.appendFmt(out, arena, "        return try withUTF8Pointer({s}) {{ inputPtr, inputLen in\n", .{source});
+                        try helpers.appendFmt(out, arena, "            try {s}(function: \"{s}\") {{ outValue in\n", .{ call_name, symbol_name });
+                        try helpers.appendFmt(out, arena, "                {s}(inputPtr, inputLen, outValue)\n", .{symbol_name});
+                        try out.appendSlice(arena, "            }\n");
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .int => {
+                        const arg = if (input_is_user_enum) "enumRawInput" else "input";
+                        try helpers.appendFmt(out, arena, "        return try {s}(function: \"{s}\") {{ outValue in\n", .{ call_name, symbol_name });
+                        try helpers.appendFmt(out, arena, "            {s}({s}, outValue)\n", .{ symbol_name, arg });
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .bool => {
+                        try helpers.appendFmt(out, arena, "        return try {s}(function: \"{s}\") {{ outValue in\n", .{ call_name, symbol_name });
+                        try helpers.appendFmt(out, arena, "            {s}(inputFlag, outValue)\n", .{symbol_name});
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                }
+            },
+            .bool => {
+                switch (input_wire) {
+                    .void => {
+                        try helpers.appendFmt(out, arena, "        return try callBoolOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
+                        try helpers.appendFmt(out, arena, "            {s}(outValue)\n", .{symbol_name});
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .string => {
+                        const source = if (input_is_user_struct) "encodedInput" else "input";
+                        try helpers.appendFmt(out, arena, "        return try withUTF8Pointer({s}) {{ inputPtr, inputLen in\n", .{source});
+                        try helpers.appendFmt(out, arena, "            try callBoolOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
+                        try helpers.appendFmt(out, arena, "                {s}(inputPtr, inputLen, outValue)\n", .{symbol_name});
+                        try out.appendSlice(arena, "            }\n");
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .int => {
+                        const arg = if (input_is_user_enum) "enumRawInput" else "input";
+                        try helpers.appendFmt(out, arena, "        return try callBoolOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
+                        try helpers.appendFmt(out, arena, "            {s}({s}, outValue)\n", .{ symbol_name, arg });
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .bool => {
+                        try helpers.appendFmt(out, arena, "        return try callBoolOutput(function: \"{s}\") {{ outValue in\n", .{symbol_name});
+                        try helpers.appendFmt(out, arena, "            {s}(inputFlag, outValue)\n", .{symbol_name});
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                }
+            },
+            .void => {
+                switch (input_wire) {
+                    .void => {
+                        try helpers.appendFmt(out, arena, "        try callVoidOutput(function: \"{s}\") {{\n", .{symbol_name});
+                        try helpers.appendFmt(out, arena, "            {s}()\n", .{symbol_name});
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .string => {
+                        const source = if (input_is_user_struct) "encodedInput" else "input";
+                        try helpers.appendFmt(out, arena, "        try withUTF8Pointer({s}) {{ inputPtr, inputLen in\n", .{source});
+                        try helpers.appendFmt(out, arena, "            try callVoidOutput(function: \"{s}\") {{\n", .{symbol_name});
+                        try helpers.appendFmt(out, arena, "                {s}(inputPtr, inputLen)\n", .{symbol_name});
+                        try out.appendSlice(arena, "            }\n");
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .int => {
+                        const arg = if (input_is_user_enum) "enumRawInput" else "input";
+                        try helpers.appendFmt(out, arena, "        try callVoidOutput(function: \"{s}\") {{\n", .{symbol_name});
+                        try helpers.appendFmt(out, arena, "            {s}({s})\n", .{ symbol_name, arg });
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                    .bool => {
+                        try helpers.appendFmt(out, arena, "        try callVoidOutput(function: \"{s}\") {{\n", .{symbol_name});
+                        try helpers.appendFmt(out, arena, "            {s}(inputFlag)\n", .{symbol_name});
+                        try out.appendSlice(arena, "        }\n");
+                    },
+                }
+            },
         }
 
         try out.appendSlice(arena, "    }\n\n");

@@ -58,7 +58,7 @@ const LastError = struct {
 /// token and only pass it back to exported Wizig functions.
 pub const WizigRuntimeHandle = opaque {};
 
-const allocator = std.heap.page_allocator;
+const bootstrap_allocator = std.heap.page_allocator;
 const wizig_ffi_abi_version_value: u32 = 1;
 const wizig_ffi_contract_hash_value: []const u8 = "0d2ca7c6c4d473945f98fef4240f4f4f5456bfec4a4cb8f90a322604dbf99795";
 
@@ -66,6 +66,11 @@ threadlocal var last_error: LastError = .{};
 
 const RuntimeBox = struct {
     runtime: wizig_core.Runtime,
+    gpa: std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }),
+
+    fn allocator(self: *RuntimeBox) std.mem.Allocator {
+        return self.gpa.allocator();
+    }
 };
 
 fn statusCode(status: Status) i32 {
@@ -171,10 +176,13 @@ pub export fn wizig_runtime_new(
     if (app_name_len == 0) return setLastError(.argument, statusCode(.invalid_argument), "empty app name");
     const app_name = app_name_ptr[0..app_name_len];
 
-    const box = allocator.create(RuntimeBox) catch return setLastError(.memory, statusCode(.out_of_memory), "out of memory");
-    errdefer allocator.destroy(box);
+    const box = bootstrap_allocator.create(RuntimeBox) catch return setLastError(.memory, statusCode(.out_of_memory), "out of memory");
+    errdefer bootstrap_allocator.destroy(box);
 
-    box.runtime = wizig_core.Runtime.init(allocator, app_name) catch |err| switch (err) {
+    box.gpa = .init;
+
+    const gpa_allocator = box.gpa.allocator();
+    box.runtime = wizig_core.Runtime.init(gpa_allocator, app_name) catch |err| switch (err) {
         error.OutOfMemory => return setLastError(.memory, statusCode(.out_of_memory), "out of memory"),
     };
 
@@ -192,7 +200,8 @@ pub export fn wizig_runtime_free(handle: ?*WizigRuntimeHandle) void {
 
     const box = toBox(handle.?);
     box.runtime.deinit();
-    allocator.destroy(box);
+    _ = box.gpa.deinit();
+    bootstrap_allocator.destroy(box);
 }
 
 /// Executes runtime echo and returns an owned UTF-8 byte buffer.
@@ -219,7 +228,8 @@ pub export fn wizig_runtime_echo(
     const box = toBox(handle.?);
     const input = input_ptr[0..input_len];
 
-    const echoed = box.runtime.echo(input, allocator) catch |err| switch (err) {
+    // Allocate result with page_allocator since wizig_bytes_free is handle-free
+    const echoed = box.runtime.echo(input, bootstrap_allocator) catch |err| switch (err) {
         error.OutOfMemory => return setLastError(.memory, statusCode(.out_of_memory), "out of memory"),
     };
 
@@ -235,7 +245,7 @@ pub export fn wizig_runtime_echo(
 /// This function only accepts pointers returned by Wizig allocation paths.
 pub export fn wizig_bytes_free(ptr: ?[*]u8, len: usize) void {
     if (ptr == null) return;
-    allocator.free(ptr.?[0..len]);
+    bootstrap_allocator.free(ptr.?[0..len]);
 }
 
 test "ffi runtime round trip and handshake exports" {

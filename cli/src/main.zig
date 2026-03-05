@@ -2,6 +2,7 @@
 const std = @import("std");
 const Io = std.Io;
 
+const build_cmd = @import("commands/build/root.zig");
 const create_cmd = @import("commands/create/root.zig");
 const run_cmd = @import("commands/run/root.zig");
 const plugin_cmd = @import("commands/plugin/root.zig");
@@ -30,6 +31,13 @@ pub fn main(init: std.process.Init) !void {
 
     const command = args[1];
     const rest = args[2..];
+
+    if (std.mem.eql(u8, command, "build")) {
+        build_cmd.run(arena, io, stderr, stdout, rest) catch {
+            std.process.exit(1);
+        };
+        return;
+    }
 
     if (std.mem.eql(u8, command, "create")) {
         create_cmd.run(arena, io, init.environ_map, stderr, stdout, rest) catch {
@@ -76,6 +84,7 @@ fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Wizig CLI\n\n" ++
             "Usage:\n" ++
+            "  wizig build android --release [--abis arm64-v8a,armeabi-v7a,x86_64]\n" ++
             "  wizig create <name> [destination_dir] [--platforms ios,android,macos] [--sdk-root <path>]\n" ++
             "  wizig run [project_dir] [options] [--allow-toolchain-drift]\n" ++
             "  wizig plugin validate|sync|add ...\n" ++
@@ -83,6 +92,7 @@ fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
             "  wizig doctor [--sdk-root <path>]\n\n",
     );
 
+    try build_cmd.printUsage(writer);
     try create_cmd.printUsage(writer);
     try run_cmd.printUsage(writer);
     try plugin_cmd.printUsage(writer);

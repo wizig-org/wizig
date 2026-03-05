@@ -12,6 +12,8 @@ pub fn appendMethodExports(
     for (methods) |method| {
         const ffi_name = try std.fmt.allocPrint(arena, "wizig_api_{s}", .{method.name});
         const jni_name = try helpers.jniEscape(arena, ffi_name);
+        const input_wire = helpers.wireKind(method.input);
+        const output_wire = helpers.wireKind(method.output);
         try helpers.appendFmt(
             out,
             arena,
@@ -19,7 +21,7 @@ pub fn appendMethodExports(
             .{ helpers.jniCType(method.output), jni_name },
         );
 
-        switch (method.input) {
+        switch (input_wire) {
             .void => {},
             .string => try out.appendSlice(arena, ", jstring input"),
             .int => try out.appendSlice(arena, ", jlong input"),
@@ -28,11 +30,11 @@ pub fn appendMethodExports(
         try out.appendSlice(arena, ") {\n");
         try out.appendSlice(arena, "    (void)clazz;\n");
 
-        switch (method.output) {
+        switch (output_wire) {
             .string => {
                 try out.appendSlice(arena, "    uint8_t* out_ptr = NULL;\n");
                 try out.appendSlice(arena, "    size_t out_len = 0;\n");
-                switch (method.input) {
+                switch (input_wire) {
                     .void => try helpers.appendFmt(out, arena, "    int32_t status = {s}(&out_ptr, &out_len);\n", .{ffi_name}),
                     .string => {
                         try out.appendSlice(arena, "    if (input == NULL) {\n");
@@ -62,7 +64,7 @@ pub fn appendMethodExports(
             },
             .int => {
                 try out.appendSlice(arena, "    int64_t out_value = 0;\n");
-                switch (method.input) {
+                switch (input_wire) {
                     .void => try helpers.appendFmt(out, arena, "    int32_t status = {s}(&out_value);\n", .{ffi_name}),
                     .string => {
                         try out.appendSlice(arena, "    if (input == NULL) {\n");
@@ -85,7 +87,7 @@ pub fn appendMethodExports(
             },
             .bool => {
                 try out.appendSlice(arena, "    uint8_t out_value = 0;\n");
-                switch (method.input) {
+                switch (input_wire) {
                     .void => try helpers.appendFmt(out, arena, "    int32_t status = {s}(&out_value);\n", .{ffi_name}),
                     .string => {
                         try out.appendSlice(arena, "    if (input == NULL) {\n");
@@ -107,7 +109,7 @@ pub fn appendMethodExports(
                 try out.appendSlice(arena, "    return out_value ? JNI_TRUE : JNI_FALSE;\n");
             },
             .void => {
-                switch (method.input) {
+                switch (input_wire) {
                     .void => try helpers.appendFmt(out, arena, "    int32_t status = {s}();\n", .{ffi_name}),
                     .string => {
                         try out.appendSlice(arena, "    if (input == NULL) {\n");

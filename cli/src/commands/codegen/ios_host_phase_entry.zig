@@ -9,7 +9,6 @@
 //! This module only owns static template constants. Project scanning and pbxproj
 //! mutation logic live in `ios_host_patch.zig`.
 const ios_phase_appstore_checks = @import("ios_host_phase_appstore_checks.zig");
-const ios_phase_macho_fixup = @import("ios_host_phase_macho_fixup.zig");
 const ios_phase_toolchain = @import("ios_host_phase_toolchain.zig");
 
 /// Deterministic PBX shell phase display name.
@@ -41,7 +40,6 @@ pub const phase_entry =
     "\t\t\toutputPaths = (\n" ++
     "\t\t\t\t\"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WizigFFI.framework/WizigFFI\",\n" ++
     "\t\t\t\t\"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WizigFFI.framework/Info.plist\",\n" ++
-    "\t\t\t\t\"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WizigFFI.framework/_CodeSignature/CodeResources\",\n" ++
     "\t\t\t\t\"$(SRCROOT)/../.wizig/generated/ios/WizigFFI.xcframework/Info.plist\",\n" ++
     "\t\t\t);\n" ++
     "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n" ++
@@ -110,14 +108,12 @@ pub const phase_entry =
     "  echo \\\"error: failed to resolve iphoneos/iphonesimulator SDK paths for Wizig FFI build\\\" >&2\\n" ++
     "  exit 1\\n" ++
     "fi\\n" ++
-    ios_phase_macho_fixup.fix_macho_text_page_alignment ++
     "build_ffi_slice() {\\n" ++
     "  TARGET_NAME=\\\"$1\\\"\\n" ++
     "  SYSROOT_PATH=\\\"$2\\\"\\n" ++
     "  OUTPUT_BIN=\\\"$3\\\"\\n" ++
     "  mkdir -p \\\"$(dirname \\\"${OUTPUT_BIN}\\\")\\\"\\n" ++
-    "  \\\"${ZIG_BIN}\\\" build-lib -O\\\"${ZIG_OPTIMIZE}\\\" -fno-error-tracing -fno-unwind-tables -fstrip -target \\\"${TARGET_NAME}\\\" --dep wizig_core --dep wizig_app -Mroot=\\\"${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig\\\" -Mwizig_core=\\\"${RUNTIME_ROOT}/core/src/root.zig\\\" -Mwizig_app=\\\"${LIB_ROOT}/WizigGeneratedAppModule.zig\\\" --name WizigFFI -dynamic -install_name @rpath/WizigFFI.framework/WizigFFI -headerpad_max_install_names --sysroot \\\"${SYSROOT_PATH}\\\" -L/usr/lib -F/System/Library/Frameworks -lc -femit-bin=\\\"${OUTPUT_BIN}\\\"\\n" ++
-    "  fix_macho_text_page_alignment \\\"${OUTPUT_BIN}\\\"\\n" ++
+    "  \\\"${ZIG_BIN}\\\" build-lib -dynamic -O\\\"${ZIG_OPTIMIZE}\\\" -fno-error-tracing -fno-unwind-tables -fstrip -target \\\"${TARGET_NAME}\\\" --dep wizig_core --dep wizig_app -Mroot=\\\"${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig\\\" -Mwizig_core=\\\"${RUNTIME_ROOT}/core/src/root.zig\\\" -Mwizig_app=\\\"${LIB_ROOT}/WizigGeneratedAppModule.zig\\\" --name WizigFFI --sysroot \\\"${SYSROOT_PATH}\\\" -L/usr/lib -F/System/Library/Frameworks -lc -femit-bin=\\\"${OUTPUT_BIN}\\\"\\n" ++
     "}\\n" ++
     "build_ffi_slice \\\"aarch64-ios\\\" \\\"${IOS_SDKROOT}\\\" \\\"${TMP_DEVICE_FRAMEWORK_BIN}\\\"\\n" ++
     "build_ffi_slice \\\"aarch64-ios-simulator\\\" \\\"${SIM_SDKROOT}\\\" \\\"${TMP_SIM_ARM64_FRAMEWORK_BIN}\\\"\\n" ++
@@ -207,16 +203,6 @@ pub const phase_entry =
     "  fi\\n" ++
     "fi\\n" ++
     ios_phase_appstore_checks.private_api_guards ++
-    "if [ \\\"${PLATFORM_NAME}\\\" = \\\"iphoneos\\\" ]; then\\n" ++
-    "  SIGN_IDENTITY=\\\"${EXPANDED_CODE_SIGN_IDENTITY:-}\\\"\\n" ++
-    "  if [ -z \\\"${SIGN_IDENTITY}\\\" ] || [ \\\"${SIGN_IDENTITY}\\\" = \\\"-\\\" ]; then\\n" ++
-    "    echo \\\"warning: no Xcode signing identity (EXPANDED_CODE_SIGN_IDENTITY) resolved; falling back to ad-hoc signing for WizigFFI.framework\\\" >&2\\n" ++
-    "    SIGN_IDENTITY=\\\"-\\\"\\n" ++
-    "  fi\\n" ++
-    "  echo \\\"wizig: signing WizigFFI.framework with identity: ${SIGN_IDENTITY}\\\"\\n" ++
-    "  /usr/bin/codesign --force --sign \\\"${SIGN_IDENTITY}\\\" --timestamp=none \\\"${OUT_FRAMEWORK_DIR}\\\"\\n" ++
-    "  /usr/bin/codesign --verify --strict \\\"${OUT_FRAMEWORK_DIR}\\\"\\n" ++
-    "fi\\n" ++
     "SIM_XC_FRAMEWORK_DIR=\\\"${TMP_SIM_ARM64_FRAMEWORK_DIR}\\\"\\n" ++
     "if [ \\\"${HAS_SIM_X64}\\\" = \\\"1\\\" ]; then\\n" ++
     "  mkdir -p \\\"${TMP_SIM_UNIVERSAL_FRAMEWORK_DIR}\\\"\\n" ++

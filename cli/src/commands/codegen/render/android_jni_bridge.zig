@@ -46,7 +46,7 @@ pub fn renderAndroidJniBridge(
         const ffi_name = try std.fmt.allocPrint(arena, "wizig_api_{s}", .{method.name});
         try helpers.appendFmt(&out, arena, "extern int32_t {s}(", .{ffi_name});
         var need_comma = false;
-        switch (method.input) {
+        switch (helpers.wireKind(method.input)) {
             .void => {},
             .string => {
                 try out.appendSlice(arena, "const uint8_t* input_ptr, size_t input_len");
@@ -62,7 +62,7 @@ pub fn renderAndroidJniBridge(
             },
         }
 
-        switch (method.output) {
+        switch (helpers.wireKind(method.output)) {
             .string => {
                 if (need_comma) try out.appendSlice(arena, ", ");
                 try out.appendSlice(arena, "uint8_t** out_ptr, size_t* out_len");

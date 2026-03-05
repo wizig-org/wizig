@@ -12,7 +12,13 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "WizigFFI",
+            path: "Sources/WizigFFI",
+            publicHeadersPath: "include"
+        ),
+        .target(
             name: "Wizig",
+            dependencies: ["WizigFFI"],
             path: "Sources/Wizig"
         ),
     ]

@@ -1,19 +1,13 @@
-import Darwin
+import WizigFFI
 import Foundation
 
 public enum WizigRuntimeError: Error, CustomStringConvertible {
-    case ffiLibraryLoadFailed(String)
-    case ffiSymbolMissing(String)
     case ffiCallFailed(function: String, status: Int32)
     case runtimeUnavailable
     case invalidUtf8
 
     public var description: String {
         switch self {
-        case let .ffiLibraryLoadFailed(reason):
-            return "failed to load Wizig FFI library: \(reason)"
-        case let .ffiSymbolMissing(name):
-            return "missing Wizig FFI symbol: \(name)"
         case let .ffiCallFailed(function, status):
             return "FFI call failed: \(function) returned status \(status)"
         case .runtimeUnavailable:
@@ -28,152 +22,26 @@ private enum WizigStatus: Int32 {
     case ok = 0
 }
 
-private final class WizigFFI {
-    typealias RuntimeNewFn = @convention(c) (
-        UnsafePointer<UInt8>,
-        Int,
-        UnsafeMutablePointer<UnsafeMutableRawPointer?>?
-    ) -> Int32
-
-    typealias RuntimeFreeFn = @convention(c) (UnsafeMutableRawPointer?) -> Void
-
-    typealias RuntimeEchoFn = @convention(c) (
-        UnsafeMutableRawPointer?,
-        UnsafePointer<UInt8>,
-        Int,
-        UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?,
-        UnsafeMutablePointer<Int>?
-    ) -> Int32
-
-    typealias BytesFreeFn = @convention(c) (UnsafeMutablePointer<UInt8>?, Int) -> Void
-
-    let runtimeNew: RuntimeNewFn
-    let runtimeFree: RuntimeFreeFn
-    let runtimeEcho: RuntimeEchoFn
-    let bytesFree: BytesFreeFn
-
-    private let libraryHandle: UnsafeMutableRawPointer
-
-    private init(
-        libraryHandle: UnsafeMutableRawPointer,
-        runtimeNew: @escaping RuntimeNewFn,
-        runtimeFree: @escaping RuntimeFreeFn,
-        runtimeEcho: @escaping RuntimeEchoFn,
-        bytesFree: @escaping BytesFreeFn
-    ) {
-        self.libraryHandle = libraryHandle
-        self.runtimeNew = runtimeNew
-        self.runtimeFree = runtimeFree
-        self.runtimeEcho = runtimeEcho
-        self.bytesFree = bytesFree
-    }
-
-    deinit {
-        _ = dlclose(libraryHandle)
-    }
-
-    private static func defaultLibraryCandidates() -> [String] {
-        var values = [String]()
-        if let fromEnv = ProcessInfo.processInfo.environment["WIZIG_FFI_LIB"], !fromEnv.isEmpty {
-            values.append(fromEnv)
-        }
-        if let frameworksPath = Bundle.main.privateFrameworksPath, !frameworksPath.isEmpty {
-            values.append((frameworksPath as NSString).appendingPathComponent("WizigFFI.framework/WizigFFI"))
-        }
-        values.append(Bundle.main.bundleURL.appendingPathComponent("Frameworks/WizigFFI.framework/WizigFFI").path)
-        if let executableDir = Bundle.main.executableURL?.deletingLastPathComponent().path {
-            values.append((executableDir as NSString).appendingPathComponent("Frameworks/WizigFFI.framework/WizigFFI"))
-        }
-        values.append(contentsOf: [
-            "@rpath/WizigFFI.framework/WizigFFI",
-            "@executable_path/Frameworks/WizigFFI.framework/WizigFFI",
-        ])
-        var seen = Set<String>()
-        return values.filter { candidate in
-            guard !candidate.isEmpty else { return false }
-            return seen.insert(candidate).inserted
-        }
-    }
-
-    static func load(libraryPath: String?) throws -> WizigFFI {
-        let pathCandidates: [String] = {
-            if let libraryPath, !libraryPath.isEmpty {
-                return [libraryPath]
-            }
-            return defaultLibraryCandidates()
-        }()
-
-        var attempts = [String]()
-
-        for candidate in pathCandidates {
-            _ = dlerror()
-            guard let handle = dlopen(candidate, RTLD_NOW | RTLD_LOCAL) else {
-                if let err = dlerror() {
-                    attempts.append("\(candidate): \(String(cString: err))")
-                } else {
-                    attempts.append("\(candidate): unknown dlopen error")
-                }
-                continue
-            }
-
-            do {
-                let runtimeNew: RuntimeNewFn = try loadSymbol(handle, name: "wizig_runtime_new")
-                let runtimeFree: RuntimeFreeFn = try loadSymbol(handle, name: "wizig_runtime_free")
-                let runtimeEcho: RuntimeEchoFn = try loadSymbol(handle, name: "wizig_runtime_echo")
-                let bytesFree: BytesFreeFn = try loadSymbol(handle, name: "wizig_bytes_free")
-
-                return WizigFFI(
-                    libraryHandle: handle,
-                    runtimeNew: runtimeNew,
-                    runtimeFree: runtimeFree,
-                    runtimeEcho: runtimeEcho,
-                    bytesFree: bytesFree
-                )
-            } catch {
-                _ = dlclose(handle)
-                attempts.append("\(candidate): \(error)")
-                continue
-            }
-        }
-
-        let details = attempts.isEmpty ? "no candidate library path" : attempts.joined(separator: " | ")
-        throw WizigRuntimeError.ffiLibraryLoadFailed(details)
-    }
-
-    private static func loadSymbol<T>(_ handle: UnsafeMutableRawPointer, name: String) throws -> T {
-        _ = dlerror()
-        guard let symbol = dlsym(handle, name) else {
-            throw WizigRuntimeError.ffiSymbolMissing(name)
-        }
-        return unsafeBitCast(symbol, to: T.self)
-    }
-}
-
 public final class WizigRuntime {
     public let plugins: [PluginDescriptor]
     public private(set) var lastError: WizigRuntimeError?
 
-    private var ffi: WizigFFI?
-    private var handle: UnsafeMutableRawPointer?
+    private var handle: OpaquePointer?
 
     public var isAvailable: Bool {
-        handle != nil && ffi != nil && lastError == nil
+        handle != nil && lastError == nil
     }
 
     public init(
         appName: String = "wizig-ios",
-        plugins: [PluginDescriptor] = GeneratedPluginRegistrant.plugins,
-        libraryPath: String? = nil
+        plugins: [PluginDescriptor] = GeneratedPluginRegistrant.plugins
     ) {
         self.plugins = plugins
 
         do {
-            let ffi = try WizigFFI.load(libraryPath: libraryPath)
-            self.ffi = ffi
-
-            var runtimeHandle: UnsafeMutableRawPointer?
+            var runtimeHandle: OpaquePointer?
             let status = try withUTF8Pointer(of: appName) { ptr, len in
-                ffi.runtimeNew(ptr, len, &runtimeHandle)
+                wizig_runtime_new(ptr, len, &runtimeHandle)
             }
 
             guard status == WizigStatus.ok.rawValue, runtimeHandle != nil else {
@@ -183,7 +51,7 @@ public final class WizigRuntime {
         } catch let error as WizigRuntimeError {
             lastError = error
         } catch {
-            lastError = .ffiLibraryLoadFailed(error.localizedDescription)
+            lastError = .ffiCallFailed(function: "wizig_runtime_new", status: -1)
         }
     }
 
@@ -192,8 +60,8 @@ public final class WizigRuntime {
     }
 
     public func close() {
-        guard let ffi, let handle else { return }
-        ffi.runtimeFree(handle)
+        guard let handle else { return }
+        wizig_runtime_free(handle)
         self.handle = nil
     }
 
@@ -202,7 +70,7 @@ public final class WizigRuntime {
     }
 
     public func echo(_ input: String) throws -> String {
-        guard let ffi, let handle else {
+        guard let handle else {
             throw lastError ?? .runtimeUnavailable
         }
 
@@ -210,7 +78,7 @@ public final class WizigRuntime {
         var outLen = 0
 
         let status = try withUTF8Pointer(of: input) { ptr, len in
-            ffi.runtimeEcho(handle, ptr, len, &outPtr, &outLen)
+            wizig_runtime_echo(handle, ptr, len, &outPtr, &outLen)
         }
 
         guard status == WizigStatus.ok.rawValue else {
@@ -222,7 +90,7 @@ public final class WizigRuntime {
         }
 
         defer {
-            ffi.bytesFree(outPtr, outLen)
+            wizig_bytes_free(outPtr, outLen)
         }
 
         let data = Data(bytes: outPtr, count: outLen)

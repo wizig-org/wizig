@@ -146,7 +146,7 @@ fn runIosSimulator(
 
     const app_root_path = try app_root.resolveAppRoot(arena, io, options.project_dir);
     const simulator_ffi_path = try ios_ffi.buildIosSimulatorFfiLibrary(arena, io, stderr, parent_environ_map, app_root_path);
-    const runtime_ffi_path = try ios_ffi.bundleIosFfiLibraryForSimulator(arena, io, stderr, app_path, simulator_ffi_path);
+    _ = try ios_ffi.bundleIosFfiLibraryForSimulator(arena, io, stderr, app_path, simulator_ffi_path);
 
     try process.runInheritChecked(io, stderr, .{
         .argv = &.{ "xcrun", "simctl", "install", selected.udid, app_path },
@@ -157,8 +157,6 @@ fn runIosSimulator(
 
     var launch_env = try parent_environ_map.clone(arena);
     defer launch_env.deinit();
-    try launch_env.put("WIZIG_FFI_LIB", runtime_ffi_path);
-    try launch_env.put("SIMCTL_CHILD_WIZIG_FFI_LIB", runtime_ffi_path);
     try launch_env.put("SIMCTL_CHILD_NSUnbufferedIO", "YES");
     try launch_env.put("SIMCTL_CHILD_CFLOG_FORCE_STDERR", "YES");
     try launch_env.put("SIMCTL_CHILD_OS_ACTIVITY_MODE", "disable");

@@ -497,7 +497,6 @@ test "phase_entry configures zig caches inside xcode temp directories" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_FFI_ALLOW_OPTIMIZE_OVERRIDE") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_FFI_ALLOW_TOOLCHAIN_DRIFT") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WizigFFI.xcframework") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "_CodeSignature/CodeResources") != null);
 }
 
 test "phase_entry builds device and simulator xcframework slices" {
@@ -520,17 +519,15 @@ test "phase_entry packages generated headers and modulemap into each framework s
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "Modules/module.modulemap") != null);
 }
 
-test "phase_entry signs device framework outputs when code signing is enabled" {
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY_NAME") == null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "${CODE_SIGN_IDENTITY:-}") == null);
-    // Missing identity now falls back to ad-hoc instead of hard-erroring.
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "falling back to ad-hoc signing") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --force --sign") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --verify --strict") != null);
-    // Signing is unconditional for iphoneos; no CODE_SIGNING_ALLOWED guard.
+test "phase_entry uses dynamic libraries and avoids explicit framework signing commands" {
+    // Framework binaries are dynamic Mach-O files and are signed by Xcode as
+    // part of the app bundle codesign flow. The script must not hardcode
+    // ad-hoc framework signing commands.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --force --sign") == null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --verify --strict") == null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "PLATFORM_NAME") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "-headerpad_max_install_names") != null);
+    // Dynamic framework builds must explicitly request dynamic output.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "-dynamic") != null);
     // Frameworks must not use --generate-entitlement-der (apps only).
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "--generate-entitlement-der") == null);
 }
@@ -543,19 +540,12 @@ test "phase_entry validates device slice architectures for app-store safety" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_IOS_PRIVATE_SYMBOL_DENYLIST_REGEX") != null);
 }
 
-test "phase_entry applies Mach-O __TEXT page alignment fixup after zig build" {
-    // The zig linker may produce __TEXT segments with non-page-aligned vmsize/
-    // filesize.  Real iOS devices reject such binaries with "code signature
-    // invalid" because AMFI page-hash boundaries do not match segment limits.
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "fix_macho_text_page_alignment") != null);
-    // The fixup function must be defined before it is called inside build_ffi_slice.
-    const fn_def = std.mem.indexOf(u8, phase_entry, "fix_macho_text_page_alignment()") orelse unreachable;
-    const first_call = std.mem.indexOf(u8, phase_entry, "fix_macho_text_page_alignment \\\"${OUTPUT_BIN}\\\"") orelse unreachable;
-    try std.testing.expect(fn_def < first_call);
-    // The fixup uses python3 to patch LC_SEGMENT_64 __TEXT fields in-place.
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "python3") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "__TEXT") != null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "FEEDFACF") != null);
+test "phase_entry does not include legacy Mach-O fixup helper" {
+    // The legacy python-based page-alignment fixup pipeline is intentionally
+    // absent from the generated phase.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "fix_macho_text_page_alignment") == null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "python3") == null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "FEEDFACF") == null);
 }
 
 test "phase_entry contains only properly escaped quotes for pbxproj embedding" {

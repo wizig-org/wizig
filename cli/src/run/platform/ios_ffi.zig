@@ -1,6 +1,6 @@
 //! iOS FFI build and bundling support for simulators and real devices.
 //!
-//! This module builds cached framework binaries and installs
+//! This module builds cached dynamic framework binaries and installs
 //! `WizigFFI.framework` into app bundle locations expected by runtime loaders.
 const std = @import("std");
 const Io = std.Io;
@@ -63,6 +63,7 @@ pub fn buildIosSimulatorFfiLibrary(
     try argv.appendSlice(arena, &.{
         "zig",
         "build-lib",
+        "-dynamic",
         "-OReleaseFast",
         "-fno-error-tracing",
         "-fno-unwind-tables",
@@ -82,10 +83,6 @@ pub fn buildIosSimulatorFfiLibrary(
     try argv.appendSlice(arena, &.{
         "--name",
         "WizigFFI",
-        "-dynamic",
-        "-install_name",
-        "@rpath/WizigFFI.framework/WizigFFI",
-        "-headerpad_max_install_names",
         "--sysroot",
         sdk_path,
         "-L/usr/lib",
@@ -98,7 +95,6 @@ pub fn buildIosSimulatorFfiLibrary(
         .argv = argv.items,
         .label = "build iOS simulator Wizig FFI library",
     }, .{});
-    try fixMachoTextPageAlignment(arena, io, stderr, out_path);
     try writeFrameworkInfoPlist(io, info_plist);
 
     return out_path;
@@ -127,7 +123,7 @@ pub fn buildIosDeviceFfiLibrary(
     const fingerprint = try ffi_fingerprint.computeFfiFingerprint(
         arena,
         io,
-        "wizig-ios-ffi-device-cache-v1",
+        "wizig-ios-ffi-device-cache-v2",
         sdk_path,
         ffi_inputs.root_source,
         ffi_inputs.core_source,
@@ -155,6 +151,7 @@ pub fn buildIosDeviceFfiLibrary(
     try argv.appendSlice(arena, &.{
         "zig",
         "build-lib",
+        "-dynamic",
         "-OReleaseFast",
         "-fno-error-tracing",
         "-fno-unwind-tables",
@@ -174,10 +171,6 @@ pub fn buildIosDeviceFfiLibrary(
     try argv.appendSlice(arena, &.{
         "--name",
         "WizigFFI",
-        "-dynamic",
-        "-install_name",
-        "@rpath/WizigFFI.framework/WizigFFI",
-        "-headerpad_max_install_names",
         "--sysroot",
         sdk_path,
         "-L/usr/lib",
@@ -190,19 +183,16 @@ pub fn buildIosDeviceFfiLibrary(
         .argv = argv.items,
         .label = "build iOS device Wizig FFI library",
     }, .{});
-    try fixMachoTextPageAlignment(arena, io, stderr, out_path);
     try writeFrameworkInfoPlist(io, info_plist);
 
     return out_path;
 }
 
-/// Copies host framework into device app `Frameworks` location and signs it.
+/// Copies host dynamic framework into device app `Frameworks` location.
 ///
-/// ## Code Signing
-/// Real iOS devices require a valid code signature on all embedded frameworks.
-/// When `sign_identity` is provided, the framework and the enclosing app are
-/// signed with that identity.  When `null`, ad-hoc signing (`-`) is used as a
-/// fallback (suitable for development with automatic provisioning).
+/// ## Signing
+/// Device installations require embedded frameworks to be code signed with the
+/// same identity used for the app bundle.
 pub fn bundleIosFfiLibraryForDevice(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -236,25 +226,25 @@ pub fn bundleIosFfiLibraryForDevice(
             .argv = &.{ "cp", "-R", src_framework_dir, dst_framework_dir },
             .label = "copy Wizig framework into iOS device app Frameworks",
         }, .{});
-        const identity = sign_identity orelse "-";
-        try codesignPathWithIdentity(arena, io, stderr, dst_framework_dir, identity, "codesign staged Wizig framework for iOS device");
-        try codesignPathWithIdentity(arena, io, stderr, app_path, identity, "codesign iOS device app after staging Wizig FFI");
+
+        if (sign_identity) |identity| {
+            if (identity.len != 0) {
+                _ = try process.runCaptureChecked(arena, io, stderr, .{
+                    .argv = &.{ "/usr/bin/codesign", "--force", "--sign", identity, "--timestamp=none", dst_framework_dir },
+                    .label = "codesign embedded iOS device Wizig framework",
+                }, .{});
+            }
+        }
     }
 
     return "@executable_path/Frameworks/WizigFFI.framework/WizigFFI";
 }
 
-/// Copies host framework into simulator app `Frameworks` location.
+/// Copies host dynamic framework into simulator app `Frameworks` location.
 ///
 /// ## Incrementality
 /// Destination files are updated only when bytes differ, preserving filesystem
 /// metadata via `cp` while avoiding redundant writes.
-///
-/// ## Launch Stability
-/// On modern simulator runtimes, placing unmanaged dynamic libraries directly in
-/// app roots can fail installation preflight. This function stages the runtime
-/// as `WizigFFI.framework` and re-signs changed artifacts to satisfy launch
-/// policy checks.
 pub fn bundleIosFfiLibraryForSimulator(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -287,8 +277,6 @@ pub fn bundleIosFfiLibraryForSimulator(
             .argv = &.{ "cp", "-R", src_framework_dir, dst_framework_dir },
             .label = "copy Wizig framework into iOS app Frameworks",
         }, .{});
-        try codesignPath(arena, io, stderr, dst_framework_dir, "codesign staged Wizig framework in iOS Frameworks");
-        try codesignPath(arena, io, stderr, app_path, "codesign iOS app after staging Wizig FFI");
     }
 
     return "@executable_path/Frameworks/WizigFFI.framework/WizigFFI";
@@ -306,76 +294,6 @@ fn filesEqual(
         else => return err,
     };
     return std.mem.eql(u8, src_bytes, dst_bytes);
-}
-
-fn codesignPath(
-    arena: std.mem.Allocator,
-    io: std.Io,
-    stderr: *Io.Writer,
-    path: []const u8,
-    label: []const u8,
-) !void {
-    _ = try process.runCaptureChecked(arena, io, stderr, .{
-        .argv = &.{ "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none", path },
-        .label = label,
-    }, .{});
-}
-
-fn codesignPathWithIdentity(
-    arena: std.mem.Allocator,
-    io: std.Io,
-    stderr: *Io.Writer,
-    path: []const u8,
-    identity: []const u8,
-    label: []const u8,
-) !void {
-    _ = try process.runCaptureChecked(arena, io, stderr, .{
-        .argv = &.{ "/usr/bin/codesign", "--force", "--sign", identity, "--timestamp=none", path },
-        .label = label,
-    }, .{});
-}
-
-/// Fixes Mach-O __TEXT segment page alignment for zig-produced binaries.
-///
-/// The Zig linker may emit dynamic libraries whose `__TEXT` segment `vmsize`
-/// and `filesize` are not rounded up to the 16 KB page boundary required by
-/// arm64 iOS devices.  The macOS `codesign` tool and simulator runtimes
-/// tolerate this, but real-device AMFI kernel validation rejects the code
-/// signature as structurally invalid because page-hash boundaries do not
-/// match segment limits.
-///
-/// This function invokes a small `python3` one-liner that patches the two
-/// fields in-place.  It is a no-op when the binary is already aligned or
-/// is not a 64-bit Mach-O.
-fn fixMachoTextPageAlignment(
-    arena: std.mem.Allocator,
-    io: std.Io,
-    stderr: *Io.Writer,
-    binary_path: []const u8,
-) !void {
-    const script =
-        "import struct,sys\n" ++
-        "p=sys.argv[1]\n" ++
-        "d=bytearray(open(p,'rb').read())\n" ++
-        "if struct.unpack_from('<I',d,0)[0]!=0xFEEDFACF:sys.exit(0)\n" ++
-        "o=32\n" ++
-        "for _ in range(struct.unpack_from('<I',d,16)[0]):\n" ++
-        " c,s=struct.unpack_from('<II',d,o)\n" ++
-        " if c==0x19 and d[o+8:o+24].split(b'\\x00')[0]==b'__TEXT':\n" ++
-        "  m=0\n" ++
-        "  for f in(32,48):\n" ++
-        "   v=struct.unpack_from('<Q',d,o+f)[0];a=(v+16383)&~16383\n" ++
-        "   if v!=a:struct.pack_into('<Q',d,o+f,a);m=1\n" ++
-        "  if m:open(p,'wb').write(d)\n" ++
-        "  break\n" ++
-        " o+=s\n";
-    _ = process.runCapture(arena, io, .{
-        .argv = &.{ "python3", "-c", script, binary_path },
-        .label = "fix Mach-O __TEXT page alignment for iOS device",
-    }, .{}) catch |err| {
-        try stderr.print("warning: failed to fix Mach-O page alignment: {s}\n", .{@errorName(err)});
-        try stderr.flush();
-    };
 }
 
 fn writeFrameworkInfoPlist(io: std.Io, out_path: []const u8) !void {
@@ -424,7 +342,7 @@ pub fn resolveIosFfiLibraryPath(
     const cwd = try std.process.currentPathAlloc(io, arena);
     const framework_guess = try std.fs.path.resolve(arena, &.{ cwd, "zig-out", "lib", "WizigFFI.framework", "WizigFFI" });
     if (fs_utils.pathExists(io, framework_guess)) return framework_guess;
-    const guessed = try std.fs.path.resolve(arena, &.{ cwd, "zig-out", "lib", "libwizigffi.dylib" });
-    if (fs_utils.pathExists(io, guessed)) return guessed;
+    const static_guess = try std.fs.path.resolve(arena, &.{ cwd, "zig-out", "lib", "libWizigFFI.a" });
+    if (fs_utils.pathExists(io, static_guess)) return static_guess;
     return null;
 }
