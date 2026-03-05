@@ -9,6 +9,7 @@ on:
 jobs:
   build-test-e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,9 +72,44 @@ jobs:
         run: python3 -m pip install --upgrade markdown
 
       - name: Unit and integration tests
-        run: zig build test
+        timeout-minutes: 20
+        run: zig build test --summary all
+
+      - name: Build installable (ReleaseSafe)
+        timeout-minutes: 20
+        run: |
+          VERSION="ci-${GITHUB_SHA::8}"
+          zig build -Doptimize=ReleaseSafe -Dversion="$VERSION" --summary all
+
+      - name: Package installable artifact
+        id: package
+        run: |
+          VERSION="ci-${GITHUB_SHA::8}"
+          TARGET_OS="linux"
+          TARGET_ARCH="x86_64"
+          DIRNAME="wizig-${VERSION}-${TARGET_OS}-${TARGET_ARCH}"
+          ARCHIVE="${DIRNAME}.tar.gz"
+
+          mkdir -p "$DIRNAME/bin" "$DIRNAME/share/wizig" "$DIRNAME/lib" "$DIRNAME/include"
+          cp zig-out/bin/wizig "$DIRNAME/bin/"
+          cp -R zig-out/share/wizig/sdk "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp -R zig-out/share/wizig/runtime "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp -R zig-out/share/wizig/templates "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp zig-out/share/wizig/toolchains.toml "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp zig-out/lib/libwizigffi.* "$DIRNAME/lib/" 2>/dev/null || true
+          cp zig-out/include/wizig.h "$DIRNAME/include/" 2>/dev/null || true
+
+          tar czf "$ARCHIVE" "$DIRNAME"
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+
+      - name: Upload installable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-installable-linux-x86_64
+          path: ${{ steps.package.outputs.archive }}
 
       - name: End-to-end pipeline
+        timeout-minutes: 25
         run: zig build e2e
 
       - name: Docs determinism
