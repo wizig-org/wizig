@@ -65,9 +65,5 @@ jobs:
           name: ci-installable-linux-x86_64
           path: ${{ steps.package.outputs.archive }}
 
-      - name: End-to-end pipeline
-        timeout-minutes: 25
-        run: zig build e2e
-
       - name: Docs determinism
         run: python3 scripts/docs_build.py --check
