@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0)"
+        required: true
 
 permissions:
   contents: write
@@ -14,6 +19,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
@@ -49,6 +56,8 @@ jobs:
             arch: arm64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
@@ -61,7 +70,14 @@ jobs:
 
       - name: Extract version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Generate templates
         run: python3 tools/templategen/generate_templates.py --out build/generated/templates
@@ -118,14 +134,21 @@ jobs:
 
       - name: Extract version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ steps.version.outputs.VERSION }}" \
-            --title "Wizig v${{ steps.version.outputs.VERSION }}" \
+          gh release create "${{ steps.version.outputs.TAG }}" \
+            --title "Wizig ${{ steps.version.outputs.TAG }}" \
             --generate-notes \
             artifacts/wizig-*.tar.gz \
             artifacts/wizig-*.tar.gz.sha256
@@ -143,7 +166,12 @@ jobs:
       - name: Extract version and checksums
         id: meta
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "SHA_MACOS_ARM64=$(awk '{print $1}' artifacts/wizig-${VERSION}-macos-arm64.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
           echo "SHA_MACOS_X86_64=$(awk '{print $1}' artifacts/wizig-${VERSION}-macos-x86_64.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
