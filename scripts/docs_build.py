@@ -22,6 +22,7 @@ DOCS_DIR = ROOT / "docs"
 REFERENCE_DIR = DOCS_DIR / "reference" / "api"
 
 SKIP_PARTS = {".git", ".zig-cache", "zig-out", "build"}
+SKIP_PREFIXES = ("wizig-",)
 LANGUAGE_BY_SUFFIX = {
     ".zig": "zig",
     ".swift": "swift",
@@ -82,7 +83,7 @@ def discover_source_files() -> list[SourceFile]:
     for suffix, language in LANGUAGE_BY_SUFFIX.items():
         for path in ROOT.rglob(f"*{suffix}"):
             rel = path.relative_to(ROOT)
-            if any(part in SKIP_PARTS for part in rel.parts):
+            if any(part in SKIP_PARTS or any(part.startswith(prefix) for prefix in SKIP_PREFIXES) for part in rel.parts):
                 continue
             files.append(SourceFile(language=language, path=path, rel_path=rel))
 
