@@ -176,6 +176,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "wizig_core", .module = core_module },
+                .{ .name = "build_options", .module = build_options.createModule() },
             },
         }),
     });

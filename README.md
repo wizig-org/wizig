@@ -145,7 +145,7 @@ Non-interactive example:
 
 Core requirements:
 
-- Zig `0.15.1`
+- Zig `0.16.0-dev` (nightly)
 - Xcode `26+` with command line tools (`xcodebuild`, `xcrun`)
 - Java `21`
 - Gradle and Android SDK tools (`adb`, emulator, platform SDKs)

@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  ZIG_VERSION: "0.15.1"
+  ZIG_VERSION: "master"
 
 jobs:
   test:
