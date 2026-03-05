@@ -53,6 +53,8 @@ DerivedData/
 build/
 Build/
 build-*/
+!cli/src/commands/build/
+!cli/src/commands/build/**
 
 # CMake generated files
 CMakeFiles/
