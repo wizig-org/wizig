@@ -1,41 +1,29 @@
-# Wizig Documentation Build
+# Wizig Documentation
 
-Wizig docs are generated from:
+Wizig docs are built with [MkDocs](https://www.mkdocs.org/) using the [Material](https://squidfunk.github.io/mkdocs-material/) theme.
 
-- Manual markdown pages in `docs/content/`
-- Zig source comments (`//!`, `///`)
-- Swift source comments (`///`, `/** ... */`)
-- Kotlin source comments (`/** ... */`)
-
-Generated API reference pages are written to `docs/content/reference/`.
+API reference pages are auto-generated from source comments (Zig `//!`/`///`, Swift `///`/`/** */`, Kotlin `/** */`).
 
 ## Requirements
 
-- Python 3.12+
-- Python package: `Markdown`
-
-Install if missing:
-
-```sh
-python3 -m pip install Markdown
-```
+- Python 3.10+
+- Dependencies: `pip install -r docs/requirements.txt`
 
 ## Commands
 
 ```sh
-# Generate reference + build static site
-python3 scripts/docs_build.py
+# Build the full documentation site
+zig build docs
 
-# Only regenerate API reference markdown
-python3 scripts/docs_build.py --reference-only
+# Or run steps individually:
+python3 scripts/docs_build.py --reference-only   # Generate API reference
+mkdocs build                                      # Build static site
 
-# Only rebuild static site from existing markdown
-python3 scripts/docs_build.py --site-only
+# Preview locally with live reload
+mkdocs serve
 
-# Verify deterministic generation + checked-in reference freshness
+# Verify API reference determinism
 python3 scripts/docs_build.py --check
 ```
 
-Output site directory:
-
-- `docs/site/`
+Output site directory: `site/` (at project root, per MkDocs default).

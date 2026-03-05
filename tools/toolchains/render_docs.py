@@ -18,8 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover
 ROOT = Path(__file__).resolve().parents[2]
 TOOLCHAINS_PATH = ROOT / "toolchains.toml"
 DOC_TARGETS = [
-    ROOT / "docs" / "content" / "development-requirements.md",
-    ROOT / "docs" / "development-requirements.md",
+    ROOT / "docs" / "getting-started" / "development-requirements.md",
 ]
 
 
@@ -65,17 +64,17 @@ def render_markdown(manifest: dict) -> str:
         f"- Minimum deployment target is currently `{ios['deployment_target']}`.\n"
         "- Generated host bindings are sourced from `.wizig/generated/swift`.\n\n"
         "## Docs Tooling\n\n"
-        "Install Python markdown renderer:\n\n"
+        "Install documentation dependencies:\n\n"
         "```sh\n"
-        "python3 -m pip install --upgrade markdown\n"
+        "pip install -r docs/requirements.txt\n"
         "```\n\n"
-        "Then build docs:\n\n"
+        "Build docs:\n\n"
         "```sh\n"
         "zig build docs\n"
         "```\n\n"
-        "Validate deterministic docs output and checked-in reference docs:\n\n"
+        "Serve docs locally for preview:\n\n"
         "```sh\n"
-        "python3 scripts/docs_build.py --check\n"
+        "mkdocs serve\n"
         "```\n"
     )
 

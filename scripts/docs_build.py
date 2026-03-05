@@ -1,33 +1,25 @@
 #!/usr/bin/env python3
-"""Build Wizig documentation.
+"""Generate Wizig API reference documentation.
 
 Pipeline:
 1) Parse Zig/Swift/Kotlin module and declaration docs from source comments.
-2) Generate Markdown API reference pages under `docs/content/reference/`.
-3) Render all docs markdown pages into static HTML under `docs/site/`.
+2) Generate Markdown API reference pages under `docs/reference/api/`.
 
-Uses the `Markdown` Python package for rendering.
+Site rendering is handled by MkDocs (see mkdocs.yml).
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-import markdown
-
 ROOT = Path(__file__).resolve().parents[1]
 DOCS_DIR = ROOT / "docs"
-CONTENT_DIR = DOCS_DIR / "content"
-REFERENCE_DIR = CONTENT_DIR / "reference"
-SITE_DIR = DOCS_DIR / "site"
-THEME_DIR = DOCS_DIR / "theme"
-NAV_FILE = CONTENT_DIR / "_nav.txt"
+REFERENCE_DIR = DOCS_DIR / "reference" / "api"
 
 SKIP_PARTS = {".git", ".zig-cache", "zig-out", "build"}
 LANGUAGE_BY_SUFFIX = {
@@ -520,146 +512,6 @@ def generate_reference_markdown(output_dir: Path = REFERENCE_DIR) -> list[Genera
     return pages
 
 
-def extract_page_title(md_text: str, fallback: str) -> str:
-    for line in md_text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("# "):
-            return stripped[2:].strip()
-    return fallback
-
-
-def load_nav_entries(md_files: list[Path], content_dir: Path, nav_file: Path) -> list[Path]:
-    selected: list[Path] = []
-    seen: set[Path] = set()
-
-    if nav_file.exists():
-        for raw_line in nav_file.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            rel = Path(line)
-            candidate = content_dir / rel
-            if candidate.exists() and candidate.suffix == ".md" and candidate not in seen:
-                selected.append(candidate)
-                seen.add(candidate)
-
-    for path in sorted(md_files, key=lambda p: p.relative_to(content_dir).as_posix()):
-        if path in seen:
-            continue
-        selected.append(path)
-        seen.add(path)
-
-    return selected
-
-
-def rewrite_markdown_links(rendered_html: str) -> str:
-    def replacer(match: re.Match[str]) -> str:
-        target = match.group(1)
-        anchor = match.group(2) or ""
-        if "://" in target:
-            return match.group(0)
-        return f'href="{target}.html{anchor}"'
-
-    return re.sub(r'href="([^"]+?)\.md(#[^"]*)?"', replacer, rendered_html)
-
-
-def relative_href(from_html: Path, to_html: Path) -> str:
-    rel = os.path.relpath(to_html, start=from_html.parent)
-    return rel.replace(os.sep, "/")
-
-
-def render_sidebar(current_md: Path, nav: list[Path], title_map: dict[Path, str]) -> str:
-    current_html = current_md.with_suffix(".html")
-    lines = ["<ul class=\"nav-list\">"]
-    for entry in nav:
-        entry_html = entry.with_suffix(".html")
-        href = relative_href(current_html, entry_html)
-        title = title_map.get(entry, entry.stem.replace("-", " ").title())
-        active_class = " class=\"active\"" if entry == current_md else ""
-        lines.append(f"<li{active_class}><a href=\"{href}\">{title}</a></li>")
-    lines.append("</ul>")
-    return "\n".join(lines)
-
-
-def render_page_template(title: str, sidebar_html: str, body_html: str, css_href: str) -> str:
-    return f"""<!doctype html>
-<html lang=\"en\">
-<head>
-  <meta charset=\"utf-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>{title} | Wizig Docs</title>
-  <link rel=\"stylesheet\" href=\"{css_href}\">
-</head>
-<body>
-  <header class=\"topbar\">
-    <a class=\"brand\" href=\"index.html\">Wizig Documentation</a>
-  </header>
-  <div class=\"layout\">
-    <aside class=\"sidebar\">{sidebar_html}</aside>
-    <main class=\"content\"><article>{body_html}</article></main>
-  </div>
-</body>
-</html>
-"""
-
-
-def build_site(
-    *,
-    content_dir: Path = CONTENT_DIR,
-    site_dir: Path = SITE_DIR,
-    theme_dir: Path = THEME_DIR,
-    nav_file: Path = NAV_FILE,
-) -> None:
-    md_files = sorted(
-        [path for path in content_dir.rglob("*.md") if path.name != "_nav.txt"],
-        key=lambda p: p.relative_to(content_dir).as_posix(),
-    )
-    if not md_files:
-        raise RuntimeError("No markdown files found in docs/content")
-
-    if site_dir.exists():
-        shutil.rmtree(site_dir)
-    (site_dir / "assets").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(theme_dir / "styles.css", site_dir / "assets" / "styles.css")
-
-    nav = load_nav_entries(md_files, content_dir, nav_file)
-    title_map: dict[Path, str] = {}
-
-    for md_path in md_files:
-        rel = md_path.relative_to(content_dir)
-        fallback = rel.stem.replace("-", " ").title()
-        title_map[md_path] = extract_page_title(md_path.read_text(encoding="utf-8"), fallback)
-
-    extensions = [
-        "fenced_code",
-        "tables",
-        "toc",
-        "sane_lists",
-        "attr_list",
-        "codehilite",
-    ]
-
-    for md_path in md_files:
-        rel = md_path.relative_to(content_dir)
-        out_path = site_dir / rel.with_suffix(".html")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        raw_text = md_path.read_text(encoding="utf-8")
-        body_html = markdown.markdown(raw_text, extensions=extensions)
-        body_html = rewrite_markdown_links(body_html)
-
-        sidebar_html = render_sidebar(md_path, nav, title_map)
-        css_href = relative_href(out_path, site_dir / "assets" / "styles.css")
-
-        page_html = render_page_template(
-            title=title_map[md_path],
-            sidebar_html=sidebar_html,
-            body_html=body_html,
-            css_href=css_href,
-        )
-        out_path.write_text(page_html, encoding="utf-8")
-
-
 def snapshot_directory(root: Path) -> dict[str, bytes]:
     snapshot: dict[str, bytes] = {}
     if not root.exists():
@@ -697,33 +549,18 @@ def describe_snapshot_diff(
     return problems
 
 
-def generate_docs_into_temp_root(temp_root: Path) -> tuple[dict[str, bytes], dict[str, bytes], int]:
-    temp_content = temp_root / "content"
-    shutil.copytree(CONTENT_DIR, temp_content)
-    temp_reference_dir = temp_content / "reference"
-
-    pages = generate_reference_markdown(output_dir=temp_reference_dir)
-    temp_site_dir = temp_root / "site"
-    build_site(
-        content_dir=temp_content,
-        site_dir=temp_site_dir,
-        theme_dir=THEME_DIR,
-        nav_file=temp_content / "_nav.txt",
-    )
-
-    return snapshot_directory(temp_reference_dir), snapshot_directory(temp_site_dir), len(pages)
-
-
 def check_docs() -> None:
     with tempfile.TemporaryDirectory(prefix="wizig-docs-check-a-") as temp_a, tempfile.TemporaryDirectory(
         prefix="wizig-docs-check-b-"
     ) as temp_b:
-        ref_a, site_a, page_count = generate_docs_into_temp_root(Path(temp_a))
-        ref_b, site_b, _ = generate_docs_into_temp_root(Path(temp_b))
+        ref_a_dir = Path(temp_a) / "reference" / "api"
+        ref_b_dir = Path(temp_b) / "reference" / "api"
+        generate_reference_markdown(output_dir=ref_a_dir)
+        ref_a = snapshot_directory(ref_a_dir)
+        generate_reference_markdown(output_dir=ref_b_dir)
+        ref_b = snapshot_directory(ref_b_dir)
 
     ref_current = snapshot_directory(REFERENCE_DIR)
-    site_exists = SITE_DIR.exists()
-    site_current = snapshot_directory(SITE_DIR) if site_exists else {}
 
     problems: list[str] = []
     problems.extend(
@@ -737,15 +574,6 @@ def check_docs() -> None:
     )
     problems.extend(
         describe_snapshot_diff(
-            expected=site_a,
-            actual=site_b,
-            expected_label="temp run A",
-            actual_label="temp run B",
-            scope="site determinism",
-        )
-    )
-    problems.extend(
-        describe_snapshot_diff(
             expected=ref_a,
             actual=ref_current,
             expected_label="generated output",
@@ -753,45 +581,25 @@ def check_docs() -> None:
             scope="reference freshness",
         )
     )
-    if site_exists:
-        problems.extend(
-            describe_snapshot_diff(
-                expected=site_a,
-                actual=site_current,
-                expected_label="generated output",
-                actual_label=str(SITE_DIR),
-                scope="site freshness",
-            )
-        )
 
     if problems:
         print("docs check failed:")
         for problem in problems:
             print(f"- {problem}")
         print("")
-        print("Run `python3 scripts/docs_build.py` to regenerate docs/content/reference and docs/site.")
+        print("Run `python3 scripts/docs_build.py --reference-only` to regenerate docs/reference/api/.")
         raise SystemExit(1)
 
-    if site_exists:
-        print(f"Docs check passed: deterministic output and fresh checked-in docs ({page_count} reference pages).")
-    else:
-        print(
-            "Docs check passed: deterministic output and fresh checked-in reference docs "
-            f"({page_count} reference pages). Site freshness skipped because docs/site is not checked in."
-        )
+    page_count = len(ref_a)
+    print(f"Docs check passed: deterministic output and fresh checked-in reference docs ({page_count} files).")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate and build Wizig documentation")
+    parser = argparse.ArgumentParser(description="Generate Wizig API reference documentation")
     parser.add_argument(
         "--reference-only",
         action="store_true",
-        help="Generate API reference markdown only",
-    )
-    parser.add_argument(
-        "--site-only",
-        action="store_true",
-        help="Build HTML site from existing markdown only",
+        help="Generate API reference markdown only (default behavior)",
     )
     parser.add_argument(
         "--check",
@@ -800,31 +608,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    enabled_modes = sum([args.reference_only, args.site_only, args.check])
+    enabled_modes = sum([args.reference_only, args.check])
     if enabled_modes > 1:
-        raise SystemExit("--reference-only, --site-only, and --check are mutually exclusive")
-
-    CONTENT_DIR.mkdir(parents=True, exist_ok=True)
-    THEME_DIR.mkdir(parents=True, exist_ok=True)
-
-    if args.reference_only:
-        pages = generate_reference_markdown()
-        print(f"Generated {len(pages)} reference pages in {REFERENCE_DIR}")
-        return
-
-    if args.site_only:
-        build_site()
-        print(f"Built site at {SITE_DIR}")
-        return
+        raise SystemExit("--reference-only and --check are mutually exclusive")
 
     if args.check:
         check_docs()
         return
 
+    # Default behavior: generate reference markdown
     pages = generate_reference_markdown()
-    build_site()
     print(f"Generated {len(pages)} reference pages in {REFERENCE_DIR}")
-    print(f"Built site at {SITE_DIR}")
 
 
 if __name__ == "__main__":
