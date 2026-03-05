@@ -11,6 +11,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const version = b.option([]const u8, "version", "Embedded version string") orelse "dev";
 
     const core_module = b.addModule("wizig_core", .{
         .root_source_file = b.path("core/src/root.zig"),
@@ -27,12 +28,16 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", version);
+
     const cli_module = b.createModule(.{
         .root_source_file = b.path("cli/src/main.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "wizig_core", .module = core_module },
+            .{ .name = "build_options", .module = build_options.createModule() },
         },
     });
 

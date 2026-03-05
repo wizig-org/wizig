@@ -67,6 +67,8 @@ Auto-generated from Zig, Swift, and Kotlin source comments.
 - [`cli/src/commands/doctor/root.zig`](cli/src/commands/doctor/root.md)
 - [`cli/src/commands/plugin/root.zig`](cli/src/commands/plugin/root.md)
 - [`cli/src/commands/run/root.zig`](cli/src/commands/run/root.md)
+- [`cli/src/commands/self_update.zig`](cli/src/commands/self_update.md)
+- [`cli/src/commands/uninstall.zig`](cli/src/commands/uninstall.md)
 - [`cli/src/main.zig`](cli/src/main.md)
 - [`cli/src/run.zig`](cli/src/run.md)
 - [`cli/src/run/platform/android_app_info.zig`](cli/src/run/platform/android_app_info.md)

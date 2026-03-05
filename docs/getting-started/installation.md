@@ -1,5 +1,49 @@
 # Installation
 
+## Install Wizig
+
+### Quick Install (recommended)
+
+```sh
+curl -fsSL wizig.org/install.sh | sh
+```
+
+### Homebrew (macOS/Linux)
+
+```sh
+brew install wizig-org/tap/wizig
+```
+
+### Install a Specific Version
+
+```sh
+WIZIG_VERSION=0.1.0 curl -fsSL wizig.org/install.sh | sh
+```
+
+### Custom Install Location
+
+```sh
+WIZIG_INSTALL_DIR=/opt/wizig curl -fsSL wizig.org/install.sh | sh
+```
+
+## Update
+
+```sh
+wizig self-update
+```
+
+## Uninstall
+
+```sh
+wizig uninstall
+```
+
+Or via the install script:
+
+```sh
+curl -fsSL wizig.org/install.sh | sh -s -- --uninstall
+```
+
 ## Prerequisites
 
 Wizig requires the following tools installed on your development machine.

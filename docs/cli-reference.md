@@ -6,7 +6,7 @@
 wizig <command> [args]
 ```
 
-Commands: `create`, `run`, `codegen`, `build`, `plugin`, `doctor`
+Commands: `create`, `run`, `codegen`, `build`, `plugin`, `doctor`, `version`, `self-update`, `uninstall`
 
 ---
 
@@ -144,6 +144,47 @@ wizig doctor [--sdk-root <path>] [--strict|--no-strict]
 - Strict enforcement mode via `--strict`
 
 See also: [Toolchain Governance](guide/toolchain-governance.md), [Toolchain Manifest Reference](reference/toolchain-manifest.md)
+
+---
+
+## `wizig version`
+
+Print the installed wizig version.
+
+```sh
+wizig version
+wizig --version
+```
+
+---
+
+## `wizig self-update`
+
+Check for and install the latest wizig release from GitHub.
+
+```sh
+wizig self-update
+```
+
+Compares the current version against the latest GitHub Release. If a newer version is available, downloads and installs it in place.
+
+Not available for development builds (`dev` version).
+
+---
+
+## `wizig uninstall`
+
+Remove the wizig installation.
+
+```sh
+wizig uninstall [--yes]
+```
+
+**Flags:**
+
+- `--yes` / `-y` — Skip confirmation prompt
+
+Refuses to uninstall from system or package-managed directories (e.g., Homebrew prefix). For those installs, use the package manager to uninstall.
 
 ---
 

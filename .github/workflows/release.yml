@@ -1,0 +1,213 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  ZIG_VERSION: "0.15.1"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python3 -m pip install --upgrade markdown
+
+      - name: Unit and integration tests
+        run: zig build test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-macos
+            os: macos
+            arch: arm64
+          - target: x86_64-macos
+            os: macos
+            arch: x86_64
+          - target: x86_64-linux-gnu
+            os: linux
+            arch: x86_64
+          - target: aarch64-linux-gnu
+            os: linux
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python3 -m pip install --upgrade markdown
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate templates
+        run: python3 tools/templategen/generate_templates.py --out build/generated/templates
+
+      - name: Build
+        run: |
+          zig build \
+            -Dtarget=${{ matrix.target }} \
+            -Doptimize=ReleaseSafe \
+            -Dversion=${{ steps.version.outputs.VERSION }}
+
+      - name: Package tarball
+        run: |
+          DIRNAME="wizig-${{ steps.version.outputs.VERSION }}-${{ matrix.os }}-${{ matrix.arch }}"
+          mkdir -p "$DIRNAME/bin" "$DIRNAME/share/wizig" "$DIRNAME/lib" "$DIRNAME/include"
+
+          cp zig-out/bin/wizig "$DIRNAME/bin/"
+          cp -R zig-out/share/wizig/sdk "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp -R zig-out/share/wizig/runtime "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp -R zig-out/share/wizig/templates "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp zig-out/share/wizig/toolchains.toml "$DIRNAME/share/wizig/" 2>/dev/null || true
+
+          cp zig-out/lib/libwizigffi.a "$DIRNAME/lib/" 2>/dev/null || true
+          cp zig-out/include/wizig.h "$DIRNAME/include/" 2>/dev/null || true
+
+          tar czf "${DIRNAME}.tar.gz" "$DIRNAME"
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${DIRNAME}.tar.gz" > "${DIRNAME}.tar.gz.sha256"
+          else
+            shasum -a 256 "${DIRNAME}.tar.gz" > "${DIRNAME}.tar.gz.sha256"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            wizig-*.tar.gz
+            wizig-*.tar.gz.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: tarball-*
+          merge-multiple: true
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ steps.version.outputs.VERSION }}" \
+            --title "Wizig v${{ steps.version.outputs.VERSION }}" \
+            --generate-notes \
+            artifacts/wizig-*.tar.gz \
+            artifacts/wizig-*.tar.gz.sha256
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: tarball-*
+          merge-multiple: true
+
+      - name: Extract version and checksums
+        id: meta
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "SHA_MACOS_ARM64=$(awk '{print $1}' artifacts/wizig-${VERSION}-macos-arm64.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
+          echo "SHA_MACOS_X86_64=$(awk '{print $1}' artifacts/wizig-${VERSION}-macos-x86_64.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
+          echo "SHA_LINUX_X86_64=$(awk '{print $1}' artifacts/wizig-${VERSION}-linux-x86_64.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
+          echo "SHA_LINUX_ARM64=$(awk '{print $1}' artifacts/wizig-${VERSION}-linux-arm64.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Update Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${{ steps.meta.outputs.VERSION }}"
+          SHA_MACOS_ARM64="${{ steps.meta.outputs.SHA_MACOS_ARM64 }}"
+          SHA_MACOS_X86_64="${{ steps.meta.outputs.SHA_MACOS_X86_64 }}"
+          SHA_LINUX_X86_64="${{ steps.meta.outputs.SHA_LINUX_X86_64 }}"
+          SHA_LINUX_ARM64="${{ steps.meta.outputs.SHA_LINUX_ARM64 }}"
+
+          gh repo clone wizig-org/homebrew-tap /tmp/homebrew-tap
+
+          cat > /tmp/homebrew-tap/Formula/wizig.rb << FORMULA_EOF
+          # This file is auto-generated by the wizig release workflow.
+          class Wizig < Formula
+            desc "Mobile framework: native iOS/Android hosts with shared Zig runtime"
+            homepage "https://wizig.org"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-macos-arm64.tar.gz"
+                sha256 "${SHA_MACOS_ARM64}"
+              else
+                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-macos-x86_64.tar.gz"
+                sha256 "${SHA_MACOS_X86_64}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-linux-arm64.tar.gz"
+                sha256 "${SHA_LINUX_ARM64}"
+              else
+                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-linux-x86_64.tar.gz"
+                sha256 "${SHA_LINUX_X86_64}"
+              end
+            end
+
+            def install
+              bin.install "bin/wizig"
+              (share/"wizig").install Dir["share/wizig/*"]
+              (lib).install Dir["lib/*"] if Dir.exist?("lib")
+              (include).install Dir["include/*"] if Dir.exist?("include")
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/wizig version")
+            end
+          end
+          FORMULA_EOF
+
+          cd /tmp/homebrew-tap
+          # Remove leading whitespace from heredoc indentation
+          sed -i 's/^          //' Formula/wizig.rb
+          git config user.name "wizig-bot"
+          git config user.email "bot@wizig.org"
+          git add Formula/wizig.rb
+          git commit -m "Update wizig to ${VERSION}"
+          git push

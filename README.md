@@ -20,6 +20,18 @@
 
 ---
 
+## Install
+
+```sh
+curl -fsSL wizig.org/install.sh | sh
+```
+
+Or with Homebrew:
+
+```sh
+brew install wizig-org/tap/wizig
+```
+
 ## Why Wizig
 
 Wizig is built for teams that want native platform UX without duplicating core application logic.
@@ -125,6 +137,9 @@ Non-interactive example:
 | `wizig build` | Build release artifacts (for example Android multi-ABI) |
 | `wizig plugin` | Validate/sync/add plugins |
 | `wizig doctor` | Validate toolchains and SDK/runtime bundle integrity |
+| `wizig version` | Print installed version |
+| `wizig self-update` | Update to the latest release |
+| `wizig uninstall` | Remove the wizig installation |
 
 ## Development Requirements
 
