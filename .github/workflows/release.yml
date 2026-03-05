@@ -17,17 +17,50 @@ jobs:
       - name: Resolve Zig version
         id: zig-version
         run: |
-          VERSION="$(awk -F'"' '/minimum_zig_version/ { print $2; exit }' build.zig.zon)"
-          if [ -z "$VERSION" ]; then
+          MIN_VERSION="$(awk -F'"' '/minimum_zig_version/ { print $2; exit }' build.zig.zon)"
+          if [ -z "$MIN_VERSION" ]; then
             echo "failed to read minimum_zig_version from build.zig.zon" >&2
             exit 1
           fi
-          echo "Resolved Zig version: $VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          SETUP_VERSION="$MIN_VERSION"
+          if [[ "$MIN_VERSION" == *"-dev"* ]]; then
+            # setup-zig cannot reliably install pinned nightly snapshots:
+            # old archive URLs eventually disappear. Use the active nightly channel.
+            SETUP_VERSION="master"
+          fi
+
+          echo "Resolved minimum Zig version: $MIN_VERSION"
+          echo "Using setup-zig version: $SETUP_VERSION"
+          echo "minimum=$MIN_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$SETUP_VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: goto-bus-stop/setup-zig@v2
         with:
           version: ${{ steps.zig-version.outputs.version }}
+
+      - name: Verify Zig version policy
+        run: |
+          REQUIRED="${{ steps.zig-version.outputs.minimum }}"
+          INSTALLED="$(zig version)"
+          echo "Required Zig minimum: $REQUIRED"
+          echo "Installed Zig: $INSTALLED"
+
+          if [[ "$REQUIRED" == *"-dev"* ]]; then
+            if [[ "$INSTALLED" != *"-dev"* ]]; then
+              echo "installed Zig is not a dev/nightly build" >&2
+              exit 1
+            fi
+            REQUIRED_SERIES="$(echo "$REQUIRED" | awk -F. '{print $1 "." $2}')"
+            INSTALLED_SERIES="$(echo "$INSTALLED" | awk -F. '{print $1 "." $2}')"
+            if [[ "$INSTALLED_SERIES" != "$REQUIRED_SERIES" ]]; then
+              echo "installed Zig series mismatch (expected ${REQUIRED_SERIES}.x-dev)" >&2
+              exit 1
+            fi
+          elif [[ "$INSTALLED" != "$REQUIRED" ]]; then
+            echo "installed Zig version mismatch (expected $REQUIRED)" >&2
+            exit 1
+          fi
 
       - uses: actions/setup-python@v5
         with:
@@ -62,17 +95,50 @@ jobs:
       - name: Resolve Zig version
         id: zig-version
         run: |
-          VERSION="$(awk -F'"' '/minimum_zig_version/ { print $2; exit }' build.zig.zon)"
-          if [ -z "$VERSION" ]; then
+          MIN_VERSION="$(awk -F'"' '/minimum_zig_version/ { print $2; exit }' build.zig.zon)"
+          if [ -z "$MIN_VERSION" ]; then
             echo "failed to read minimum_zig_version from build.zig.zon" >&2
             exit 1
           fi
-          echo "Resolved Zig version: $VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          SETUP_VERSION="$MIN_VERSION"
+          if [[ "$MIN_VERSION" == *"-dev"* ]]; then
+            # setup-zig cannot reliably install pinned nightly snapshots:
+            # old archive URLs eventually disappear. Use the active nightly channel.
+            SETUP_VERSION="master"
+          fi
+
+          echo "Resolved minimum Zig version: $MIN_VERSION"
+          echo "Using setup-zig version: $SETUP_VERSION"
+          echo "minimum=$MIN_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$SETUP_VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: goto-bus-stop/setup-zig@v2
         with:
           version: ${{ steps.zig-version.outputs.version }}
+
+      - name: Verify Zig version policy
+        run: |
+          REQUIRED="${{ steps.zig-version.outputs.minimum }}"
+          INSTALLED="$(zig version)"
+          echo "Required Zig minimum: $REQUIRED"
+          echo "Installed Zig: $INSTALLED"
+
+          if [[ "$REQUIRED" == *"-dev"* ]]; then
+            if [[ "$INSTALLED" != *"-dev"* ]]; then
+              echo "installed Zig is not a dev/nightly build" >&2
+              exit 1
+            fi
+            REQUIRED_SERIES="$(echo "$REQUIRED" | awk -F. '{print $1 "." $2}')"
+            INSTALLED_SERIES="$(echo "$INSTALLED" | awk -F. '{print $1 "." $2}')"
+            if [[ "$INSTALLED_SERIES" != "$REQUIRED_SERIES" ]]; then
+              echo "installed Zig series mismatch (expected ${REQUIRED_SERIES}.x-dev)" >&2
+              exit 1
+            fi
+          elif [[ "$INSTALLED" != "$REQUIRED" ]]; then
+            echo "installed Zig version mismatch (expected $REQUIRED)" >&2
+            exit 1
+          fi
 
       - uses: actions/setup-python@v5
         with:
