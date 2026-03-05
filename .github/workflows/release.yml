@@ -147,9 +147,64 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.version.outputs.TAG }}" \
-            --title "Wizig ${{ steps.version.outputs.TAG }}" \
-            --generate-notes \
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          TAG="${{ steps.version.outputs.TAG }}"
+
+          # Generate changelog from GitHub's auto-generated notes
+          gh api repos/${{ github.repository }}/releases/generate-notes \
+            -f tag_name="$TAG" \
+            --jq '.body' > changelog.md 2>/dev/null || echo "" > changelog.md
+
+          cat > release-notes.md << 'NOTES_EOF'
+          ## Installation
+
+          ### Homebrew
+
+          ```sh
+          brew install wizig-org/tap/wizig
+          ```
+
+          ### Manual Download
+
+          Download the archive for your platform below, extract it, and add the `bin/` directory to your `PATH`.
+
+          | Platform | Architecture | Archive |
+          |----------|-------------|---------|
+          NOTES_EOF
+
+          # Append platform rows
+          cat >> release-notes.md << NOTES_EOF
+          | macOS | ARM64 (Apple Silicon) | [wizig-${VERSION}-macos-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${TAG}/wizig-${VERSION}-macos-arm64.tar.gz) |
+          | macOS | x86_64 (Intel) | [wizig-${VERSION}-macos-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${TAG}/wizig-${VERSION}-macos-x86_64.tar.gz) |
+          | Linux | ARM64 | [wizig-${VERSION}-linux-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${TAG}/wizig-${VERSION}-linux-arm64.tar.gz) |
+          | Linux | x86_64 | [wizig-${VERSION}-linux-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${TAG}/wizig-${VERSION}-linux-x86_64.tar.gz) |
+          NOTES_EOF
+
+          # Append checksums section
+          cat >> release-notes.md << 'NOTES_EOF'
+
+          ### Verify checksums
+
+          Each archive has a corresponding `.sha256` file. Verify your download:
+
+          ```sh
+          sha256sum -c wizig-*.tar.gz.sha256
+          ```
+
+          NOTES_EOF
+
+          # Append the auto-generated changelog
+          if [ -s changelog.md ]; then
+            printf '## What Changed\n\n' >> release-notes.md
+            cat changelog.md >> release-notes.md
+          fi
+
+          # Remove leading whitespace from heredoc indentation
+          sed -i 's/^          //' release-notes.md
+
+          gh release create "$TAG" \
+            --title "Wizig $TAG" \
+            --notes-file release-notes.md \
             artifacts/wizig-*.tar.gz \
             artifacts/wizig-*.tar.gz.sha256
 
