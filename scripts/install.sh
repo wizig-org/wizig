@@ -2,14 +2,13 @@
 # Wizig installer — https://wizig.org
 #
 # Usage:
-#   curl -fsSL wizig.org/install.sh | sh
+#   curl -fsSL wizig.org/install.sh | sh                    # latest
+#   curl -fsSL wizig.org/install.sh | sh -s -- 0.1.0        # specific version
+#   curl -fsSL wizig.org/install.sh | sh -s -- --uninstall   # uninstall
 #
 # Environment variables:
 #   WIZIG_VERSION       Install a specific version (default: latest)
 #   WIZIG_INSTALL_DIR   Custom install location (default: $HOME/.wizig)
-#
-# Uninstall:
-#   curl -fsSL wizig.org/install.sh | sh -s -- --uninstall
 
 set -eu
 
@@ -20,6 +19,11 @@ main() {
     if [ "${1:-}" = "--uninstall" ]; then
         do_uninstall
         return
+    fi
+
+    # Accept version as positional argument (overrides WIZIG_VERSION env var).
+    if [ -n "${1:-}" ]; then
+        WIZIG_VERSION="${1#v}"
     fi
 
     need_cmd curl
