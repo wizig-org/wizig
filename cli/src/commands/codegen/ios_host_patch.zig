@@ -536,6 +536,7 @@ test "phase_entry signs embedded device frameworks with the app identity" {
 
 test "phase_entry validates device slice architectures for app-store safety" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "xcrun lipo -info") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "xcrun dyld_info -imports") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "device framework unexpectedly contains simulator architectures") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "must contain arm64 architecture") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "PrivateFrameworks") != null);
