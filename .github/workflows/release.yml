@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+      - "[0-9]*"
   workflow_dispatch:
     inputs:
       tag:
@@ -237,6 +238,7 @@ jobs:
             TAG="${GITHUB_REF#refs/tags/}"
           fi
           VERSION="${TAG#v}"
+          echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "SHA_MACOS_ARM64=$(awk '{print $1}' artifacts/wizig-${VERSION}-macos-arm64.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
           echo "SHA_MACOS_X86_64=$(awk '{print $1}' artifacts/wizig-${VERSION}-macos-x86_64.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
@@ -245,6 +247,7 @@ jobs:
 
       - name: Update Homebrew formula
         run: |
+          TAG="${{ steps.meta.outputs.TAG }}"
           VERSION="${{ steps.meta.outputs.VERSION }}"
           SHA_MACOS_ARM64="${{ steps.meta.outputs.SHA_MACOS_ARM64 }}"
           SHA_MACOS_X86_64="${{ steps.meta.outputs.SHA_MACOS_X86_64 }}"
@@ -265,20 +268,20 @@ jobs:
 
             on_macos do
               if Hardware::CPU.arm?
-                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-macos-arm64.tar.gz"
+                url "https://github.com/wizig-org/wizig/releases/download/${TAG}/wizig-${VERSION}-macos-arm64.tar.gz"
                 sha256 "${SHA_MACOS_ARM64}"
               else
-                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-macos-x86_64.tar.gz"
+                url "https://github.com/wizig-org/wizig/releases/download/${TAG}/wizig-${VERSION}-macos-x86_64.tar.gz"
                 sha256 "${SHA_MACOS_X86_64}"
               end
             end
 
             on_linux do
               if Hardware::CPU.arm?
-                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-linux-arm64.tar.gz"
+                url "https://github.com/wizig-org/wizig/releases/download/${TAG}/wizig-${VERSION}-linux-arm64.tar.gz"
                 sha256 "${SHA_LINUX_ARM64}"
               else
-                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-linux-x86_64.tar.gz"
+                url "https://github.com/wizig-org/wizig/releases/download/${TAG}/wizig-${VERSION}-linux-x86_64.tar.gz"
                 sha256 "${SHA_LINUX_X86_64}"
               end
             end
@@ -309,20 +312,20 @@ jobs:
 
             on_macos do
               if Hardware::CPU.arm?
-                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-macos-arm64.tar.gz"
+                url "https://github.com/wizig-org/wizig/releases/download/${TAG}/wizig-${VERSION}-macos-arm64.tar.gz"
                 sha256 "${SHA_MACOS_ARM64}"
               else
-                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-macos-x86_64.tar.gz"
+                url "https://github.com/wizig-org/wizig/releases/download/${TAG}/wizig-${VERSION}-macos-x86_64.tar.gz"
                 sha256 "${SHA_MACOS_X86_64}"
               end
             end
 
             on_linux do
               if Hardware::CPU.arm?
-                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-linux-arm64.tar.gz"
+                url "https://github.com/wizig-org/wizig/releases/download/${TAG}/wizig-${VERSION}-linux-arm64.tar.gz"
                 sha256 "${SHA_LINUX_ARM64}"
               else
-                url "https://github.com/wizig-org/wizig/releases/download/v${VERSION}/wizig-${VERSION}-linux-x86_64.tar.gz"
+                url "https://github.com/wizig-org/wizig/releases/download/${TAG}/wizig-${VERSION}-linux-x86_64.tar.gz"
                 sha256 "${SHA_LINUX_X86_64}"
               end
             end

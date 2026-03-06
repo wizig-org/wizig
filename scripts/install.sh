@@ -71,15 +71,31 @@ resolve_version() {
         err "could not fetch latest release from GitHub. Check your internet connection or set WIZIG_VERSION manually."
     }
 
-    VERSION="$(printf '%s' "$RESPONSE" | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')"
-    if [ -z "$VERSION" ]; then
+    # Extract tag_name, then strip optional leading "v".
+    TAG="$(printf '%s' "$RESPONSE" | grep '"tag_name"' | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+    if [ -z "$TAG" ]; then
         err "could not parse latest version from GitHub response"
     fi
+    VERSION="${TAG#v}"
 }
 
 download_and_install() {
     TARBALL="wizig-${VERSION}-${OS}-${ARCH}.tar.gz"
-    URL="https://github.com/${WIZIG_REPO}/releases/download/v${VERSION}/${TARBALL}"
+
+    # Try the tag as-is first (handles both "v0.1.0" and "0.1.0" tags),
+    # then fall back to the opposite convention.
+    TAG_CANDIDATES="v${VERSION} ${VERSION}"
+    URL=""
+    for TAG_CANDIDATE in $TAG_CANDIDATES; do
+        CANDIDATE_URL="https://github.com/${WIZIG_REPO}/releases/download/${TAG_CANDIDATE}/${TARBALL}"
+        if curl -fsSL --head "$CANDIDATE_URL" >/dev/null 2>&1; then
+            URL="$CANDIDATE_URL"
+            break
+        fi
+    done
+    if [ -z "$URL" ]; then
+        URL="https://github.com/${WIZIG_REPO}/releases/download/v${VERSION}/${TARBALL}"
+    fi
     CHECKSUM_URL="${URL}.sha256"
 
     printf "Installing wizig %s (%s-%s)...\n" "$VERSION" "$OS" "$ARCH"
