@@ -270,6 +270,21 @@ fn runIosDevice(
     const device_ffi_path = try ios_ffi.buildIosDeviceFfiLibrary(arena, io, stderr, parent_environ_map, app_root_path);
     _ = try ios_ffi.bundleIosFfiLibraryForDevice(arena, io, stderr, app_path, device_ffi_path, sign_identity);
 
+    // Re-sign the app bundle so its code seal covers the freshly embedded
+    // framework.  xcodebuild signs the bundle during the build step above,
+    // but post-build FFI embedding modifies the Frameworks/ directory which
+    // invalidates the seal.  Without this re-sign iOS refuses to dlopen the
+    // framework on real devices (ABI version returns 0, contract hash empty).
+    {
+        const identity = if (sign_identity) |id| (if (id.len != 0) id else null) else null;
+        if (identity) |id| {
+            _ = try process.runCaptureChecked(arena, io, stderr, .{
+                .argv = &.{ "/usr/bin/codesign", "--force", "--sign", id, "--preserve-metadata=entitlements", "--timestamp=none", app_path },
+                .label = "re-sign iOS device app after FFI embedding",
+            }, .{});
+        }
+    }
+
     // Install on the physical device via devicectl.
     try stdout.writeAll("installing app on device...\n");
     try stdout.flush();

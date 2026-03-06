@@ -16,6 +16,7 @@ pub fn renderIosSwiftPmShim(arena: std.mem.Allocator, spec: api.ApiSpec) ![]u8 {
     try out.appendSlice(arena, "#include <dlfcn.h>\n");
     try out.appendSlice(arena, "#include <stddef.h>\n");
     try out.appendSlice(arena, "#include <stdint.h>\n");
+    try out.appendSlice(arena, "#include <stdio.h>\n");
     try out.appendSlice(arena, "#include \"WizigFFI.h\"\n\n");
 
     try out.appendSlice(arena, "static void* wizigffi_open_handle(void) {\n");
@@ -25,6 +26,10 @@ pub fn renderIosSwiftPmShim(arena: std.mem.Allocator, spec: api.ApiSpec) ![]u8 {
     try out.appendSlice(arena, "    attempted = 1;\n");
     try out.appendSlice(arena, "    handle = dlopen(\"@executable_path/Frameworks/WizigFFI.framework/WizigFFI\", RTLD_NOW | RTLD_LOCAL);\n");
     try out.appendSlice(arena, "    if (handle == NULL) handle = dlopen(\"WizigFFI.framework/WizigFFI\", RTLD_NOW | RTLD_LOCAL);\n");
+    try out.appendSlice(arena, "    if (handle == NULL) {\n");
+    try out.appendSlice(arena, "        const char* err = dlerror();\n");
+    try out.appendSlice(arena, "        fprintf(stderr, \"wizig: WizigFFI.framework load failed: %s\\n\", err ? err : \"(unknown)\");\n");
+    try out.appendSlice(arena, "    }\n");
     try out.appendSlice(arena, "    return handle;\n");
     try out.appendSlice(arena, "}\n\n");
 
