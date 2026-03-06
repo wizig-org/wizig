@@ -20,6 +20,7 @@ Auto-generated from Zig, Swift, and Kotlin source comments.
 - [`cli/src/commands/codegen/ios_host_patch.zig`](cli/src/commands/codegen/ios_host_patch.md)
 - [`cli/src/commands/codegen/ios_host_phase_appstore_checks.zig`](cli/src/commands/codegen/ios_host_phase_appstore_checks.md)
 - [`cli/src/commands/codegen/ios_host_phase_entry.zig`](cli/src/commands/codegen/ios_host_phase_entry.md)
+- [`cli/src/commands/codegen/ios_host_phase_macho_fixup.zig`](cli/src/commands/codegen/ios_host_phase_macho_fixup.md)
 - [`cli/src/commands/codegen/ios_host_phase_toolchain.zig`](cli/src/commands/codegen/ios_host_phase_toolchain.md)
 - [`cli/src/commands/codegen/model/api.zig`](cli/src/commands/codegen/model/api.md)
 - [`cli/src/commands/codegen/options.zig`](cli/src/commands/codegen/options.md)
