@@ -258,8 +258,12 @@ fn runIosDevice(
     const app_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ target_build_dir, wrapper_name });
 
     // Resolve the signing identity used by the Xcode build so the FFI
-    // framework gets the matching signature.
-    const sign_identity = config_parse.extractBuildSetting(settings.stdout, "EXPANDED_CODE_SIGN_IDENTITY");
+    // framework gets the matching signature.  EXPANDED_CODE_SIGN_IDENTITY
+    // is a derived setting that may not appear in `-showBuildSettings`
+    // output, so fall back through several alternatives.
+    const sign_identity = config_parse.extractBuildSetting(settings.stdout, "EXPANDED_CODE_SIGN_IDENTITY") orelse
+        config_parse.extractBuildSetting(settings.stdout, "EXPANDED_CODE_SIGN_IDENTITY_NAME") orelse
+        config_parse.extractBuildSetting(settings.stdout, "CODE_SIGN_IDENTITY");
 
     // Build and embed the device FFI framework into the built .app bundle.
     const app_root_path = try app_root.resolveAppRoot(arena, io, options.project_dir);

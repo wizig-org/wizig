@@ -227,13 +227,16 @@ pub fn bundleIosFfiLibraryForDevice(
             .label = "copy Wizig framework into iOS device app Frameworks",
         }, .{});
 
-        if (sign_identity) |identity| {
-            if (identity.len != 0) {
-                _ = try process.runCaptureChecked(arena, io, stderr, .{
-                    .argv = &.{ "/usr/bin/codesign", "--force", "--sign", identity, "--timestamp=none", dst_framework_dir },
-                    .label = "codesign embedded iOS device Wizig framework",
-                }, .{});
-            }
+        const identity = if (sign_identity) |id| (if (id.len != 0) id else null) else null;
+        if (identity) |id| {
+            _ = try process.runCaptureChecked(arena, io, stderr, .{
+                .argv = &.{ "/usr/bin/codesign", "--force", "--sign", id, "--timestamp=none", dst_framework_dir },
+                .label = "codesign embedded iOS device Wizig framework",
+            }, .{});
+        } else {
+            try stderr.writeAll("error: no code signing identity available for device build; WizigFFI.framework requires signing for real device installation\n");
+            try stderr.writeAll("hint: ensure Xcode automatic signing is configured with a valid development team\n");
+            return error.RunFailed;
         }
     }
 
