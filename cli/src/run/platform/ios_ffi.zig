@@ -95,6 +95,7 @@ pub fn buildIosSimulatorFfiLibrary(
         .argv = argv.items,
         .label = "build iOS simulator Wizig FFI library",
     }, .{});
+    try fixMachoTextPageAlignment(io, out_path);
     try writeFrameworkInfoPlist(io, info_plist);
 
     return out_path;
@@ -183,6 +184,7 @@ pub fn buildIosDeviceFfiLibrary(
         .argv = argv.items,
         .label = "build iOS device Wizig FFI library",
     }, .{});
+    try fixMachoTextPageAlignment(io, out_path);
     try writeFrameworkInfoPlist(io, info_plist);
 
     return out_path;
@@ -226,6 +228,15 @@ pub fn bundleIosFfiLibraryForDevice(
             .argv = &.{ "cp", "-R", src_framework_dir, dst_framework_dir },
             .label = "copy Wizig framework into iOS device app Frameworks",
         }, .{});
+
+        // Strip Zig linker's ad-hoc code signature before applying the real
+        // device identity.  Some Zig versions produce ad-hoc signatures whose
+        // LC_CODE_SIGNATURE layout prevents codesign --force from producing a
+        // signature that iOS validates at dlopen time.
+        _ = process.runCapture(arena, io, .{
+            .argv = &.{ "/usr/bin/codesign", "--remove-signature", frameworks_ffi },
+            .label = "strip ad-hoc signature from iOS device FFI binary",
+        }, .{}) catch {};
 
         const identity = if (sign_identity) |id| (if (id.len != 0) id else null) else null;
         if (identity) |id| {
@@ -283,6 +294,59 @@ pub fn bundleIosFfiLibraryForSimulator(
     }
 
     return "@executable_path/Frameworks/WizigFFI.framework/WizigFFI";
+}
+
+/// Fixes Mach-O __TEXT segment page alignment for iOS arm64 AMFI validation.
+///
+/// Zig's self-hosted Mach-O linker may produce __TEXT segments whose vmsize
+/// and filesize are not aligned to 16 KB (16384 bytes).  iOS devices require
+/// 16 KB page-aligned code pages for kernel code-signature validation.
+/// This rounds both values up to the next 16 KB boundary in-place.
+fn fixMachoTextPageAlignment(io: std.Io, path: []const u8) !void {
+    const page_mask: u64 = 16383;
+
+    var file = std.Io.Dir.cwd().openFile(io, path, .{ .mode = .read_write }) catch return;
+    defer file.close(io);
+
+    const file_len = (file.stat(io) catch return).size;
+    if (file_len < 32) return;
+
+    // Read Mach-O header (first 20 bytes) via positional read.
+    var header_buf: [20]u8 = undefined;
+    _ = file.readPositional(io, &.{&header_buf}, 0) catch return;
+
+    if (std.mem.readInt(u32, header_buf[0..4], .little) != 0xFEEDFACF) return;
+    const ncmds = std.mem.readInt(u32, header_buf[16..20], .little);
+
+    var offset: u64 = 32;
+    for (0..ncmds) |_| {
+        if (offset + 72 > file_len) return;
+        var cmd_buf: [72]u8 = undefined;
+        _ = file.readPositional(io, &.{&cmd_buf}, offset) catch return;
+
+        const cmd = std.mem.readInt(u32, cmd_buf[0..4], .little);
+        const cmdsize = std.mem.readInt(u32, cmd_buf[4..8], .little);
+        if (cmdsize == 0) return;
+
+        // LC_SEGMENT_64 = 0x19, segname at +8
+        if (cmd == 0x19 and
+            std.mem.eql(u8, cmd_buf[8..14], "__TEXT") and cmd_buf[14] == 0)
+        {
+            // vmsize at segment+32, filesize at segment+48
+            inline for (.{ 32, 48 }) |field_off| {
+                const val = std.mem.readInt(u64, cmd_buf[field_off..][0..8], .little);
+                const aligned = (val + page_mask) & ~page_mask;
+                if (val != aligned) {
+                    var write_buf: [8]u8 = undefined;
+                    std.mem.writeInt(u64, &write_buf, aligned, .little);
+                    file.writePositionalAll(io, &write_buf, offset + field_off) catch return;
+                }
+            }
+            return;
+        }
+
+        offset += cmdsize;
+    }
 }
 
 fn filesEqual(

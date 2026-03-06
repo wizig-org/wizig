@@ -9,6 +9,7 @@
 //! This module only owns static template constants. Project scanning and pbxproj
 //! mutation logic live in `ios_host_patch.zig`.
 const ios_phase_appstore_checks = @import("ios_host_phase_appstore_checks.zig");
+const ios_phase_macho_fixup = @import("ios_host_phase_macho_fixup.zig");
 const ios_phase_toolchain = @import("ios_host_phase_toolchain.zig");
 
 /// Deterministic PBX shell phase display name.
@@ -116,10 +117,14 @@ pub const phase_entry =
     "  mkdir -p \\\"$(dirname \\\"${OUTPUT_BIN}\\\")\\\"\\n" ++
     "  \\\"${ZIG_BIN}\\\" build-lib -dynamic -O\\\"${ZIG_OPTIMIZE}\\\" -fno-error-tracing -fno-unwind-tables -fstrip -target \\\"${TARGET_NAME}\\\" --dep wizig_core --dep wizig_app -Mroot=\\\"${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig\\\" -Mwizig_core=\\\"${RUNTIME_ROOT}/core/src/root.zig\\\" -Mwizig_app=\\\"${LIB_ROOT}/WizigGeneratedAppModule.zig\\\" --name WizigFFI --sysroot \\\"${SYSROOT_PATH}\\\" -L/usr/lib -F/System/Library/Frameworks -lc -femit-bin=\\\"${OUTPUT_BIN}\\\"\\n" ++
     "}\\n" ++
+    ios_phase_macho_fixup.fix_macho_text_page_alignment ++
     "build_ffi_slice \\\"aarch64-ios\\\" \\\"${IOS_SDKROOT}\\\" \\\"${TMP_DEVICE_FRAMEWORK_BIN}\\\"\\n" ++
+    "fix_macho_text_page_alignment \\\"${TMP_DEVICE_FRAMEWORK_BIN}\\\"\\n" ++
     "build_ffi_slice \\\"aarch64-ios-simulator\\\" \\\"${SIM_SDKROOT}\\\" \\\"${TMP_SIM_ARM64_FRAMEWORK_BIN}\\\"\\n" ++
+    "fix_macho_text_page_alignment \\\"${TMP_SIM_ARM64_FRAMEWORK_BIN}\\\"\\n" ++
     "HAS_SIM_X64=0\\n" ++
     "if build_ffi_slice \\\"x86_64-ios-simulator\\\" \\\"${SIM_SDKROOT}\\\" \\\"${TMP_SIM_X64_FRAMEWORK_BIN}\\\"; then\\n" ++
+    "  fix_macho_text_page_alignment \\\"${TMP_SIM_X64_FRAMEWORK_BIN}\\\"\\n" ++
     "  HAS_SIM_X64=1\\n" ++
     "else\\n" ++
     "  echo \\\"warning: failed to build x86_64-ios-simulator Wizig FFI slice; continuing with arm64 simulator slice only\\\" >&2\\n" ++
@@ -206,6 +211,7 @@ pub const phase_entry =
     "    echo \\\"error: device framework unexpectedly contains simulator architectures (got: ${ARCH_INFO})\\\" >&2\\n" ++
     "    exit 1\\n" ++
     "  fi\\n" ++
+    "  /usr/bin/codesign --remove-signature \\\"${OUT_FRAMEWORK_BIN}\\\" 2>/dev/null || true\\n" ++
     "  SIGNED=0\\n" ++
     "  for SIGN_IDENTITY in \\\"${EXPANDED_CODE_SIGN_IDENTITY:-}\\\" \\\"${EXPANDED_CODE_SIGN_IDENTITY_NAME:-}\\\" \\\"${CODE_SIGN_IDENTITY:-}\\\"; do\\n" ++
     "    if [ -z \\\"${SIGN_IDENTITY}\\\" ]; then\\n" ++

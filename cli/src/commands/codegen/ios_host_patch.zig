@@ -523,6 +523,8 @@ test "phase_entry signs embedded device frameworks with the app identity" {
     // The generated phase writes a framework bundle directly into the app's
     // Frameworks directory, so Xcode will not automatically apply the nested
     // framework signature for us. Device builds must sign the bundle here.
+    // Zig's linker ad-hoc signs the binary, which must be stripped first.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "--remove-signature") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "/usr/bin/codesign --force --sign") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "EXPANDED_CODE_SIGN_IDENTITY") != null);
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "CODE_SIGNING_ALLOWED") != null);
@@ -543,12 +545,13 @@ test "phase_entry validates device slice architectures for app-store safety" {
     try std.testing.expect(std.mem.indexOf(u8, phase_entry, "WIZIG_IOS_PRIVATE_SYMBOL_DENYLIST_REGEX") != null);
 }
 
-test "phase_entry does not include legacy Mach-O fixup helper" {
-    // The legacy python-based page-alignment fixup pipeline is intentionally
-    // absent from the generated phase.
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "fix_macho_text_page_alignment") == null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "python3") == null);
-    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "FEEDFACF") == null);
+test "phase_entry includes Mach-O page alignment fixup" {
+    // Zig's Mach-O linker may produce __TEXT segments not aligned to 16 KB,
+    // which iOS arm64 AMFI requires.  The build phase must call the fixup
+    // after each build_ffi_slice invocation.
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "fix_macho_text_page_alignment") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "python3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, phase_entry, "FEEDFACF") != null);
 }
 
 test "phase_entry contains only properly escaped quotes for pbxproj embedding" {
