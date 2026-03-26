@@ -8,7 +8,7 @@ Generated output path discovery and optional SDK mirror targets.
 
 ### `resolveIosMirrorSwiftFile` (fn)
 
-No declaration docs available.
+Returns the Swift mirror path for the lexicographically first top-level `.xcodeproj` under `ios/`.
 
 ```zig
 pub fn resolveIosMirrorSwiftFile(

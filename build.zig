@@ -128,6 +128,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_core_tests = b.addRunArtifact(core_tests);
+    run_core_tests.has_side_effects = true;
 
     const ffi_tests = b.addTest(.{
         .name = "ffi-tests",
@@ -141,6 +142,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_ffi_tests = b.addRunArtifact(ffi_tests);
+    run_ffi_tests.has_side_effects = true;
 
     const runtime_ffi_tests = b.addTest(.{
         .name = "runtime-ffi-tests",
@@ -154,6 +156,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_runtime_ffi_tests = b.addRunArtifact(runtime_ffi_tests);
+    run_runtime_ffi_tests.has_side_effects = true;
 
     const compatibility_tests = b.addTest(.{
         .name = "compatibility-tests",
@@ -167,6 +170,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_compatibility_tests = b.addRunArtifact(compatibility_tests);
+    run_compatibility_tests.has_side_effects = true;
 
     const cli_tests = b.addTest(.{
         .name = "cli-tests",
@@ -181,6 +185,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_cli_tests = b.addRunArtifact(cli_tests);
+    run_cli_tests.has_side_effects = true;
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_core_tests.step);

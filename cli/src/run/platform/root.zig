@@ -44,17 +44,7 @@ pub fn runWithOptions(
     stdout: *Io.Writer,
     options: types.RunOptions,
 ) !void {
-    if (pathExists(io, "build.zig")) {
-        try stdout.writeAll("building Zig artifacts...\n");
-        try stdout.flush();
-        try process.runInheritChecked(io, stderr, .{
-            .argv = &.{ "zig", "build" },
-            .label = "build Zig artifacts",
-        });
-    } else {
-        try stdout.writeAll("note: build.zig not found in current directory; skipping zig build\n");
-        try stdout.flush();
-    }
+    try maybeBuildCurrentWorkspace(arena, io, stderr, stdout, options.project_dir);
 
     if (!options.skip_codegen) {
         try codegen_preflight.runCodegenPreflight(arena, io, stderr, stdout, options.project_dir);
@@ -97,8 +87,47 @@ fn pathExists(io: std.Io, path: []const u8) bool {
     return true;
 }
 
+/// Builds the current workspace only when it is the selected project root.
+fn maybeBuildCurrentWorkspace(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    project_dir: []const u8,
+) !void {
+    if (!pathExists(io, "build.zig")) {
+        try stdout.writeAll("note: build.zig not found in current directory; skipping zig build\n");
+        try stdout.flush();
+        return;
+    }
+
+    const cwd = try std.process.currentPathAlloc(io, arena);
+    if (!shouldBuildWorkspaceForPaths(cwd, project_dir)) {
+        try stdout.writeAll("note: current workspace differs from selected project; skipping ambient zig build\n");
+        try stdout.flush();
+        return;
+    }
+
+    try stdout.writeAll("building Zig artifacts...\n");
+    try stdout.flush();
+    try process.runInheritChecked(io, stderr, .{
+        .argv = &.{ "zig", "build" },
+        .label = "build Zig artifacts",
+    });
+}
+
+/// Returns whether the current workspace should be prebuilt for the run target.
+fn shouldBuildWorkspaceForPaths(cwd_path: []const u8, project_dir: []const u8) bool {
+    return std.mem.eql(u8, cwd_path, project_dir);
+}
+
 test {
     std.testing.refAllDecls(@import("options.zig"));
     std.testing.refAllDecls(@import("ios_discovery.zig"));
     std.testing.refAllDecls(@import("android_discovery.zig"));
+}
+
+test "shouldBuildWorkspaceForPaths only allows the selected project root" {
+    try std.testing.expect(shouldBuildWorkspaceForPaths("/tmp/app", "/tmp/app"));
+    try std.testing.expect(!shouldBuildWorkspaceForPaths("/tmp/wizig-repo", "/tmp/app"));
 }
