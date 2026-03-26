@@ -4,6 +4,13 @@ const std = @import("std");
 const fs_util = @import("../../../support/fs.zig");
 const path_util = @import("../../../support/path.zig");
 
+/// Returns the Swift mirror path for the lexicographically first top-level
+/// `.xcodeproj` under `ios/`.
+///
+/// Multi-project repos can contain several host projects under `ios/`. This
+/// resolver ignores nested `.xcodeproj` directories and selects the first
+/// top-level match in sorted order so the mirror target is stable across
+/// filesystem walk order.
 pub fn resolveIosMirrorSwiftFile(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -18,13 +25,22 @@ pub fn resolveIosMirrorSwiftFile(
     var walker = try ios.walk(arena);
     defer walker.deinit();
 
+    var project_paths = std.ArrayList([]const u8).empty;
+    defer project_paths.deinit(arena);
+
     while (try walker.next(io)) |entry| {
         if (entry.kind != .directory) continue;
         if (!std.mem.endsWith(u8, entry.path, ".xcodeproj")) continue;
+        if (std.mem.indexOfAny(u8, entry.path, "/\\") != null) continue;
 
-        const project_name = std.fs.path.stem(entry.path);
+        try project_paths.append(arena, try arena.dupe(u8, entry.path));
+    }
+
+    std.mem.sort([]const u8, project_paths.items, {}, lessString);
+
+    for (project_paths.items) |project_path| {
+        const project_name = std.fs.path.stem(project_path);
         if (project_name.len == 0) continue;
-
         const host_dir = try path_util.join(arena, ios_dir, project_name);
         if (!fs_util.pathExists(io, host_dir)) continue;
 
@@ -35,6 +51,10 @@ pub fn resolveIosMirrorSwiftFile(
     }
 
     return null;
+}
+
+fn lessString(_: void, lhs: []const u8, rhs: []const u8) bool {
+    return std.mem.lessThan(u8, lhs, rhs);
 }
 
 pub fn resolveSdkSwiftApiFile(
@@ -125,4 +145,46 @@ pub fn resolveSdkKotlinApiFile(
     if (!fs_util.pathExists(io, sdk_dir)) return null;
     const path = try path_util.join(arena, sdk_dir, "WizigGeneratedApi.kt");
     return @as(?[]const u8, path);
+}
+
+test "resolveIosMirrorSwiftFile selects the first top-level xcodeproj deterministically" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const io = std.testing.io;
+
+    const project_root = try std.fmt.allocPrint(arena, ".zig-cache/tmp/{s}/sample-app", .{tmp.sub_path});
+    const ios_dir = try path_util.join(arena, project_root, "ios");
+    try std.Io.Dir.cwd().createDirPath(io, ios_dir);
+
+    const zeta_proj = try path_util.join(arena, ios_dir, "Zeta.xcodeproj");
+    const alpha_proj = try path_util.join(arena, ios_dir, "Alpha.xcodeproj");
+    const nested_dir = try path_util.join(arena, ios_dir, "Aardvark");
+    const nested_proj = try path_util.join(arena, nested_dir, "Nested.xcodeproj");
+    try std.Io.Dir.cwd().createDirPath(io, zeta_proj);
+    try std.Io.Dir.cwd().createDirPath(io, alpha_proj);
+    try std.Io.Dir.cwd().createDirPath(io, nested_proj);
+
+    const zeta_host_dir = try path_util.join(arena, ios_dir, "Zeta");
+    const alpha_host_dir = try path_util.join(arena, ios_dir, "Alpha");
+    const nested_host_dir = try path_util.join(arena, ios_dir, "Nested");
+    try std.Io.Dir.cwd().createDirPath(io, zeta_host_dir);
+    try std.Io.Dir.cwd().createDirPath(io, alpha_host_dir);
+    try std.Io.Dir.cwd().createDirPath(io, nested_host_dir);
+
+    const resolved = try resolveIosMirrorSwiftFile(arena, io, project_root);
+    try std.testing.expect(resolved != null);
+    const alpha_generated_dir = try path_util.join(arena, alpha_host_dir, "Generated");
+    const alpha_mirror_path = try path_util.join(arena, alpha_generated_dir, "WizigGeneratedApi.swift");
+    try std.testing.expectEqualStrings(
+        alpha_mirror_path,
+        resolved.?,
+    );
+
+    const nested_generated_dir = try path_util.join(arena, nested_host_dir, "Generated");
+    try std.testing.expect(fs_util.pathExists(io, alpha_generated_dir));
+    try std.testing.expect(!fs_util.pathExists(io, nested_generated_dir));
 }

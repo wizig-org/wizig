@@ -104,6 +104,16 @@ fn toHandle(box: *RuntimeBox) *WizigRuntimeHandle {
     return @ptrCast(box);
 }
 
+/// Returns whether a C ABI pointer may be safely sliced for `len` bytes.
+fn hasBytes(ptr: [*]const u8, len: usize) bool {
+    return len == 0 or @intFromPtr(ptr) != 0;
+}
+
+/// Converts a validated ABI byte pointer into a Zig slice.
+fn bytesFromAbi(ptr: [*]const u8, len: usize) []const u8 {
+    return if (len == 0) "" else ptr[0..len];
+}
+
 /// Returns generated FFI ABI version for host compatibility checks.
 ///
 /// ## Handshake
@@ -174,7 +184,10 @@ pub export fn wizig_runtime_new(
     output.* = null;
 
     if (app_name_len == 0) return setLastError(.argument, statusCode(.invalid_argument), "empty app name");
-    const app_name = app_name_ptr[0..app_name_len];
+    if (!hasBytes(app_name_ptr, app_name_len)) {
+        return setLastError(.argument, statusCode(.null_argument), "null app_name_ptr");
+    }
+    const app_name = bytesFromAbi(app_name_ptr, app_name_len);
 
     const box = bootstrap_allocator.create(RuntimeBox) catch return setLastError(.memory, statusCode(.out_of_memory), "out of memory");
     errdefer bootstrap_allocator.destroy(box);
@@ -226,7 +239,10 @@ pub export fn wizig_runtime_echo(
     output_len.* = 0;
 
     const box = toBox(handle.?);
-    const input = input_ptr[0..input_len];
+    if (!hasBytes(input_ptr, input_len)) {
+        return setLastError(.argument, statusCode(.null_argument), "null input_ptr");
+    }
+    const input = bytesFromAbi(input_ptr, input_len);
 
     // Allocate result with page_allocator since wizig_bytes_free is handle-free
     const echoed = box.runtime.echo(input, bootstrap_allocator) catch |err| switch (err) {
@@ -248,34 +264,6 @@ pub export fn wizig_bytes_free(ptr: ?[*]u8, len: usize) void {
     bootstrap_allocator.free(ptr.?[0..len]);
 }
 
-test "ffi runtime round trip and handshake exports" {
-    var handle: ?*WizigRuntimeHandle = null;
-    try std.testing.expectEqual(statusCode(.ok), wizig_runtime_new("demo".ptr, "demo".len, &handle));
-    defer wizig_runtime_free(handle);
-
-    var output_ptr: ?[*]u8 = null;
-    var output_len: usize = 0;
-    try std.testing.expectEqual(
-        statusCode(.ok),
-        wizig_runtime_echo(handle, "hello".ptr, "hello".len, &output_ptr, &output_len),
-    );
-    defer wizig_bytes_free(output_ptr, output_len);
-
-    try std.testing.expect(output_ptr != null);
-    try std.testing.expectEqualStrings("demo:hello", output_ptr.?[0..output_len]);
-    try std.testing.expectEqual(wizig_ffi_abi_version_value, wizig_ffi_abi_version());
-    try std.testing.expect(wizig_ffi_contract_hash_len() > 0);
-}
-
-test "ffi structured error is populated for invalid arguments" {
-    try std.testing.expectEqual(
-        statusCode(.null_argument),
-        wizig_runtime_echo(null, "x".ptr, "x".len, null, null),
-    );
-    try std.testing.expectEqual(statusCode(.null_argument), wizig_ffi_last_error_code());
-
-    const domain = wizig_ffi_last_error_domain_ptr()[0..wizig_ffi_last_error_domain_len()];
-    const message = wizig_ffi_last_error_message_ptr()[0..wizig_ffi_last_error_message_len()];
-    try std.testing.expectEqualStrings("wizig.argument", domain);
-    try std.testing.expect(message.len > 0);
+test {
+    _ = @import("root_tests.zig");
 }

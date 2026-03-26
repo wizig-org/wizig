@@ -10,6 +10,8 @@ The iOS integration pipeline:
     - `.wizig/generated/zig/WizigGeneratedFfiRoot.zig` — Zig FFI root
     - `.wizig/generated/swift/WizigGeneratedApi.swift` — Swift API client
     - `ios/<App>/Generated/WizigGeneratedApi.swift` — Xcode project mirror
+      selected from the lexicographically first top-level `.xcodeproj` under
+      `ios/` when a repo contains multiple host projects
 2. iOS host patch injects a deterministic Xcode shell phase: `Wizig Build iOS FFI`
 3. The phase compiles Zig FFI as an Apple framework: `.wizig/generated/ios/WizigFFI.xcframework`
 4. Swift runtime calls the exported ABI directly and validates:
@@ -31,6 +33,7 @@ The iOS integration pipeline:
 - Swift developers use generated `WizigGeneratedApi` types from the `Wizig` module.
 - Public API names are discovered from `lib/**/*.zig` and optional contract overrides.
 - User-defined functions remain first-class in generated Swift wrappers.
+- When a repo contains multiple top-level iOS host projects under `ios/`, codegen mirrors `WizigGeneratedApi.swift` into the lexicographically first `.xcodeproj` sibling and ignores nested `.xcodeproj` directories.
 
 ### ABI Boundary
 
@@ -80,5 +83,7 @@ The pbxproj patching sets `ENABLE_USER_SCRIPT_SANDBOXING = NO` only for app targ
 
 - `wizig create <Name>` always prepares an iOS host compatible with `wizig run`.
 - `wizig codegen` is idempotent and re-runnable from Xcode build phases.
+- If `ios/` contains multiple host projects, keep the intended mirror target
+  stable by relying on the sorted top-level `.xcodeproj` selection rule.
 - Never manually edit generated `.wizig/generated` artifacts.
 - Manual editing of host iOS sources is preserved across runs.

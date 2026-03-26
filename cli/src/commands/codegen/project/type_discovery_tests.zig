@@ -4,7 +4,11 @@
 //! independent from filesystem walking.
 
 const std = @import("std");
+const fs_util = @import("../../../support/fs.zig");
+const path_util = @import("../../../support/path.zig");
 const type_discovery = @import("type_discovery.zig");
+const registry = @import("type_discovery/registry.zig");
+const walk = @import("type_discovery/walk.zig");
 
 test "parseStructsFromSource resolves primitive and discovered user types" {
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -80,4 +84,41 @@ test "parseFieldType resolves known discovered struct and enum names" {
         .string => true,
         else => false,
     });
+}
+
+test "type discovery facade still discovers user types from a library tree" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+    const io = std.testing.io;
+
+    const project_root = try std.fmt.allocPrint(arena, ".zig-cache/tmp/{s}/sample-app", .{tmp.sub_path});
+    const lib_dir = try path_util.join(arena, project_root, "lib");
+    try std.Io.Dir.cwd().createDirPath(io, lib_dir);
+
+    try fs_util.writeFileAtomically(io, try path_util.join(arena, lib_dir, "color.zig"),
+        \\pub const Color = enum {
+        \\    red,
+        \\    green,
+        \\};
+    );
+    try fs_util.writeFileAtomically(io, try path_util.join(arena, lib_dir, "profile.zig"),
+        \\pub const Profile = struct {
+        \\    favorite: Color,
+        \\};
+    );
+
+    const discovered = try type_discovery.discoverLibTypes(arena, io, project_root);
+    try std.testing.expectEqual(@as(usize, 1), discovered.structs.len);
+    try std.testing.expectEqual(@as(usize, 1), discovered.enums.len);
+    try std.testing.expectEqual(@as(usize, 1), discovered.struct_names.len);
+    try std.testing.expectEqual(@as(usize, 1), discovered.enum_names.len);
+}
+
+test {
+    _ = registry;
+    _ = walk;
 }
