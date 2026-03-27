@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.9
+
+### Fixed
+
+- Fixes [#12](https://github.com/wizig-org/wizig/issues/12) via conditional allocator selection based on build mode
+
+### Changed
+
+- Duplicate files in `ffi` and `runtime` directories been removed. Now using symlinks. Fixes [#34](https://github.com/wizig-org/wizig/issues/34)
+
+
+### Known Issues
+
+- As of zig `0.16.0-dev.2984+cb7d2b056` the builds with Xcode 26.4 results in error ([`#31658 ziglang/zig`](https://codeberg.org/ziglang/zig/issues/31658)). 
+
 ## 0.0.8
 
 ### Added

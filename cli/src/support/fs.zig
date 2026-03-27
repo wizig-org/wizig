@@ -81,6 +81,16 @@ pub fn copyTree(
                 const bytes = try std.Io.Dir.cwd().readFileAlloc(io, src_path, arena, .limited(256 * 1024 * 1024));
                 try writeFileAtomically(io, dst_path, bytes);
             },
+            .sym_link => {
+                // Follow symlinks: resolve to directory or file and copy the target content.
+                if (std.Io.Dir.cwd().openDir(io, src_path, .{ .iterate = true })) |*dir| {
+                    dir.close(io);
+                    try copyTree(arena, io, src_path, dst_path);
+                } else |_| {
+                    const bytes = try std.Io.Dir.cwd().readFileAlloc(io, src_path, arena, .limited(256 * 1024 * 1024));
+                    try writeFileAtomically(io, dst_path, bytes);
+                }
+            },
             else => {},
         }
     }

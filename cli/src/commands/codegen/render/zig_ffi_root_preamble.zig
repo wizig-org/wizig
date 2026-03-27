@@ -29,9 +29,22 @@ pub fn appendPrelude(out: *std.ArrayList(u8), arena: std.mem.Allocator) !void {
 
     try out.appendSlice(arena, "const bootstrap_allocator = std.heap.page_allocator;\n\n");
     try out.appendSlice(arena, "pub const WizigRuntimeHandle = opaque {};\n\n");
+    try out.appendSlice(arena, "const Gpa = if (builtin.mode == .Debug)\n");
+    try out.appendSlice(arena, "    std.heap.DebugAllocator(.{ .thread_safe = true })\n");
+    try out.appendSlice(arena, "else\n");
+    try out.appendSlice(arena, "    ReleaseAllocator;\n\n");
+    try out.appendSlice(arena, "const ReleaseAllocator = struct {\n");
+    try out.appendSlice(arena, "    pub const init: ReleaseAllocator = .{};\n");
+    try out.appendSlice(arena, "    pub fn allocator(_: *ReleaseAllocator) std.mem.Allocator {\n");
+    try out.appendSlice(arena, "        return std.heap.smp_allocator;\n");
+    try out.appendSlice(arena, "    }\n");
+    try out.appendSlice(arena, "    pub fn deinit(_: *ReleaseAllocator) std.heap.Check {\n");
+    try out.appendSlice(arena, "        return .ok;\n");
+    try out.appendSlice(arena, "    }\n");
+    try out.appendSlice(arena, "};\n\n");
     try out.appendSlice(arena, "const RuntimeBox = struct {\n");
     try out.appendSlice(arena, "    app_name: []u8,\n");
-    try out.appendSlice(arena, "    gpa: std.heap.DebugAllocator(.{ .thread_safe = true }),\n");
+    try out.appendSlice(arena, "    gpa: Gpa,\n");
     try out.appendSlice(arena, "\n");
     try out.appendSlice(arena, "    fn allocator(self: *RuntimeBox) std.mem.Allocator {\n");
     try out.appendSlice(arena, "        return self.gpa.allocator();\n");
