@@ -141,6 +141,7 @@ fn buildCachedFfiLibrary(
         .label = plan.run_label,
     }, .{});
     try framework.fixMachoTextPageAlignment(io, out_path);
+    framework.resignAdHoc(arena, io, out_path);
     try framework.writeFrameworkInfoPlist(io, info_plist);
 
     return out_path;

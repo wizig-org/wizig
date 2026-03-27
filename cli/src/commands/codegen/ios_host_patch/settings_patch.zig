@@ -9,7 +9,7 @@ pub fn disableUserScriptSandboxingForAppTarget(
     text: []const u8,
 ) ![]const u8 {
     const config_list_id = try resolveAppTargetConfigListId(text);
-    var config_ids = try appTargetBuildConfigIds(arena, text, config_list_id);
+    const config_ids = try appTargetBuildConfigIds(arena, text, config_list_id);
     if (config_ids.items.len == 0) return error.InvalidPbxproj;
 
     var updated = text;
@@ -25,7 +25,7 @@ pub fn enableAutomaticSigningForAppTarget(
     text: []const u8,
 ) ![]const u8 {
     const config_list_id = try resolveAppTargetConfigListId(text);
-    var config_ids = try appTargetBuildConfigIds(arena, text, config_list_id);
+    const config_ids = try appTargetBuildConfigIds(arena, text, config_list_id);
     if (config_ids.items.len == 0) return error.InvalidPbxproj;
 
     var updated = text;

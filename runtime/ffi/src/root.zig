@@ -66,7 +66,7 @@ threadlocal var last_error: LastError = .{};
 
 const RuntimeBox = struct {
     runtime: wizig_core.Runtime,
-    gpa: std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }),
+    gpa: std.heap.DebugAllocator(.{ .thread_safe = true }),
 
     fn allocator(self: *RuntimeBox) std.mem.Allocator {
         return self.gpa.allocator();

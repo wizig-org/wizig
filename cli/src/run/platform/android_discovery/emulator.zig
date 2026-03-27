@@ -45,7 +45,7 @@ pub fn waitForStartedEmulator(
             continue;
         }
 
-        var devices = try discovery.parseAndroidDevicesOutput(scratch, result.stdout);
+        const devices = try discovery.parseAndroidDevicesOutput(scratch, result.stdout);
         if (try selectNewEmulatorDevice(arena, existing_devices, devices.items)) |device| {
             return device;
         }

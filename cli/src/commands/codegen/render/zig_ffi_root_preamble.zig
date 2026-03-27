@@ -31,7 +31,7 @@ pub fn appendPrelude(out: *std.ArrayList(u8), arena: std.mem.Allocator) !void {
     try out.appendSlice(arena, "pub const WizigRuntimeHandle = opaque {};\n\n");
     try out.appendSlice(arena, "const RuntimeBox = struct {\n");
     try out.appendSlice(arena, "    app_name: []u8,\n");
-    try out.appendSlice(arena, "    gpa: std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }),\n");
+    try out.appendSlice(arena, "    gpa: std.heap.DebugAllocator(.{ .thread_safe = true }),\n");
     try out.appendSlice(arena, "\n");
     try out.appendSlice(arena, "    fn allocator(self: *RuntimeBox) std.mem.Allocator {\n");
     try out.appendSlice(arena, "        return self.gpa.allocator();\n");

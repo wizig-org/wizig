@@ -15,6 +15,16 @@ struct {{APP_TYPE_NAME}}App: App {
                 Text("Generated API echo: \((try? api.echo("hello")) ?? "unavailable")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Button("Echo Zig") {
+                    Task {
+                        do {
+                            try await api.echoZig("SwiftUI")
+                        } catch {
+                            print("Error calling echoZig: \(error)")
+                        }
+                    }
+                }
             }
             .padding(24)
         }

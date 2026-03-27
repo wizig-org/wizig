@@ -30,4 +30,5 @@ pub const fix_macho_text_page_alignment =
     "        break\\n" ++
     "    o+=s\\n" ++
     "' \\\"$1\\\"\\n" ++
+    "  /usr/bin/codesign -f -s - \\\"$1\\\" 2>/dev/null || true\\n" ++
     "}\\n";

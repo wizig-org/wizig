@@ -11,6 +11,10 @@ pub fn echo(input: []const u8, allocator: std.mem.Allocator) ![]u8 {
     return std.fmt.allocPrint(allocator, "{s}:{s}", .{ appName(), input });
 }
 
+pub fn echoZig(input: []const u8) void {
+    std.debug.print("⚡ Hello {s} from Zig - App: {s}", .{ input, appName() });
+}
+
 test "appName is non-empty" {
     try std.testing.expect(appName().len > 0);
 }

@@ -64,7 +64,7 @@ pub fn bundleIosFfiLibraryForDeviceDetailed(
     };
 }
 
-/// Copies a host framework into a simulator app bundle.
+/// Copies a host framework into a simulator app bundle and re-signs.
 pub fn bundleIosFfiLibraryForSimulator(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -73,7 +73,19 @@ pub fn bundleIosFfiLibraryForSimulator(
     host_ffi_path: []const u8,
 ) ![]const u8 {
     const paths = try resolveFrameworkPaths(arena, io, stderr, app_path, host_ffi_path);
-    _ = try bundleFrameworkIntoApp(arena, io, stderr, paths, "remove previous iOS framework staging", "copy Wizig framework into iOS app Frameworks");
+    const changed = try bundleFrameworkIntoApp(arena, io, stderr, paths, "remove previous iOS framework staging", "copy Wizig framework into iOS app Frameworks");
+    if (changed) {
+        // Re-sign framework and app bundle after replacing the framework binary,
+        // since the copy invalidates the Xcode-produced code signature.
+        _ = process.runCapture(arena, io, .{
+            .argv = &.{ "/usr/bin/codesign", "-f", "-s", "-", paths.dst_framework_dir },
+            .label = "ad-hoc sign simulator framework after bundling",
+        }, .{}) catch {};
+        _ = process.runCapture(arena, io, .{
+            .argv = &.{ "/usr/bin/codesign", "-f", "-s", "-", app_path },
+            .label = "ad-hoc re-sign simulator app bundle after framework update",
+        }, .{}) catch {};
+    }
     return "@executable_path/Frameworks/WizigFFI.framework/WizigFFI";
 }
 

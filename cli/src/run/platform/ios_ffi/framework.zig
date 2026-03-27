@@ -5,6 +5,7 @@
 const std = @import("std");
 
 const fs_utils = @import("../fs_utils.zig");
+const process = @import("../process_supervisor.zig");
 
 /// Fixes Mach-O `__TEXT` segment page alignment for iOS arm64 AMFI validation.
 pub fn fixMachoTextPageAlignment(io: std.Io, path: []const u8) !void {
@@ -50,6 +51,18 @@ pub fn fixMachoTextPageAlignment(io: std.Io, path: []const u8) !void {
 
         offset += cmdsize;
     }
+}
+
+/// Re-signs a Mach-O binary with an ad-hoc identity after in-place fixups.
+pub fn resignAdHoc(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    path: []const u8,
+) void {
+    _ = process.runCapture(arena, io, .{
+        .argv = &.{ "/usr/bin/codesign", "-f", "-s", "-", path },
+        .label = "ad-hoc re-sign iOS FFI binary after Mach-O fixup",
+    }, .{}) catch {};
 }
 
 /// Returns `true` when both files exist and contain identical bytes.

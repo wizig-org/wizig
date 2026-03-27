@@ -2,91 +2,85 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What is Wizig
+## What is Wizig?
 
-Wizig is a mobile-first framework for building iOS and Android apps with native host UIs (SwiftUI, Jetpack Compose), shared Zig runtime/domain logic, typed host-to-Zig bridge generation, and static plugin registration.
+Wizig is a framework for building native iOS (SwiftUI) and Android (Jetpack Compose) apps with shared Zig runtime logic and automatically generated typed bridges (Swift/Kotlin) from discovered Zig APIs.
 
-## Build & Test Commands
+Runtime stack: Host UI -> Generated Bridge (Swift/Kotlin/Zig) -> Wizig FFI Runtime (C ABI) -> App Domain Logic (lib/*.zig)
+
+## Build Commands
 
 ```sh
-zig build                # Build CLI + FFI libraries + install assets
-zig build test           # Run all test suites
-zig build e2e            # Run end-to-end tests (shell scripts in scripts/e2e/)
-zig build run -- <cmd>   # Run CLI (create, run, codegen, build, plugin, doctor)
-zig build docs           # Generate documentation site
+zig build                        # Build CLI, FFI libs, install SDK/runtime/templates
+zig build test --summary all     # Run all test suites (preferred verification path)
+zig build e2e                    # End-to-end scaffold/template pipeline
+zig build run -- <args>          # Run the built CLI with arguments
+zig build docs                   # Regenerate docs (toolchains + API ref + mkdocs)
+zig build -Dversion="x.y.z"     # Build with embedded version string (used by CI/releases)
 ```
 
-### Running individual test suites
+## Testing
 
-The `test` step aggregates five named suites. Run one at a time by building its specific test artifact:
+Tests are inline `test` blocks in their respective modules. Run `zig build test --summary all` as the default check.
 
-- `core-tests` — `core/src/root.zig`
-- `ffi-tests` — `ffi/src/root.zig`
-- `runtime-ffi-tests` — `runtime/ffi/src/root.zig`
-- `compatibility-tests` — `src/root.zig`
-- `cli-tests` — `cli/src/main.zig` (includes codegen render/parse/project tests)
+Five test suites: `core-tests` (core/src/root.zig), `ffi-tests` (ffi/src/root.zig), `runtime-ffi-tests` (runtime/ffi/src/root.zig), `compatibility-tests` (src/root.zig), `cli-tests` (cli/src/main.zig).
 
-Tests are standard Zig inline `test` blocks — no external test runner.
+Not all internal files are valid standalone Zig module roots -- some only compile through the aggregated test graph. When in doubt, use `zig build test --summary all`.
 
-### Zig version
+Run `zig build e2e` locally when changing scaffolding, templates, packaging, or run/build host integration. Use `WIZIG_E2E_KEEP=1` to preserve test artifacts for debugging.
 
-Minimum: `0.16.0-dev.2670+56253d9e3` (build.zig.zon). README references Zig 0.15.1 as the developer install version.
+## Module Architecture
 
-## Architecture
-
-Four-layer runtime stack:
-
-1. **Host UI** — SwiftUI (iOS) / Jetpack Compose (Android), purely native
-2. **Generated bridge** — Swift, Kotlin, Zig FFI clients generated from API discovery
-3. **FFI layer** (`ffi/`) — C ABI symbols with integer status codes and thread-local error envelopes
-4. **App domain** (`lib/`) — User business logic in Zig
-
-### Module layout
-
-| Module | Root source | Purpose |
-|--------|-------------|---------|
+| Module | Root | Purpose |
+|--------|------|---------|
 | `wizig_core` | `core/src/root.zig` | Runtime primitives, plugin manifest, registry codegen |
-| `wizig_ffi` | `ffi/src/root.zig` | C ABI bridge; exports `wizig_runtime_*`, `wizig_ffi_*` symbols |
-| `wizig_cli` | `cli/src/main.zig` | CLI binary; dispatches to command handlers in `cli/src/commands/` |
-| `wizig` | `src/root.zig` | Compatibility re-export layer |
-| `runtime/ffi/` | `runtime/ffi/src/root.zig` | Vendored FFI for app-local use |
+| `wizig_ffi` | `ffi/src/root.zig` | C ABI bridge (exports `wizig_runtime_*` / `wizig_ffi_*` symbols) |
+| `wizig_cli` | `cli/src/main.zig` | CLI binary; depends on `wizig_core` + `build_options` |
+| `wizig` | `src/root.zig` | Compatibility re-export layer over `wizig_core` |
+| runtime FFI | `runtime/ffi/src/root.zig` | Vendored FFI for app-local use |
 
-### CLI commands
+The CLI dispatcher (`cli/src/main.zig`) routes to command handlers in `cli/src/commands/`: `create`, `codegen`, `run`, `build`, `plugin`, `doctor`, `self_update`, `uninstall`.
 
-- **`create`** (`cli/src/commands/create/`) — Scaffolds project with vendored `.wizig/` assets
-- **`codegen`** (`cli/src/commands/codegen/`) — Generates typed bridge bindings from API discovery
-- **`run`** (`cli/src/commands/run/`) — Builds and runs on device/simulator
-- **`build`** (`cli/src/commands/build/`) — Android multi-ABI and release builds
-- **`plugin`** (`cli/src/commands/plugin/`) — Validate, sync, add plugins
-- **`doctor`** (`cli/src/commands/doctor/`) — Validates host tools against `toolchains.toml`
+**Codegen** (`cli/src/commands/codegen/`) is the most complex subsystem with ~66 files: `contract/` (API parsing), `model/` (ApiSpec data structure), `project/` (path resolution, lib/type discovery, spec merging), `render/` (per-target code generators), `watch/` (file monitoring).
 
-### Codegen pipeline (`cli/src/commands/codegen/`)
-
-Sub-modules:
-- **contract/** — API contract parsing (Zig source and JSON formats)
-- **model/** — `ApiSpec` data structure (methods, params, return types)
-- **project/** — Project analysis: path resolution, lib discovery, type discovery, spec merging
-- **render/** — Per-target code generators: `swift_api`, `kotlin_api`, `zig_ffi_root`, `ios_c_headers`, `ios_c_shim`, `android_jni_bridge`, `zig_ffi_types`, `zig_app_module`
-- **watch/** — File monitoring for incremental codegen
-
-Discovery precedence: `--api <path>` → `wizig.api.zig` → `wizig.api.json` → auto-discover from `lib/**/*.zig`.
-
-### FFI design
-
-- Status codes: `ok=0`, `null_argument=1`, `out_of_memory=2`, `invalid_argument=3`, `internal_error=255`
-- Thread-local structured error envelope (domain/code/message)
-- ABI version handshake + contract hash validation before API calls
-- C header: `ffi/include/wizig.h`
+Support utilities live in `cli/src/support/` (path, fs, process, errors, sdk_locator, toolchains/).
 
 ## Key Conventions
 
-- Arena allocators throughout command execution
-- Toolchain governance via `toolchains.toml` — enforced by `run` and `codegen` unless `--allow-toolchain-drift` is passed
-- Projects are portable: `wizig create` vendors SDK/runtime/generated assets into `.wizig/`
-- SDK resolution: CLI flag → env `WIZIG_SDK_ROOT` → install-relative → dev workspace fallback
-- Templates generated by Python (`tools/templategen/generate_templates.py`) and installed during `zig build`
-- Plugin lockfiles are deterministic (`plugins/registry/plugins.lock.toml`)
+- **Allocators**: Use arena allocators for command execution, pass explicitly, never use global state.
+- **Error handling**: Zig error unions (`!T`), domain-specific error sets, propagate with `try`, catch only at boundaries.
+- **FFI boundary**: Return integer status codes (never Zig errors), thread-local error envelopes, prefix exports with `wizig_runtime_` or `wizig_ffi_`.
+- **File size**: Keep authored source files under 300 lines unless reviewed exception.
+- **Determinism**: Codegen, lockfiles, and docs must produce identical output for identical inputs.
+- **Generated code**: Never hand-edit files under `.wizig/generated/` or `docs/reference/api/`.
+- **Formatting**: Run `zig fmt` on changed Zig files before committing.
+
+## Special Workflows
+
+When changing `toolchains.toml` (single source of truth for doctor policy and template defaults):
+```sh
+python3 tools/toolchains/render_docs.py
+python3 scripts/docs_build.py --check
+zig build && zig build test --summary all
+./zig-out/bin/wizig doctor --sdk-root .
+```
+
+When changing template seeds or generators:
+```sh
+python3 tools/templategen/generate_templates.py --out build/generated/templates
+zig build && zig build e2e
+```
+
+When changing public declarations or docs:
+```sh
+python3 scripts/docs_build.py --check
+zig build docs
+```
+
+## Toolchain Requirements
+
+Zig `0.16.0-dev.2670+56253d9e3` or newer (from build.zig.zon). Other requirements defined in `toolchains.toml`: Xcode 26+, Java 21+, Gradle 9.2.1+, Python 3.10+. Validate with `./zig-out/bin/wizig doctor --sdk-root .`.
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`): runs `zig build test`, `zig build e2e`, and docs determinism check on every PR and push to main.
+Main CI (`.github/workflows/ci.yml`) runs: `zig build test -j1 --summary all`, ReleaseSafe build, Linux packaging, docs determinism check. E2E tests are **not** part of regular CI -- run locally for scaffold/template changes.

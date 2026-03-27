@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.8
+
+### Added
+
+- Added sample zig std print in SDK/Templates
+
+### Fixed
+
+- Fixed issue in the iOS code signing flow where embedded frameworks were being re-signed on every codegen run
+- Replaced `std.heap.GeneralPurposeAllocator` with `std.heap.DebugAllocator` (zig `0.16.0-dev.2984+cb7d2b056`)
+
+### Known Issues
+
+- As of zig `0.16.0-dev.2984+cb7d2b056` the builds with Xcode 26.4 results in error ([`#31658 ziglang/zig`](https://codeberg.org/ziglang/zig/issues/31658)). 
+
 ## 0.0.7
 
 ### Added
