@@ -1,9 +1,20 @@
 //! Per-method Android JNI export generation.
+//!
+//! Generates `JNIEXPORT` C functions that bridge each `ApiMethod` from
+//! Kotlin/Java to the underlying Wizig FFI C ABI.  String inputs use
+//! `GetStringUTFLength` (O(1)) rather than `strlen` (O(n)) because the
+//! JVM already knows the encoded length.
 
 const std = @import("std");
 const api = @import("../../model/api.zig");
 const helpers = @import("../helpers.zig");
 
+/// Appends one `JNIEXPORT` function per method to `out`.
+///
+/// Each generated function:
+///   1. Validates / converts the Java input value.
+///   2. Calls the corresponding `wizig_api_<name>` FFI symbol.
+///   3. Converts the output back to a JNI type and returns it.
 pub fn appendMethodExports(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
@@ -41,9 +52,10 @@ pub fn appendMethodExports(
                         try helpers.appendFmt(out, arena, "        throw_structured_error(env, \"wizig.argument\", 1, \"{s} received null input\");\n", .{ffi_name});
                         try out.appendSlice(arena, "        return NULL;\n");
                         try out.appendSlice(arena, "    }\n");
+                        try out.appendSlice(arena, "    jsize input_len = (*env)->GetStringUTFLength(env, input);\n");
                         try out.appendSlice(arena, "    const char* input_utf = (*env)->GetStringUTFChars(env, input, NULL);\n");
                         try out.appendSlice(arena, "    if (input_utf == NULL) return NULL;\n");
-                        try helpers.appendFmt(out, arena, "    int32_t status = {s}((const uint8_t*)input_utf, strlen(input_utf), &out_ptr, &out_len);\n", .{ffi_name});
+                        try helpers.appendFmt(out, arena, "    int32_t status = {s}((const uint8_t*)input_utf, (size_t)input_len, &out_ptr, &out_len);\n", .{ffi_name});
                         try out.appendSlice(arena, "    (*env)->ReleaseStringUTFChars(env, input, input_utf);\n");
                     },
                     .int => try helpers.appendFmt(out, arena, "    int32_t status = {s}((int64_t)input, &out_ptr, &out_len);\n", .{ffi_name}),
@@ -71,9 +83,10 @@ pub fn appendMethodExports(
                         try helpers.appendFmt(out, arena, "        throw_structured_error(env, \"wizig.argument\", 1, \"{s} received null input\");\n", .{ffi_name});
                         try out.appendSlice(arena, "        return 0;\n");
                         try out.appendSlice(arena, "    }\n");
+                        try out.appendSlice(arena, "    jsize input_len = (*env)->GetStringUTFLength(env, input);\n");
                         try out.appendSlice(arena, "    const char* input_utf = (*env)->GetStringUTFChars(env, input, NULL);\n");
                         try out.appendSlice(arena, "    if (input_utf == NULL) return 0;\n");
-                        try helpers.appendFmt(out, arena, "    int32_t status = {s}((const uint8_t*)input_utf, strlen(input_utf), &out_value);\n", .{ffi_name});
+                        try helpers.appendFmt(out, arena, "    int32_t status = {s}((const uint8_t*)input_utf, (size_t)input_len, &out_value);\n", .{ffi_name});
                         try out.appendSlice(arena, "    (*env)->ReleaseStringUTFChars(env, input, input_utf);\n");
                     },
                     .int => try helpers.appendFmt(out, arena, "    int32_t status = {s}((int64_t)input, &out_value);\n", .{ffi_name}),
@@ -94,9 +107,10 @@ pub fn appendMethodExports(
                         try helpers.appendFmt(out, arena, "        throw_structured_error(env, \"wizig.argument\", 1, \"{s} received null input\");\n", .{ffi_name});
                         try out.appendSlice(arena, "        return JNI_FALSE;\n");
                         try out.appendSlice(arena, "    }\n");
+                        try out.appendSlice(arena, "    jsize input_len = (*env)->GetStringUTFLength(env, input);\n");
                         try out.appendSlice(arena, "    const char* input_utf = (*env)->GetStringUTFChars(env, input, NULL);\n");
                         try out.appendSlice(arena, "    if (input_utf == NULL) return JNI_FALSE;\n");
-                        try helpers.appendFmt(out, arena, "    int32_t status = {s}((const uint8_t*)input_utf, strlen(input_utf), &out_value);\n", .{ffi_name});
+                        try helpers.appendFmt(out, arena, "    int32_t status = {s}((const uint8_t*)input_utf, (size_t)input_len, &out_value);\n", .{ffi_name});
                         try out.appendSlice(arena, "    (*env)->ReleaseStringUTFChars(env, input, input_utf);\n");
                     },
                     .int => try helpers.appendFmt(out, arena, "    int32_t status = {s}((int64_t)input, &out_value);\n", .{ffi_name}),
@@ -116,9 +130,10 @@ pub fn appendMethodExports(
                         try helpers.appendFmt(out, arena, "        throw_structured_error(env, \"wizig.argument\", 1, \"{s} received null input\");\n", .{ffi_name});
                         try out.appendSlice(arena, "        return;\n");
                         try out.appendSlice(arena, "    }\n");
+                        try out.appendSlice(arena, "    jsize input_len = (*env)->GetStringUTFLength(env, input);\n");
                         try out.appendSlice(arena, "    const char* input_utf = (*env)->GetStringUTFChars(env, input, NULL);\n");
                         try out.appendSlice(arena, "    if (input_utf == NULL) return;\n");
-                        try helpers.appendFmt(out, arena, "    int32_t status = {s}((const uint8_t*)input_utf, strlen(input_utf));\n", .{ffi_name});
+                        try helpers.appendFmt(out, arena, "    int32_t status = {s}((const uint8_t*)input_utf, (size_t)input_len);\n", .{ffi_name});
                         try out.appendSlice(arena, "    (*env)->ReleaseStringUTFChars(env, input, input_utf);\n");
                     },
                     .int => try helpers.appendFmt(out, arena, "    int32_t status = {s}((int64_t)input);\n", .{ffi_name}),

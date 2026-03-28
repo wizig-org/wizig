@@ -2,11 +2,22 @@
 //!
 //! All C symbols are resolved at link time via `import WizigFFI` — no
 //! dlopen/dlsym indirection.
+//!
+//! Performance notes:
+//!   - `withUTF8Pointer` uses `String.withUTF8` (Swift 5.0+) for zero-copy
+//!     pointer access, avoiding `Array(value.utf8)` heap allocation.
+//!   - `callStringOutput` uses `String(decoding:as:)` to skip an
+//!     intermediate `Data` allocation.
 
 const std = @import("std");
 const api = @import("../../model/api.zig");
 const helpers = @import("../helpers.zig");
 
+/// Appends the `WizigGeneratedApi` class body to `out`.
+///
+/// Includes: initializer, ABI/contract validation, error reader,
+/// status assertion, UTF-8 pointer helper, and typed call wrappers
+/// (`callStringOutput`, `callIntOutput`, `callBoolOutput`, etc.).
 pub fn appendApiClassCore(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
@@ -54,16 +65,16 @@ pub fn appendApiClassCore(
     try out.appendSlice(arena, "        }\n");
     try out.appendSlice(arena, "    }\n\n");
 
+    try out.appendSlice(arena, "    /// Zero-copy UTF-8 pointer access for FFI string inputs.\n");
+    try out.appendSlice(arena, "    /// Uses String.withUTF8 (Swift 5.0+) to avoid heap-allocating an Array<UInt8> copy.\n");
     try out.appendSlice(arena, "    private func withUTF8Pointer<T>(_ value: String, _ body: (UnsafePointer<UInt8>, Int) throws -> T) throws -> T {\n");
-    try out.appendSlice(arena, "        let bytes = Array(value.utf8)\n");
-    try out.appendSlice(arena, "        if bytes.isEmpty {\n");
-    try out.appendSlice(arena, "            var placeholder: UInt8 = 0\n");
-    try out.appendSlice(arena, "            return try withUnsafePointer(to: &placeholder) { ptr in\n");
-    try out.appendSlice(arena, "                try body(ptr, 0)\n");
+    try out.appendSlice(arena, "        var copy = value\n");
+    try out.appendSlice(arena, "        return try copy.withUTF8 { buffer in\n");
+    try out.appendSlice(arena, "            if buffer.isEmpty {\n");
+    try out.appendSlice(arena, "                var placeholder: UInt8 = 0\n");
+    try out.appendSlice(arena, "                return try withUnsafePointer(to: &placeholder) { try body($0, 0) }\n");
     try out.appendSlice(arena, "            }\n");
-    try out.appendSlice(arena, "        }\n");
-    try out.appendSlice(arena, "        return try bytes.withUnsafeBufferPointer { buffer in\n");
-    try out.appendSlice(arena, "            try body(buffer.baseAddress!, buffer.count)\n");
+    try out.appendSlice(arena, "            return try body(buffer.baseAddress!, buffer.count)\n");
     try out.appendSlice(arena, "        }\n");
     try out.appendSlice(arena, "    }\n\n");
 
@@ -77,11 +88,7 @@ pub fn appendApiClassCore(
     try out.appendSlice(arena, "        defer {\n");
     try out.appendSlice(arena, "            wizig_bytes_free(outPtr, outLen)\n");
     try out.appendSlice(arena, "        }\n");
-    try out.appendSlice(arena, "        let data = Data(bytes: outPtr, count: outLen)\n");
-    try out.appendSlice(arena, "        guard let value = String(data: data, encoding: .utf8) else {\n");
-    try out.appendSlice(arena, "            throw WizigGeneratedApiError.invalidUtf8(function: function)\n");
-    try out.appendSlice(arena, "        }\n");
-    try out.appendSlice(arena, "        return value\n");
+    try out.appendSlice(arena, "        return String(decoding: UnsafeBufferPointer(start: outPtr, count: outLen), as: UTF8.self)\n");
     try out.appendSlice(arena, "    }\n\n");
 
     try out.appendSlice(arena, "    private func callIntOutput(function: String, _ invoke: (UnsafeMutablePointer<Int64>) -> Int32) throws -> Int64 {\n");

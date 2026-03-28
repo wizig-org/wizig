@@ -5,6 +5,10 @@
 ### Fixed
 
 - Fixes [#12](https://github.com/wizig-org/wizig/issues/12) via conditional allocator selection based on build mode
+- Fixes [#14](https://github.com/wizig-org/wizig/issues/14) — generated Swift `withUTF8Pointer` now uses `String.withUTF8` for zero-copy pointer access instead of heap-allocating `Array(value.utf8)` on every call
+- Fixes [#15](https://github.com/wizig-org/wizig/issues/15) — generated JNI bridge uses `GetStringUTFLength` (O(1)) instead of `strlen` (O(n)) for all string input paths
+- Fixes [#16](https://github.com/wizig-org/wizig/issues/16) — generated JNI `new_jstring_from_bytes` uses a 512-byte stack buffer for small strings, eliminating `malloc`/`free` for ~95% of string returns
+- Fixes [#17](https://github.com/wizig-org/wizig/issues/17) — generated Swift `callStringOutput` uses `String(decoding:as: UTF8.self)` instead of allocating an intermediate `Data` object
 
 ### Changed
 
