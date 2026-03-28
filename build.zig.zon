@@ -73,11 +73,8 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "cli",
-        "core",
         "docs",
         "examples",
-        "ffi",
         "plugins",
         "runtime",
         "sdk",

@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
     const version = b.option([]const u8, "version", "Embedded version string") orelse "dev";
 
     const core_module = b.addModule("wizig_core", .{
-        .root_source_file = b.path("core/src/root.zig"),
+        .root_source_file = b.path("src/core/root.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
     build_options.addOption([]const u8, "version", version);
 
     const cli_module = b.createModule(.{
-        .root_source_file = b.path("cli/src/main.zig"),
+        .root_source_file = b.path("src/cli/main.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -79,7 +79,7 @@ pub fn build(b: *std.Build) void {
     b.getInstallStep().dependOn(&install_toolchains.step);
 
     const ffi_module = b.createModule(.{
-        .root_source_file = b.path("ffi/src/root.zig"),
+        .root_source_file = b.path("src/ffi/root.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -100,7 +100,7 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(ffi_shared_lib);
 
-    const install_header = b.addInstallHeaderFile(b.path("ffi/include/wizig.h"), "wizig.h");
+    const install_header = b.addInstallHeaderFile(b.path("src/ffi/include/wizig.h"), "wizig.h");
     b.getInstallStep().dependOn(&install_header.step);
 
     const run_step = b.step("run", "Run the Wizig CLI");
@@ -122,7 +122,7 @@ pub fn build(b: *std.Build) void {
     const core_tests = b.addTest(.{
         .name = "core-tests",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("core/src/root.zig"),
+            .root_source_file = b.path("src/core/root.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -133,7 +133,7 @@ pub fn build(b: *std.Build) void {
     const ffi_tests = b.addTest(.{
         .name = "ffi-tests",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("ffi/src/root.zig"),
+            .root_source_file = b.path("src/ffi/root.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -161,7 +161,7 @@ pub fn build(b: *std.Build) void {
     const cli_tests = b.addTest(.{
         .name = "cli-tests",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("cli/src/main.zig"),
+            .root_source_file = b.path("src/cli/main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{

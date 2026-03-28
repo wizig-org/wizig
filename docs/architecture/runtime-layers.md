@@ -33,15 +33,15 @@ The FFI layer exports C ABI symbols and provides runtime primitives:
 
 | Module | Source | Purpose |
 |--------|--------|---------|
-| `wizig_ffi` | `ffi/src/root.zig` | C ABI bridge; exports `wizig_runtime_*`, `wizig_ffi_*` symbols |
-| `wizig_core` | `core/src/root.zig` | Runtime primitives, plugin manifest, registry codegen |
+| `wizig_ffi` | `src/ffi/root.zig` | C ABI bridge; exports `wizig_runtime_*`, `wizig_ffi_*` symbols |
+| `wizig_core` | `src/core/root.zig` | Runtime primitives, plugin manifest, registry codegen |
 
 **FFI characteristics:**
 
 - Integer status codes: `ok=0`, `null_argument=1`, `out_of_memory=2`, `invalid_argument=3`, `internal_error=255`
 - Thread-local structured error envelope (domain/code/message)
 - ABI version handshake + contract hash validation before API calls
-- C header at `ffi/include/wizig.h`
+- C header at `src/ffi/include/wizig.h`
 
 See [FFI Design](ffi-design.md) for detailed documentation.
 

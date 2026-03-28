@@ -24,12 +24,26 @@
 
 ```sh
 curl -fsSL wizig.org/install.sh | sh
+
+#or
+curl -fsSL wizig.org/install.sh | sh -s -- 0.1.0 # specific release
 ```
 
 Or with Homebrew:
 
 ```sh
 brew install wizig-org/tap/wizig
+```
+
+### For nightly builds:
+```sh
+curl -fsSL wizig.org/install.sh | sh -s -- nightly
+
+# or
+WIZIG_VERSION=nightly curl -fsSL wizig.org/install.sh | sh
+
+# Pin this specific nightly
+curl -fsSL wizig.org/install.sh | sh -s -- ${DATE_TAG}
 ```
 
 Wizig is built for those that want native platform UX without duplicating core application logic.

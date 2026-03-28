@@ -38,11 +38,11 @@ The `test` step aggregates five named suites:
 
 | Suite | Root Source |
 |-------|------------|
-| `core-tests` | `core/src/root.zig` |
-| `ffi-tests` | `ffi/src/root.zig` |
-| `runtime-ffi-tests` | `runtime/ffi/src/root.zig` |
+| `core-tests` | `src/core/root.zig` |
+| `ffi-tests` | `src/ffi/root.zig` |
+| `runtime-ffi-tests` | `runtime/ffi/root.zig` |
 | `compatibility-tests` | `src/root.zig` |
-| `cli-tests` | `cli/src/main.zig` |
+| `cli-tests` | `src/cli/main.zig` |
 
 Tests are standard Zig inline `test` blocks — no external test runner.
 

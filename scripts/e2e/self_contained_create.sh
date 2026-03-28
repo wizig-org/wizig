@@ -34,7 +34,7 @@ WIZIG_IDE_TEMPLATES_DO_NOT_USE="/path/that/does/not/exist" \
 "$WIZIG_BIN" create SelfContainedApp "$app_dir" --platforms ios,android --sdk-root "$packaged_root"
 
 require_file "$app_dir/.wizig/sdk/ios/Package.swift"
-require_file "$app_dir/.wizig/runtime/ffi/src/root.zig"
+require_file "$app_dir/.wizig/runtime/ffi/root.zig"
 require_file "$app_dir/ios/SelfContainedApp.xcodeproj/project.pbxproj"
 require_file "$app_dir/ios/SelfContainedApp/Generated/WizigGeneratedApi.swift"
 require_file "$app_dir/android/app/build.gradle.kts"

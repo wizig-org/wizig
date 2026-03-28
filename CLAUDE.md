@@ -23,7 +23,7 @@ zig build -Dversion="x.y.z"     # Build with embedded version string (used by CI
 
 Tests are inline `test` blocks in their respective modules. Run `zig build test --summary all` as the default check.
 
-Five test suites: `core-tests` (core/src/root.zig), `ffi-tests` (ffi/src/root.zig), `runtime-ffi-tests` (runtime/ffi/src/root.zig), `compatibility-tests` (src/root.zig), `cli-tests` (cli/src/main.zig).
+Four test suites: `core-tests` (`src/core/root.zig`), `ffi-tests` (`src/ffi/root.zig`), `compatibility-tests` (`src/root.zig`), `cli-tests` (`src/cli/main.zig`).
 
 Not all internal files are valid standalone Zig module roots -- some only compile through the aggregated test graph. When in doubt, use `zig build test --summary all`.
 
@@ -33,17 +33,17 @@ Run `zig build e2e` locally when changing scaffolding, templates, packaging, or 
 
 | Module | Root | Purpose |
 |--------|------|---------|
-| `wizig_core` | `core/src/root.zig` | Runtime primitives, plugin manifest, registry codegen |
-| `wizig_ffi` | `ffi/src/root.zig` | C ABI bridge (exports `wizig_runtime_*` / `wizig_ffi_*` symbols) |
-| `wizig_cli` | `cli/src/main.zig` | CLI binary; depends on `wizig_core` + `build_options` |
+| `wizig_core` | `src/core/root.zig` | Runtime primitives, plugin manifest, registry codegen |
+| `wizig_ffi` | `src/ffi/root.zig` | C ABI bridge (exports `wizig_runtime_*` / `wizig_ffi_*` symbols) |
+| `wizig_cli` | `src/cli/main.zig` | CLI binary; depends on `wizig_core` + `build_options` |
 | `wizig` | `src/root.zig` | Compatibility re-export layer over `wizig_core` |
-| runtime FFI | `runtime/ffi/src/root.zig` | Vendored FFI for app-local use |
+| runtime FFI | `runtime/ffi/root.zig` | Vendored FFI for app-local use |
 
-The CLI dispatcher (`cli/src/main.zig`) routes to command handlers in `cli/src/commands/`: `create`, `codegen`, `run`, `build`, `plugin`, `doctor`, `self_update`, `uninstall`.
+The CLI dispatcher (`src/cli/main.zig`) routes to command handlers in `src/cli/commands/`: `create`, `codegen`, `run`, `build`, `plugin`, `doctor`, `self_update`, `uninstall`.
 
-**Codegen** (`cli/src/commands/codegen/`) is the most complex subsystem with ~66 files: `contract/` (API parsing), `model/` (ApiSpec data structure), `project/` (path resolution, lib/type discovery, spec merging), `render/` (per-target code generators), `watch/` (file monitoring).
+**Codegen** (`src/cli/commands/codegen/`) is the most complex subsystem with ~66 files: `contract/` (API parsing), `model/` (ApiSpec data structure), `project/` (path resolution, lib/type discovery, spec merging), `render/` (per-target code generators), `watch/` (file monitoring).
 
-Support utilities live in `cli/src/support/` (path, fs, process, errors, sdk_locator, toolchains/).
+Support utilities live in `src/cli/support/` (path, fs, process, errors, sdk_locator, toolchains/).
 
 ## Key Conventions
 

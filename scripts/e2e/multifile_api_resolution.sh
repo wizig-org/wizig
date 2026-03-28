@@ -46,7 +46,7 @@ zig build-lib -ODebug \
   --dep wizig_core \
   --dep wizig_app \
   -Mroot="$app_dir/.wizig/generated/zig/WizigGeneratedFfiRoot.zig" \
-  -Mwizig_core="$app_dir/.wizig/runtime/core/src/root.zig" \
+  -Mwizig_core="$app_dir/.wizig/runtime/core/root.zig" \
   -Mwizig_app="$app_dir/lib/WizigGeneratedAppModule.zig" \
   --name wizigffi \
   -dynamic \

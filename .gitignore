@@ -2,12 +2,15 @@
 ISSUES.md
 problems.md
 zig-out/
+.wizig/
+lib/
 .gradle/
 __pycache__
 **/.gradle/
 **/local.properties
 DerivedData/
 .DS_Store
+__pycache__/
 # Prerequisites
 *.d
 
@@ -16,7 +19,7 @@ DerivedData/
 *.lo
 *.o
 *.obj
-
+*.pyc
 # Precompiled Headers
 *.gch
 *.pch

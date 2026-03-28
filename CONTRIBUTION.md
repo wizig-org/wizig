@@ -62,11 +62,11 @@ Key entry points:
 | Path | Purpose |
 | --- | --- |
 | [`build.zig`](build.zig) | Build graph, install steps, tests, docs, and e2e entrypoints |
-| [`cli/src/main.zig`](cli/src/main.zig) | CLI entrypoint |
-| [`cli/src/commands/`](cli/src/commands) | Command implementations |
-| [`core/src/root.zig`](core/src/root.zig) | Shared runtime/core primitives |
-| [`ffi/src/root.zig`](ffi/src/root.zig) | Exported C ABI |
-| [`runtime/ffi/src/root.zig`](runtime/ffi/src/root.zig) | Vendored runtime-side FFI |
+| [`src/cli/main.zig`](src/cli/main.zig) | CLI entrypoint |
+| [`src/cli/commands/`](src/cli/commands) | Command implementations |
+| [`src/core/root.zig`](src/core/root.zig) | Shared runtime/core primitives |
+| [`src/ffi/root.zig`](src/ffi/root.zig) | Exported C ABI |
+| [`runtime/ffi/root.zig`](runtime/ffi/root.zig) | Vendored runtime-side FFI |
 | [`tools/templategen/`](tools/templategen) | Template generators |
 | [`scripts/docs_build.py`](scripts/docs_build.py) | API reference generation and docs determinism checks |
 | [`scripts/e2e/`](scripts/e2e) | End-to-end scaffold and run checks |
@@ -139,11 +139,10 @@ The aggregated suites are:
 
 | Suite | Root |
 | --- | --- |
-| `core-tests` | `core/src/root.zig` |
-| `ffi-tests` | `ffi/src/root.zig` |
-| `runtime-ffi-tests` | `runtime/ffi/src/root.zig` |
+| `core-tests` | `src/core/root.zig` |
+| `ffi-tests` | `src/ffi/root.zig` |
 | `compatibility-tests` | `src/root.zig` |
-| `cli-tests` | `cli/src/main.zig` |
+| `cli-tests` | `src/cli/main.zig` |
 
 Targeted `zig test <module-root>` runs are useful for focused work, especially in facade modules. Do not assume every internal helper file is a valid standalone Zig module root; some internal code is only compiled through the aggregated CLI test graph. When in doubt, trust `zig build test --summary all`.
 
