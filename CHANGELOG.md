@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.0.11
+
+### Fixed
+
+- `wizig run` not attaching to the iOS process when finished building
+
+## 0.0.10
+
+### Fixed
+
+- Wizig installed formulas failed to find runtime SDKs
+
 ## 0.0.9
 
 ### Added

@@ -181,6 +181,43 @@ require_command_or_skip() {
   return 1
 }
 
+resolve_ios_e2e_destination() {
+  if ! command -v xcrun >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+    printf '%s\n' "generic/platform=iOS Simulator"
+    return 0
+  fi
+
+  local destination
+  destination="$(
+    xcrun simctl list devices available --json 2>/dev/null | python3 -c '
+import json, sys
+
+try:
+    devices_by_runtime = json.load(sys.stdin).get("devices", {})
+except Exception:
+    sys.exit(1)
+
+candidates = []
+for runtime, devices in devices_by_runtime.items():
+    if "iOS-" not in runtime:
+        continue
+    for device in devices:
+        udid = device.get("udid")
+        if not udid or not device.get("isAvailable", True):
+            continue
+        state = device.get("state", "")
+        candidates.append((0 if state == "Booted" else 1, device.get("name", ""), udid))
+
+if not candidates:
+    sys.exit(1)
+
+candidates.sort()
+print(f"id={candidates[0][2]}")
+')"
+
+  printf '%s\n' "${destination:-generic/platform=iOS Simulator}"
+}
+
 assert_wizig_ios_xcframework_slices_after_xcodebuild() {
   local app_path="$1"
 
@@ -196,13 +233,15 @@ assert_wizig_ios_xcframework_slices_after_xcodebuild() {
   scheme="$(basename "$xcodeproj" .xcodeproj)"
 
   local derived_data="$app_path/.wizig/generated/ios/e2e-derived-data"
+  local destination
+  destination="$(resolve_ios_e2e_destination)"
   rm -rf "$derived_data"
 
   xcodebuild \
     -project "$xcodeproj" \
     -scheme "$scheme" \
     -configuration Debug \
-    -destination "generic/platform=iOS Simulator" \
+    -destination "$destination" \
     -derivedDataPath "$derived_data" \
     build >/dev/null
 
@@ -246,7 +285,11 @@ assert_wizig_ios_xcframework_slices_after_xcodebuild() {
     private_links="$(printf '%s\n' "$links" | awk 'NR>1 {print $1}' | grep -E '(^|/)PrivateFrameworks/[^[:space:]]+\.framework/' || true)"
     [[ -z "$private_links" ]] || fail "private framework linkage detected in iOS device slice: $private_links"
 
-    if ! undef="$(xcrun nm -u -j "$iphoneos_binary" 2>/dev/null)"; then
+    if undef="$(xcrun dyld_info -imports "$iphoneos_binary" 2>/dev/null | awk '/^[[:space:]]*_/ { print $1 }')"; then
+      :
+    elif undef="$(xcrun nm -u -j "$iphoneos_binary" 2>/dev/null)"; then
+      :
+    else
       fail "failed to inspect imported symbols for: $iphoneos_binary"
     fi
     denylist_regex="${WIZIG_IOS_PRIVATE_SYMBOL_DENYLIST_REGEX:-^(_MGCopyAnswer|_MGGetBoolAnswer|_OBJC_(CLASS|METACLASS)_[$]_LSApplicationWorkspace|_OBJC_(CLASS|METACLASS)_[$]_LSApplicationProxy)$}"
