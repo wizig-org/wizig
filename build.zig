@@ -54,12 +54,22 @@ pub fn build(b: *std.Build) void {
     });
     b.getInstallStep().dependOn(&install_sdk.step);
 
-    const install_runtime = b.addInstallDirectory(.{
-        .source_dir = b.path("runtime"),
+    const install_runtime_core = b.addInstallDirectory(.{
+        .source_dir = b.path("src/core"),
         .install_dir = .prefix,
-        .install_subdir = "share/wizig/runtime",
+        .install_subdir = "share/wizig/runtime/core",
     });
-    b.getInstallStep().dependOn(&install_runtime.step);
+    b.getInstallStep().dependOn(&install_runtime_core.step);
+
+    const install_runtime_ffi = b.addInstallDirectory(.{
+        .source_dir = b.path("src/ffi"),
+        .install_dir = .prefix,
+        .install_subdir = "share/wizig/runtime/ffi",
+    });
+    b.getInstallStep().dependOn(&install_runtime_ffi.step);
+
+    const install_runtime_readme = b.addInstallFile(b.path("runtime/README.md"), "share/wizig/runtime/README.md");
+    b.getInstallStep().dependOn(&install_runtime_readme.step);
 
     const generate_templates = b.addSystemCommand(&.{
         "python3",
