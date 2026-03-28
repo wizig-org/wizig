@@ -134,8 +134,14 @@ download_and_install() {
 # so we cannot predict the exact filename.
 #
 # Accepts VERSION = "nightly" (rolling latest) or "nightly-YYYYMMDD" (dated).
+# The rolling tag is "nightly-latest" (not "nightly") to avoid git ambiguity
+# with the nightly branch.
 download_nightly() {
-    NIGHTLY_TAG="$VERSION"
+    if [ "$VERSION" = "nightly" ]; then
+        NIGHTLY_TAG="nightly-latest"
+    else
+        NIGHTLY_TAG="$VERSION"
+    fi
     printf "Resolving %s release...\n" "$NIGHTLY_TAG"
 
     RESPONSE="$(curl -fsSL "https://api.github.com/repos/${WIZIG_REPO}/releases/tags/${NIGHTLY_TAG}" 2>/dev/null)" || {

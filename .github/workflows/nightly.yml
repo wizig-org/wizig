@@ -203,13 +203,15 @@ jobs:
           # Remove leading whitespace from heredoc indentation
           sed -i 's/^          //' release-notes.md
 
-      - name: Publish rolling "nightly" release
+      - name: Publish rolling "nightly-latest" release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
-          gh release create nightly \
+          # Tag is "nightly-latest" (not "nightly") to avoid ambiguity
+          # with the nightly branch name.
+          gh release delete nightly-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create nightly-latest \
             --target nightly \
             --title "Wizig Nightly (${VERSION})" \
             --notes-file release-notes.md \
