@@ -42,7 +42,7 @@ run_once_check() {
   fi
 
   # Non-zero status is acceptable in headless environments with no devices.
-  grep -E -q "no runnable targets found|no available iOS|warning: iOS device discovery failed|warning: Android device discovery failed|run log:" "$log_file" \
+  grep -E -q "no runnable targets found|no available iOS|warning: iOS device discovery failed|warning: Android device discovery failed|multiple targets found; pass --device|run log:" "$log_file" \
     || fail "$label failed with unexpected output"
 }
 

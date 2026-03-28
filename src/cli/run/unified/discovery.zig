@@ -187,12 +187,14 @@ pub fn chooseCandidate(
     if (selector) |needle| {
         if (findCandidateBySelector(candidates, needle)) |found| return found;
         try stderr.print("error: target '{s}' not found in available devices\n", .{needle});
+        try stderr.flush();
         return error.RunFailed;
     }
 
     if (candidates.len == 1) return candidates[0];
     if (non_interactive) {
         try stderr.writeAll("error: multiple targets found; pass --device\n");
+        try stderr.flush();
         return error.RunFailed;
     }
 

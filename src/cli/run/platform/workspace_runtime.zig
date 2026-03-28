@@ -20,27 +20,19 @@ pub fn resolveFfiBuildInputs(
     project_root: []const u8,
 ) !types.FfiBuildInputs {
     const runtime_root = try resolveWizigWorkspaceRoot(arena, io, parent_environ_map, project_root, stderr);
-    const runtime_core = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}core{s}src{s}root.zig",
-        .{ runtime_root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
-    );
+    const runtime_core = try runtimeSourcePath(arena, runtime_root, "core");
 
     const generated_ffi_root = try std.fs.path.resolve(arena, &.{ project_root, ".wizig", "generated", "zig", "WizigGeneratedFfiRoot.zig" });
     const generated_app_module = try std.fs.path.resolve(arena, &.{ project_root, "lib", "WizigGeneratedAppModule.zig" });
     const fallback_app_source = try std.fs.path.resolve(arena, &.{ project_root, "lib", "main.zig" });
     const lib_root = try std.fs.path.resolve(arena, &.{ project_root, "lib" });
     const generated_zig_root = try std.fs.path.resolve(arena, &.{ project_root, ".wizig", "generated", "zig" });
-    const runtime_ffi = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}ffi{s}src{s}root.zig",
-        .{ runtime_root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
-    );
+    const runtime_ffi = try runtimeSourcePath(arena, runtime_root, "ffi");
 
     if (fs_utils.pathExists(io, generated_ffi_root) and fs_utils.pathExists(io, runtime_core)) {
         const app_source = if (fs_utils.pathExists(io, generated_app_module)) generated_app_module else fallback_app_source;
         if (!fs_utils.pathExists(io, app_source) or !fs_utils.pathExists(io, runtime_ffi)) {
-            try stderr.writeAll("error: missing app/runtime sources for generated FFI root\n");
+            try writeRunError(stderr, "error: missing app/runtime sources for generated FFI root\n");
             return error.RunFailed;
         }
 
@@ -61,7 +53,7 @@ pub fn resolveFfiBuildInputs(
     }
 
     if (!fs_utils.pathExists(io, runtime_ffi) or !fs_utils.pathExists(io, runtime_core)) {
-        try stderr.writeAll("error: missing runtime sources for FFI build\n");
+        try writeRunError(stderr, "error: missing runtime sources for FFI build\n");
         return error.RunFailed;
     }
 
@@ -90,11 +82,7 @@ pub fn resolveWizigWorkspaceRoot(
             const cwd = try std.process.currentPathAlloc(io, arena);
             break :blk try std.fs.path.resolve(arena, &.{ cwd, raw_root });
         };
-        const marker = try std.fmt.allocPrint(
-            arena,
-            "{s}{s}ffi{s}src{s}root.zig",
-            .{ resolved, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
-        );
+        const marker = try runtimeSourcePath(arena, resolved, "ffi");
         if (fs_utils.pathExists(io, marker)) return resolved;
     }
 
@@ -103,14 +91,11 @@ pub fn resolveWizigWorkspaceRoot(
     }
 
     const cwd = try std.process.currentPathAlloc(io, arena);
-    const cwd_marker = try std.fmt.allocPrint(
-        arena,
-        "{s}{s}ffi{s}src{s}root.zig",
-        .{ cwd, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
-    );
+    const cwd_marker = try runtimeSourcePath(arena, cwd, "ffi");
     if (fs_utils.pathExists(io, cwd_marker)) return cwd;
 
-    try stderr.writeAll(
+    try writeRunError(
+        stderr,
         "error: unable to resolve Wizig runtime root; expected app-local .wizig/runtime or set WIZIG_SDK_ROOT\n",
     );
     return error.RunFailed;
@@ -128,16 +113,8 @@ fn resolveAppLocalRuntimeRoot(arena: Allocator, io: std.Io, project_dir: []const
 }
 
 fn runtimeRootLooksValid(arena: Allocator, io: std.Io, root: []const u8) bool {
-    const marker_core = std.fmt.allocPrint(
-        arena,
-        "{s}{s}core{s}src{s}root.zig",
-        .{ root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
-    ) catch return false;
-    const marker_ffi = std.fmt.allocPrint(
-        arena,
-        "{s}{s}ffi{s}src{s}root.zig",
-        .{ root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
-    ) catch return false;
+    const marker_core = runtimeSourcePath(arena, root, "core") catch return false;
+    const marker_ffi = runtimeSourcePath(arena, root, "ffi") catch return false;
     return fs_utils.pathExists(io, marker_core) and fs_utils.pathExists(io, marker_ffi);
 }
 
@@ -173,13 +150,109 @@ fn extractWizigWorkspaceFromProjectYml(
         if (sdk_norm.len <= suffix.len) continue;
 
         const root = try arena.dupe(u8, sdk_path[0 .. sdk_path.len - suffix.len]);
-        const marker = try std.fmt.allocPrint(
-            arena,
-            "{s}{s}ffi{s}src{s}root.zig",
-            .{ root, std.fs.path.sep_str, std.fs.path.sep_str, std.fs.path.sep_str },
-        );
+        const marker = try runtimeSourcePath(arena, root, "ffi");
         if (fs_utils.pathExists(io, marker)) return root;
     }
 
     return null;
+}
+
+fn runtimeSourcePath(arena: Allocator, runtime_root: []const u8, component: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(
+        arena,
+        "{s}{s}{s}{s}root.zig",
+        .{ runtime_root, std.fs.path.sep_str, component, std.fs.path.sep_str },
+    );
+}
+
+fn writeRunError(stderr: *Io.Writer, message: []const u8) Io.Writer.Error!void {
+    try stderr.writeAll(message);
+    try stderr.flush();
+}
+
+test "runtimeRootLooksValid accepts vendored runtime layout" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const io = std.testing.io;
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const runtime_root = try std.fmt.allocPrint(arena, ".zig-cache/tmp/{s}/app/.wizig/runtime", .{tmp.sub_path});
+    const core_root = try runtimeSourcePath(arena, runtime_root, "core");
+    const ffi_root = try runtimeSourcePath(arena, runtime_root, "ffi");
+    try fs_utils.writeFileAtomically(io, core_root, "// core\n");
+    try fs_utils.writeFileAtomically(io, ffi_root, "// ffi\n");
+
+    try std.testing.expect(runtimeRootLooksValid(arena, io, runtime_root));
+}
+
+test "resolveAppLocalRuntimeRoot finds vendored runtime from host directory" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const io = std.testing.io;
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const app_root = try std.fmt.allocPrint(arena, ".zig-cache/tmp/{s}/app", .{tmp.sub_path});
+    const ios_dir = try std.fmt.allocPrint(arena, "{s}{s}ios", .{ app_root, std.fs.path.sep_str });
+    const runtime_root = try std.fmt.allocPrint(arena, "{s}{s}.wizig{s}runtime", .{
+        app_root,
+        std.fs.path.sep_str,
+        std.fs.path.sep_str,
+    });
+    try fs_utils.writeFileAtomically(io, try runtimeSourcePath(arena, runtime_root, "core"), "// core\n");
+    try fs_utils.writeFileAtomically(io, try runtimeSourcePath(arena, runtime_root, "ffi"), "// ffi\n");
+    try std.Io.Dir.cwd().createDirPath(io, ios_dir);
+
+    const resolved = (try resolveAppLocalRuntimeRoot(arena, io, ios_dir)).?;
+    try std.testing.expectEqualStrings(runtime_root, resolved);
+}
+
+test "resolveFfiBuildInputs uses vendored runtime layout" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const io = std.testing.io;
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const app_root = try std.fmt.allocPrint(arena, ".zig-cache/tmp/{s}/app", .{tmp.sub_path});
+    const runtime_root = try std.fmt.allocPrint(arena, "{s}{s}.wizig{s}runtime", .{
+        app_root,
+        std.fs.path.sep_str,
+        std.fs.path.sep_str,
+    });
+    try fs_utils.writeFileAtomically(io, try runtimeSourcePath(arena, runtime_root, "core"), "// core\n");
+    try fs_utils.writeFileAtomically(io, try runtimeSourcePath(arena, runtime_root, "ffi"), "// ffi\n");
+    try fs_utils.writeFileAtomically(
+        io,
+        try std.fs.path.resolve(arena, &.{ app_root, ".wizig", "generated", "zig", "WizigGeneratedFfiRoot.zig" }),
+        "// generated ffi\n",
+    );
+    try fs_utils.writeFileAtomically(
+        io,
+        try std.fs.path.resolve(arena, &.{ app_root, "lib", "WizigGeneratedAppModule.zig" }),
+        "// app module\n",
+    );
+
+    var stderr_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer stderr_writer.deinit();
+    var env: std.process.Environ.Map = .init(std.testing.allocator);
+    defer env.deinit();
+
+    const inputs = try resolveFfiBuildInputs(arena, io, &stderr_writer.writer, &env, app_root);
+    try std.testing.expectEqualStrings(try runtimeSourcePath(arena, runtime_root, "core"), inputs.core_source);
+    try std.testing.expectEqualStrings(
+        try std.fs.path.resolve(arena, &.{ app_root, ".wizig", "generated", "zig", "WizigGeneratedFfiRoot.zig" }),
+        inputs.root_source,
+    );
+    try std.testing.expectEqualStrings(
+        try std.fs.path.resolve(arena, &.{ app_root, "lib", "WizigGeneratedAppModule.zig" }),
+        inputs.app_source.?,
+    );
 }
