@@ -2,6 +2,7 @@
 ISSUES.md
 problems.md
 zig-out/
+zig-pkg
 .wizig/
 lib/
 .gradle/

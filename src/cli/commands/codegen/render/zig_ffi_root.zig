@@ -4,10 +4,13 @@ const std = @import("std");
 const compatibility = @import("../compatibility.zig");
 const api = @import("../model/api.zig");
 const helpers = @import("helpers.zig");
+const buffer_pool = @import("zig_ffi_buffer_pool.zig");
 const preamble = @import("zig_ffi_root_preamble.zig");
+const lifecycle = @import("zig_ffi_root_lifecycle.zig");
 const type_defs = @import("zig_ffi_types.zig");
 const methods = @import("zig_ffi_root_methods.zig");
 
+/// Renders the complete generated Zig FFI root module from an API spec.
 pub fn renderZigFfiRoot(
     arena: std.mem.Allocator,
     spec: api.ApiSpec,
@@ -22,11 +25,14 @@ pub fn renderZigFfiRoot(
     try out.appendSlice(arena, "const app = @import(\"wizig_app\");\n\n");
 
     try helpers.appendFmt(&out, arena, "const wizig_generated_abi_version: u32 = {d};\n", .{compat.abi_version});
+    try helpers.appendFmt(&out, arena, "const wizig_generated_wire_format_version: u32 = {d};\n", .{compat.wire_format_version});
     try helpers.appendFmt(&out, arena, "const wizig_generated_contract_hash: []const u8 = \"{s}\";\n\n", .{compat.contract_hash_hex});
 
+    try buffer_pool.appendBufferPool(&out, arena);
     try preamble.appendPrelude(&out, arena);
+    try lifecycle.appendLifecycle(&out, arena);
     try type_defs.appendUserTypeDefinitions(&out, arena, spec.structs, spec.enums);
-    try methods.appendMethodExports(&out, arena, spec.methods);
+    try methods.appendMethodExports(&out, arena, spec.methods, spec.structs);
 
     return out.toOwnedSlice(arena);
 }

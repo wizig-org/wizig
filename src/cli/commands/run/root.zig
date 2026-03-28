@@ -16,6 +16,6 @@ pub fn run(
 }
 
 /// Writes usage help for the run command.
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
+pub fn printUsage(writer: *Io.Writer) !void {
     try run_impl.printUsage(writer);
 }

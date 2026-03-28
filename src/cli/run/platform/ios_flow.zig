@@ -8,7 +8,7 @@ const Io = std.Io;
 
 const config_parse = @import("config_parse.zig");
 const ios_launch = @import("ios_launch.zig");
-const options_mod = @import("options.zig");
+const options_runtime = @import("options_runtime.zig");
 const types = @import("types.zig");
 
 const context = @import("ios_flow/context.zig");
@@ -30,7 +30,7 @@ pub fn runIos(
         return error.RunFailed;
     }
 
-    const debugger_mode = try options_mod.resolveIosDebugger(stderr, options.debugger);
+    const debugger_mode = try options_runtime.resolveIosDebugger(stderr, options.debugger);
 
     if (options.regenerate_host) {
         try ios_launch.maybeRegenerateIosProject(arena, io, stderr, stdout, options.project_dir);

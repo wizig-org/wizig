@@ -27,6 +27,7 @@ pub fn renderZigAppModule(
     if (module_imports.len > 0) {
         try out.appendSlice(arena, "\n");
     }
+    try appendUserTypeAliases(&out, arena, spec, module_imports);
 
     const main_module_path = "main.zig";
     const main_module_index = blk: {
@@ -116,6 +117,30 @@ pub fn renderZigAppModule(
     }
 
     return out.toOwnedSlice(arena);
+}
+
+fn appendUserTypeAliases(
+    out: *std.ArrayList(u8),
+    arena: std.mem.Allocator,
+    spec: api.ApiSpec,
+    module_imports: []const []const u8,
+) !void {
+    for (spec.structs) |user_struct| {
+        try appendTypeAlias(out, arena, user_struct.name, module_imports);
+    }
+    for (spec.enums) |user_enum| {
+        try appendTypeAlias(out, arena, user_enum.name, module_imports);
+    }
+    if (spec.structs.len > 0 or spec.enums.len > 0) try out.appendSlice(arena, "\n");
+}
+
+fn appendTypeAlias(out: *std.ArrayList(u8), arena: std.mem.Allocator, name: []const u8, module_imports: []const []const u8) !void {
+    try helpers.appendFmt(out, arena, "pub const {s} = blk: {{\n", .{name});
+    for (module_imports, 0..) |_, idx| {
+        try helpers.appendFmt(out, arena, "    if (@hasDecl(module_{d}, \"{s}\")) break :blk module_{d}.{s};\n", .{ idx, name, idx, name });
+    }
+    try helpers.appendFmt(out, arena, "    @compileError(\"wizig codegen: no declaration found for '{s}' across lib/**/*.zig\");\n", .{name});
+    try out.appendSlice(arena, "};\n");
 }
 
 fn zigWrapperShape(arena: std.mem.Allocator, method: api.ApiMethod) !ZigWrapperShape {

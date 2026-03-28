@@ -1,7 +1,7 @@
 //! Renderer for `WizigGeneratedApi.kt`.
 //!
 //! User type wire mapping:
-//! - `user_struct` <-> JSON `String`
+//! - `user_struct` <-> binary `ByteArray` (wire format v1)
 //! - `user_enum`   <-> `Long` raw value
 
 const std = @import("std");
@@ -23,6 +23,7 @@ pub fn renderKotlinApi(
     try out.appendSlice(arena, "package dev.wizig\n\n");
 
     try helpers.appendFmt(&out, arena, "private const val WIZIG_EXPECTED_ABI_VERSION: Int = {d}\n", .{compat.abi_version});
+    try helpers.appendFmt(&out, arena, "private const val WIZIG_EXPECTED_WIRE_FORMAT_VERSION: Int = {d}\n", .{compat.wire_format_version});
     try helpers.appendFmt(&out, arena, "private const val WIZIG_EXPECTED_CONTRACT_HASH: String = \"{s}\"\n\n", .{compat.contract_hash_hex});
     try user_types.appendKotlinTypeDefinitions(&out, arena, spec.structs, spec.enums);
 
@@ -111,7 +112,7 @@ fn appendApiMethod(out: *std.ArrayList(u8), arena: std.mem.Allocator, method: ap
     const wire_input = switch (method.input) {
         .user_struct => |name| blk: {
             _ = name;
-            try out.appendSlice(arena, "        val wireInput = input.toJson()\n");
+            try out.appendSlice(arena, "        val wireInput = input.toBinary()\n");
             break :blk "wireInput";
         },
         .user_enum => blk: {
@@ -139,7 +140,7 @@ fn appendOutputReturn(
     switch (output) {
         .user_struct => |name| {
             try helpers.appendFmt(out, arena, "        val wireOutput = {s}\n", .{call_expr});
-            try helpers.appendFmt(out, arena, "        return {s}.fromJson(wireOutput)\n", .{name});
+            try helpers.appendFmt(out, arena, "        return {s}.fromBinary(wireOutput)\n", .{name});
         },
         .user_enum => |name| {
             try helpers.appendFmt(out, arena, "        val wireOutput = {s}\n", .{call_expr});
@@ -151,11 +152,18 @@ fn appendOutputReturn(
     }
 }
 
+/// Maps API types to Kotlin wire types for JNI native bridge declarations.
+///
+/// `user_struct` maps to `ByteArray` (binary wire format v1), while plain
+/// strings remain `String`.
 fn kotlinWireType(value: api.ApiType) []const u8 {
-    return switch (helpers.wireKind(value)) {
-        .string => "String",
-        .int => "Long",
-        .bool => "Boolean",
-        .void => "Unit",
+    return switch (value) {
+        .user_struct => "ByteArray",
+        else => switch (helpers.wireKind(value)) {
+            .string => "String",
+            .int => "Long",
+            .bool => "Boolean",
+            .void => "Unit",
+        },
     };
 }

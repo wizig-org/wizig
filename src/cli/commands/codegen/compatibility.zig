@@ -18,6 +18,10 @@
 const std = @import("std");
 const api = @import("model/api.zig");
 
+test {
+    _ = @import("compatibility_tests.zig");
+}
+
 /// Current generated FFI ABI version.
 ///
 /// Increment this when generated FFI symbol signatures or compatibility
@@ -29,19 +33,23 @@ pub const ffi_abi_version: u32 = 1;
 /// ## Fields
 /// - `abi_version`: numeric ABI generation identifier.
 /// - `contract_hash_hex`: lower-case SHA-256 digest of API surface contract.
+/// - `wire_format_version`: binary wire format revision for struct serialization.
 ///
 /// ## Lifetime
 /// The hash string is arena-owned by the allocator passed into builders.
 pub const Metadata = struct {
     abi_version: u32,
     contract_hash_hex: []const u8,
+    wire_format_version: u32,
 };
 
 /// Builds compatibility metadata from a full API spec.
 pub fn buildMetadata(arena: std.mem.Allocator, spec: api.ApiSpec) !Metadata {
+    const helpers = @import("render/helpers.zig");
     return .{
         .abi_version = ffi_abi_version,
         .contract_hash_hex = try computeContractHashHex(arena, spec),
+        .wire_format_version = helpers.wire_format_version,
     };
 }
 
@@ -66,6 +74,8 @@ fn hashApiType(hasher: *std.crypto.hash.sha2.Sha256, value: api.ApiType) void {
 pub fn computeContractHashHex(arena: std.mem.Allocator, spec: api.ApiSpec) ![]u8 {
     var hasher = std.crypto.hash.sha2.Sha256.init(.{});
     hasher.update("wizig-contract-hash-v1");
+    hasher.update(&[_]u8{0});
+    hasher.update("wire:binary-v1");
     hasher.update(&[_]u8{0});
     hasher.update(spec.namespace);
     hasher.update(&[_]u8{0});
@@ -114,113 +124,4 @@ pub fn computeContractHashHex(arena: std.mem.Allocator, spec: api.ApiSpec) ![]u8
     hasher.final(&digest);
     const hex = std.fmt.bytesToHex(digest, .lower);
     return arena.dupe(u8, &hex);
-}
-
-test "computeContractHashHex is stable for identical inputs" {
-    const spec: api.ApiSpec = .{
-        .namespace = "dev.wizig.app",
-        .methods = &.{
-            .{ .name = "echo", .input = .string, .output = .string },
-            .{ .name = "uptime", .input = .void, .output = .int },
-        },
-        .events = &.{
-            .{ .name = "log", .payload = .string },
-        },
-    };
-
-    const first = try computeContractHashHex(std.testing.allocator, spec);
-    defer std.testing.allocator.free(first);
-    const second = try computeContractHashHex(std.testing.allocator, spec);
-    defer std.testing.allocator.free(second);
-
-    try std.testing.expectEqualStrings(first, second);
-}
-
-test "computeContractHashHex changes when method signature changes" {
-    const spec_a: api.ApiSpec = .{
-        .namespace = "dev.wizig.app",
-        .methods = &.{.{ .name = "echo", .input = .string, .output = .string }},
-        .events = &.{.{ .name = "log", .payload = .string }},
-    };
-    const spec_b: api.ApiSpec = .{
-        .namespace = "dev.wizig.app",
-        .methods = &.{.{ .name = "echo", .input = .string, .output = .int }},
-        .events = &.{.{ .name = "log", .payload = .string }},
-    };
-
-    const first = try computeContractHashHex(std.testing.allocator, spec_a);
-    defer std.testing.allocator.free(first);
-    const second = try computeContractHashHex(std.testing.allocator, spec_b);
-    defer std.testing.allocator.free(second);
-
-    try std.testing.expect(!std.mem.eql(u8, first, second));
-}
-
-test "computeContractHashHex changes when struct fields change" {
-    const spec_a: api.ApiSpec = .{
-        .namespace = "dev.wizig.app",
-        .methods = &.{},
-        .events = &.{},
-        .structs = &.{.{ .name = "Profile", .fields = &.{
-            .{ .name = "name", .field_type = .string },
-        } }},
-    };
-    const spec_b: api.ApiSpec = .{
-        .namespace = "dev.wizig.app",
-        .methods = &.{},
-        .events = &.{},
-        .structs = &.{.{ .name = "Profile", .fields = &.{
-            .{ .name = "name", .field_type = .string },
-            .{ .name = "age", .field_type = .int },
-        } }},
-    };
-
-    const first = try computeContractHashHex(std.testing.allocator, spec_a);
-    defer std.testing.allocator.free(first);
-    const second = try computeContractHashHex(std.testing.allocator, spec_b);
-    defer std.testing.allocator.free(second);
-
-    try std.testing.expect(!std.mem.eql(u8, first, second));
-}
-
-test "computeContractHashHex changes when enum variants change" {
-    const spec_a: api.ApiSpec = .{
-        .namespace = "dev.wizig.app",
-        .methods = &.{},
-        .events = &.{},
-        .enums = &.{.{ .name = "Color", .variants = &.{ "red", "green" } }},
-    };
-    const spec_b: api.ApiSpec = .{
-        .namespace = "dev.wizig.app",
-        .methods = &.{},
-        .events = &.{},
-        .enums = &.{.{ .name = "Color", .variants = &.{ "red", "green", "blue" } }},
-    };
-
-    const first = try computeContractHashHex(std.testing.allocator, spec_a);
-    defer std.testing.allocator.free(first);
-    const second = try computeContractHashHex(std.testing.allocator, spec_b);
-    defer std.testing.allocator.free(second);
-
-    try std.testing.expect(!std.mem.eql(u8, first, second));
-}
-
-test "computeContractHashHex changes when user payload names change" {
-    const spec_a: api.ApiSpec = .{
-        .namespace = "dev.wizig.app",
-        .methods = &.{.{ .name = "save", .input = .{ .user_struct = "ProfileA" }, .output = .void }},
-        .events = &.{},
-    };
-    const spec_b: api.ApiSpec = .{
-        .namespace = "dev.wizig.app",
-        .methods = &.{.{ .name = "save", .input = .{ .user_struct = "ProfileB" }, .output = .void }},
-        .events = &.{},
-    };
-
-    const first = try computeContractHashHex(std.testing.allocator, spec_a);
-    defer std.testing.allocator.free(first);
-    const second = try computeContractHashHex(std.testing.allocator, spec_b);
-    defer std.testing.allocator.free(second);
-
-    try std.testing.expect(!std.mem.eql(u8, first, second));
 }

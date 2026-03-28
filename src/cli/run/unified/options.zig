@@ -1,72 +1,81 @@
 //! Unified run option parsing and root resolution.
-//!
-//! This module keeps argument parsing deterministic and separate from discovery
-//! and delegation logic.
 const std = @import("std");
 const Io = std.Io;
+const clap = @import("clap");
 
+const clap_support = @import("../../support/clap_support.zig");
 const types = @import("types.zig");
 
-/// Parses unified run options from CLI args.
-pub fn parseUnifiedOptions(args: []const []const u8, stderr: *Io.Writer) !types.UnifiedOptions {
-    var options = types.UnifiedOptions{};
+const parsers = .{
+    .PROJECT_ROOT = clap.parsers.string,
+    .DEVICE = clap.parsers.string,
+    .DEBUGGER = clap.parsers.string,
+    .SECONDS = clap.parsers.string,
+};
 
-    var i: usize = 0;
-    if (i < args.len and !std.mem.startsWith(u8, args[i], "--")) {
-        options.project_root = args[i];
-        i += 1;
-    }
+const params = clap.parseParamsComptime(
+    \\-h, --help                     Display this help and exit.
+    \\    --device <DEVICE>          Select target without prompting.
+    \\    --debugger <DEBUGGER>      Override delegated debugger mode.
+    \\    --non-interactive          Fail instead of prompting for selection.
+    \\    --once                     Launch and exit without the monitor loop.
+    \\    --monitor-timeout <SECONDS>  Stop the monitor after N seconds.
+    \\    --regenerate-host          Regenerate iOS hosts before running.
+    \\    --allow-toolchain-drift    Skip project toolchain lock enforcement.
+    \\<PROJECT_ROOT>                 Generated app root containing ios/ or android/.
+    \\
+);
 
-    while (i < args.len) {
-        const arg = args[i];
+/// Parses unified run options or returns `null` for `--help`.
+pub fn parseUnifiedOptions(
+    allocator: std.mem.Allocator,
+    stderr: *Io.Writer,
+    args: []const []const u8,
+) !?types.UnifiedOptions {
+    var iter = clap_support.SliceIterator.init(args);
+    var diag = clap.Diagnostic{};
+    var result = clap.parseEx(clap.Help, &params, parsers, &iter, .{
+        .allocator = allocator,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try clap_support.reportDiagnostic(stderr, diag, err);
+        return error.RunFailed;
+    };
+    defer result.deinit();
 
-        if (std.mem.eql(u8, arg, "--non-interactive")) {
-            options.non_interactive = true;
-            i += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--once")) {
-            options.once = true;
-            i += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--regenerate-host")) {
-            options.regenerate_host = true;
-            i += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--allow-toolchain-drift")) {
-            options.allow_toolchain_drift = true;
-            i += 1;
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--monitor-timeout=")) {
-            const raw = arg["--monitor-timeout=".len..];
-            options.monitor_timeout_seconds = try parseMonitorTimeout(raw, stderr);
-            i += 1;
-            continue;
-        }
+    if (result.args.help != 0) return null;
+    return .{
+        .project_root = result.positionals[0] orelse ".",
+        .device_selector = result.args.device,
+        .debugger_mode = result.args.debugger,
+        .non_interactive = @field(result.args, "non-interactive") != 0,
+        .once = result.args.once != 0,
+        .monitor_timeout_seconds = if (@field(result.args, "monitor-timeout")) |raw|
+            try parseMonitorTimeout(raw, stderr)
+        else
+            null,
+        .regenerate_host = @field(result.args, "regenerate-host") != 0,
+        .allow_toolchain_drift = @field(result.args, "allow-toolchain-drift") != 0,
+    };
+}
 
-        if (i + 1 >= args.len) {
-            try stderr.print("error: missing value for option '{s}'\n", .{arg});
-            return error.RunFailed;
-        }
-
-        const value = args[i + 1];
-        if (std.mem.eql(u8, arg, "--device")) {
-            options.device_selector = value;
-        } else if (std.mem.eql(u8, arg, "--debugger")) {
-            options.debugger_mode = value;
-        } else if (std.mem.eql(u8, arg, "--monitor-timeout")) {
-            options.monitor_timeout_seconds = try parseMonitorTimeout(value, stderr);
-        } else {
-            try stderr.print("error: unknown run option '{s}'\n", .{arg});
-            return error.RunFailed;
-        }
-        i += 2;
-    }
-
-    return options;
+/// Writes unified run help with the optional project directory default.
+pub fn printUsage(writer: *Io.Writer) !void {
+    try writer.writeAll(
+        "Run:\n" ++
+            "  wizig run [project_dir] [options]\n\n" ++
+            "Options:\n" ++
+            "  -h, --help                         Display this help and exit.\n" ++
+            "      --device <DEVICE>              Select target without prompting.\n" ++
+            "      --debugger <DEBUGGER>          Override delegated debugger mode.\n" ++
+            "      --non-interactive              Fail instead of prompting for selection.\n" ++
+            "      --once                         Launch and exit without the monitor loop.\n" ++
+            "      --monitor-timeout <SECONDS>    Stop the monitor after N seconds.\n" ++
+            "      --regenerate-host              Regenerate iOS hosts before running.\n" ++
+            "      --allow-toolchain-drift        Skip project toolchain lock enforcement.\n\n" ++
+            "Arguments:\n" ++
+            "  [project_dir]                      Generated app root. Defaults to current directory.\n",
+    );
 }
 
 /// Parses monitor timeout seconds from CLI input.
@@ -82,7 +91,7 @@ fn parseMonitorTimeout(raw: []const u8, stderr: *Io.Writer) !u64 {
     return seconds;
 }
 
-/// Resolves project root to an absolute path.
+/// Resolves a project root to an absolute path.
 pub fn resolveProjectRoot(arena: std.mem.Allocator, io: std.Io, root: []const u8) ![]const u8 {
     if (std.fs.path.isAbsolute(root)) {
         return arena.dupe(u8, root);
@@ -95,7 +104,7 @@ test "parseUnifiedOptions defaults" {
     var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer err_writer.deinit();
 
-    const options = try parseUnifiedOptions(&.{}, &err_writer.writer);
+    const options = (try parseUnifiedOptions(std.testing.allocator, &err_writer.writer, &.{})).?;
     try std.testing.expectEqualStrings(".", options.project_root);
     try std.testing.expect(options.device_selector == null);
     try std.testing.expect(options.debugger_mode == null);
@@ -110,10 +119,11 @@ test "parseUnifiedOptions parses project and flags" {
     var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer err_writer.deinit();
 
-    const options = try parseUnifiedOptions(
-        &.{ "examples/app/WizigExample", "--device", "emulator-5554", "--debugger", "none", "--monitor-timeout", "75", "--once", "--regenerate-host", "--allow-toolchain-drift" },
+    const options = (try parseUnifiedOptions(
+        std.testing.allocator,
         &err_writer.writer,
-    );
+        &.{ "examples/app/WizigExample", "--device", "emulator-5554", "--debugger", "none", "--monitor-timeout", "75", "--once", "--regenerate-host", "--allow-toolchain-drift" },
+    )).?;
     try std.testing.expectEqualStrings("examples/app/WizigExample", options.project_root);
     try std.testing.expectEqualStrings("emulator-5554", options.device_selector.?);
     try std.testing.expectEqualStrings("none", options.debugger_mode.?);
@@ -123,13 +133,20 @@ test "parseUnifiedOptions parses project and flags" {
     try std.testing.expect(options.allow_toolchain_drift);
 }
 
-test "parseUnifiedOptions parses inline monitor timeout form" {
+test "parseUnifiedOptions rejects zero monitor timeout" {
     var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer err_writer.deinit();
 
-    const options = try parseUnifiedOptions(
-        &.{"--monitor-timeout=30"},
-        &err_writer.writer,
+    try std.testing.expectError(
+        error.RunFailed,
+        parseUnifiedOptions(std.testing.allocator, &err_writer.writer, &.{ "--monitor-timeout", "0" }),
     );
-    try std.testing.expectEqual(@as(?u64, 30), options.monitor_timeout_seconds);
+}
+
+test "printUsage documents optional project dir" {
+    var out_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out_writer.deinit();
+
+    try printUsage(&out_writer.writer);
+    try std.testing.expect(std.mem.indexOf(u8, out_writer.writer.buffered(), "[project_dir]") != null);
 }

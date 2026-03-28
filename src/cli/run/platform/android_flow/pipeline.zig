@@ -7,7 +7,7 @@ const Io = std.Io;
 
 const android_ffi = @import("../android_ffi.zig");
 const android_build_plan = @import("../android_build_plan.zig");
-const options_mod = @import("../options.zig");
+const options_runtime = @import("../options_runtime.zig");
 const types = @import("../types.zig");
 
 const build = @import("build.zig");
@@ -24,7 +24,7 @@ pub fn runAndroid(
     stdout: *Io.Writer,
     options: types.RunOptions,
 ) !void {
-    const debugger_mode = try options_mod.resolveAndroidDebugger(arena, io, stderr, options.debugger);
+    const debugger_mode = try options_runtime.resolveAndroidDebugger(arena, io, stderr, options.debugger);
 
     const selected = try selection.resolveAndroidTarget(arena, io, stderr, stdout, options);
     try stdout.print("selected Android target: {s} [{s}]\n", .{ selected.model, selected.serial });

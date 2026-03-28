@@ -6,12 +6,12 @@
 //! - FFI static/shared libraries
 //! - Installed SDK/runtime/templates assets
 const std = @import("std");
-
 /// Configures all build steps for Wizig.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const version = b.option([]const u8, "version", "Embedded version string") orelse "dev";
+    const clap_dep = b.dependency("clap", .{});
 
     const core_module = b.addModule("wizig_core", .{
         .root_source_file = b.path("src/core/root.zig"),
@@ -38,6 +38,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "wizig_core", .module = core_module },
             .{ .name = "build_options", .module = build_options.createModule() },
+            .{ .name = "clap", .module = clap_dep.module("clap") },
         },
     });
 
@@ -177,6 +178,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "wizig_core", .module = core_module },
                 .{ .name = "build_options", .module = build_options.createModule() },
+                .{ .name = "clap", .module = clap_dep.module("clap") },
             },
         }),
     });

@@ -30,12 +30,14 @@ pub fn renderAndroidJniBridge(
     try out.appendSlice(arena, "#endif\n\n");
 
     try helpers.appendFmt(&out, arena, "#define WIZIG_EXPECTED_ABI_VERSION {d}\n", .{compat.abi_version});
+    try helpers.appendFmt(&out, arena, "#define WIZIG_EXPECTED_WIRE_FORMAT_VERSION {d}\n", .{compat.wire_format_version});
     try helpers.appendFmt(&out, arena, "#define WIZIG_EXPECTED_CONTRACT_HASH \"{s}\"\n\n", .{compat.contract_hash_hex});
 
     try out.appendSlice(arena, "extern void wizig_bytes_free(uint8_t* ptr, size_t len);\n");
     try out.appendSlice(arena, "extern uint32_t wizig_ffi_abi_version(void);\n");
     try out.appendSlice(arena, "extern const uint8_t* wizig_ffi_contract_hash_ptr(void);\n");
     try out.appendSlice(arena, "extern size_t wizig_ffi_contract_hash_len(void);\n");
+    try out.appendSlice(arena, "extern uint32_t wizig_ffi_wire_format_version(void);\n");
     try out.appendSlice(arena, "extern const uint8_t* wizig_ffi_last_error_domain_ptr(void);\n");
     try out.appendSlice(arena, "extern size_t wizig_ffi_last_error_domain_len(void);\n");
     try out.appendSlice(arena, "extern int32_t wizig_ffi_last_error_code(void);\n");

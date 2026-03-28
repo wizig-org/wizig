@@ -21,12 +21,14 @@ typedef enum WizigStatus {
 /*
  * Compatibility handshake symbols.
  *
- * Hosts should verify ABI version and contract hash before invoking runtime
- * API functions to prevent symbol/semantic drift at load time.
+ * Hosts should verify ABI version, contract hash, and wire format version
+ * before invoking runtime API functions to prevent symbol/semantic drift at
+ * load time.
  */
 uint32_t wizig_ffi_abi_version(void);
 const uint8_t* wizig_ffi_contract_hash_ptr(void);
 size_t wizig_ffi_contract_hash_len(void);
+uint32_t wizig_ffi_wire_format_version(void);
 
 /*
  * Structured error envelope accessors.

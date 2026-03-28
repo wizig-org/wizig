@@ -20,7 +20,7 @@ pub fn run(
 }
 
 /// Writes unified run usage help.
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
+pub fn printUsage(writer: *Io.Writer) !void {
     return root.printUsage(writer);
 }
 

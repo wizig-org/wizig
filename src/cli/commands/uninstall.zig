@@ -2,6 +2,7 @@
 const std = @import("std");
 const Io = std.Io;
 const process = @import("../support/process.zig");
+const uninstall_parse = @import("../parse/uninstall.zig");
 
 pub fn run(
     arena: std.mem.Allocator,
@@ -10,10 +11,13 @@ pub fn run(
     stdout: *Io.Writer,
     args: []const []const u8,
 ) !void {
-    const options = parseOptions(args, stderr) catch {
-        try stderr.flush();
-        return error.InvalidArguments;
-    };
+    const options = try uninstall_parse.parseUninstallOptions(arena, io, stderr, args);
+    if (options == null) {
+        try printUsage(stdout);
+        try stdout.flush();
+        return;
+    }
+    const uninstall_options = options.?;
 
     const install_root = resolveInstallRoot(arena, io) catch {
         try stderr.writeAll("error: could not determine install location\n");
@@ -32,7 +36,7 @@ pub fn run(
 
     try stdout.print("This will remove wizig from {s}\n", .{install_root});
 
-    if (!options.yes) {
+    if (!uninstall_options.yes) {
         try stdout.writeAll("Proceed? [y/N] ");
         try stdout.flush();
 
@@ -80,23 +84,6 @@ pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     );
 }
 
-const UninstallOptions = struct {
-    yes: bool = false,
-};
-
-fn parseOptions(args: []const []const u8, stderr: *Io.Writer) !UninstallOptions {
-    var options = UninstallOptions{};
-    for (args) |arg| {
-        if (std.mem.eql(u8, arg, "--yes") or std.mem.eql(u8, arg, "-y")) {
-            options.yes = true;
-        } else {
-            try stderr.print("error: unknown uninstall option '{s}'\n", .{arg});
-            return error.InvalidArguments;
-        }
-    }
-    return options;
-}
-
 fn resolveInstallRoot(arena: std.mem.Allocator, io: std.Io) ![]const u8 {
     const exe_path = try std.process.executablePathAlloc(io, arena);
     const exe_dir = std.fs.path.dirname(exe_path) orelse return error.PathError;
@@ -119,28 +106,20 @@ fn isUserControlledPath(path: []const u8) bool {
     return true;
 }
 
-test "parseOptions accepts --yes" {
-    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer err_writer.deinit();
-
-    const opts = try parseOptions(&.{"--yes"}, &err_writer.writer);
-    try std.testing.expect(opts.yes);
-}
-
-test "parseOptions rejects unknown flag" {
-    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer err_writer.deinit();
-
-    try std.testing.expectError(
-        error.InvalidArguments,
-        parseOptions(&.{"--force"}, &err_writer.writer),
-    );
-}
-
 test "isUserControlledPath blocks system paths" {
     try std.testing.expect(!isUserControlledPath("/usr/local/Cellar/wizig"));
     try std.testing.expect(!isUserControlledPath("/opt/homebrew/share"));
     try std.testing.expect(!isUserControlledPath("/usr/bin"));
     try std.testing.expect(isUserControlledPath("/Users/someone/.wizig"));
     try std.testing.expect(isUserControlledPath("/home/user/.wizig"));
+}
+
+test "printUsage includes uninstall syntax" {
+    var out_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out_writer.deinit();
+
+    try printUsage(&out_writer.writer);
+    const output = out_writer.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, output, "wizig uninstall") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "--yes") != null);
 }

@@ -1,27 +1,14 @@
 //! Codegen command-line option parsing.
-//!
-//! ## Responsibilities
-//! - Parse `wizig codegen` CLI arguments into a normalized options struct.
-//! - Validate numeric watch settings with user-facing diagnostics.
-//! - Keep parsing concerns separate from generation and watch-loop execution.
-//!
-//! ## Design Notes
-//! - This module is intentionally small and self-contained so option behavior
-//!   can evolve without touching the large generator implementation.
-//! - Parsing returns explicit `error.InvalidArguments` on user input issues.
 const std = @import("std");
 const Io = std.Io;
+const clap = @import("clap");
+
+const clap_support = @import("../../support/clap_support.zig");
 
 /// Default watch polling interval in milliseconds.
 pub const default_watch_interval_ms: u64 = 500;
 
 /// Normalized options for `wizig codegen`.
-///
-/// Field semantics:
-/// - `project_root`: App root path to generate into.
-/// - `api_override`: Explicit contract path (`--api`) when provided.
-/// - `watch`: Enables continuous incremental codegen loop.
-/// - `watch_interval_ms`: Polling interval used only in watch mode.
 pub const CodegenOptions = struct {
     project_root: []const u8 = ".",
     api_override: ?[]const u8 = null,
@@ -30,92 +17,83 @@ pub const CodegenOptions = struct {
     allow_toolchain_drift: bool = false,
 };
 
+const parsers = .{
+    .PATH = clap.parsers.string,
+    .MILLISECONDS = clap.parsers.int(u64, 10),
+    .PROJECT_ROOT = clap.parsers.string,
+};
+
+const params = clap.parseParamsComptime(
+    \\-h, --help                            Display this help and exit.
+    \\    --api <PATH>                     Override the default API contract path.
+    \\    --watch                          Enable incremental watch mode.
+    \\    --watch-interval-ms <MILLISECONDS>  Polling interval for watch mode.
+    \\    --allow-toolchain-drift          Skip toolchain lock enforcement.
+    \\<PROJECT_ROOT>                       Project root to generate into.
+    \\
+);
+
 /// Parses raw CLI arguments into `CodegenOptions`.
-///
-/// Supported forms:
-/// - Positional: `[project_root]`
-/// - Contract: `--api <path>` or `--api=<path>`
-/// - Watch: `--watch`
-/// - Interval: `--watch-interval-ms <n>` or `--watch-interval-ms=<n>`
-pub fn parseCodegenOptions(args: []const []const u8, stderr: *Io.Writer) !CodegenOptions {
-    var options = CodegenOptions{};
-
-    var i: usize = 0;
-    if (i < args.len and !std.mem.startsWith(u8, args[i], "--")) {
-        options.project_root = args[i];
-        i += 1;
-    }
-
-    while (i < args.len) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "--api")) {
-            if (i + 1 >= args.len) {
-                try stderr.writeAll("error: missing value for --api\n");
-                return error.InvalidArguments;
-            }
-            options.api_override = args[i + 1];
-            i += 2;
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--api=")) {
-            options.api_override = arg["--api=".len..];
-            i += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--watch")) {
-            options.watch = true;
-            i += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--allow-toolchain-drift")) {
-            options.allow_toolchain_drift = true;
-            i += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--watch-interval-ms")) {
-            if (i + 1 >= args.len) {
-                try stderr.writeAll("error: missing value for --watch-interval-ms\n");
-                return error.InvalidArguments;
-            }
-            options.watch_interval_ms = try parseWatchIntervalMs(args[i + 1], stderr);
-            i += 2;
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--watch-interval-ms=")) {
-            options.watch_interval_ms = try parseWatchIntervalMs(arg["--watch-interval-ms=".len..], stderr);
-            i += 1;
-            continue;
-        }
-
-        try stderr.print("error: unknown codegen option '{s}'\n", .{arg});
-        return error.InvalidArguments;
-    }
-
-    return options;
-}
-
-/// Parses and validates watch polling interval in milliseconds.
-///
-/// Validation rules:
-/// - Must be an unsigned integer.
-/// - Must be greater than zero.
-fn parseWatchIntervalMs(raw: []const u8, stderr: *Io.Writer) !u64 {
-    const value = std.fmt.parseInt(u64, raw, 10) catch {
-        try stderr.print("error: invalid --watch-interval-ms value '{s}' (expected positive integer)\n", .{raw});
+pub fn parseCodegenOptions(
+    allocator: std.mem.Allocator,
+    stderr: *Io.Writer,
+    args: []const []const u8,
+) !?CodegenOptions {
+    var iter = clap_support.SliceIterator.init(args);
+    var diag = clap.Diagnostic{};
+    var result = clap.parseEx(clap.Help, &params, parsers, &iter, .{
+        .allocator = allocator,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try clap_support.reportDiagnostic(stderr, diag, err);
         return error.InvalidArguments;
     };
-    if (value == 0) {
+    defer result.deinit();
+
+    if (result.args.help != 0) return null;
+    const watch_interval_ms = result.args.@"watch-interval-ms" orelse default_watch_interval_ms;
+    if (watch_interval_ms == 0) {
         try stderr.writeAll("error: --watch-interval-ms must be greater than zero\n");
+        try stderr.flush();
         return error.InvalidArguments;
     }
-    return value;
+
+    return .{
+        .project_root = result.positionals[0] orelse ".",
+        .api_override = result.args.api,
+        .watch = result.args.watch != 0,
+        .watch_interval_ms = watch_interval_ms,
+        .allow_toolchain_drift = result.args.@"allow-toolchain-drift" != 0,
+    };
+}
+
+/// Writes `wizig codegen` usage with the optional project root default.
+pub fn printUsage(writer: *Io.Writer) !void {
+    try writer.print(
+        "Codegen:\n" ++
+            "  wizig codegen [project_root] [options]\n\n" ++
+            "Options:\n" ++
+            "  -h, --help                                Display this help and exit.\n" ++
+            "      --api <PATH>                          Override the default API contract path.\n" ++
+            "      --watch                               Enable incremental watch mode.\n" ++
+            "      --watch-interval-ms <MILLISECONDS>    Polling interval for watch mode.\n" ++
+            "      --allow-toolchain-drift               Skip toolchain lock enforcement.\n\n" ++
+            "Arguments:\n" ++
+            "  [project_root]                            Project root to generate into. Defaults to current directory.\n\n" ++
+            "Notes:\n" ++
+            "  Default contract lookup: wizig.api.zig -> wizig.api.json (optional)\n" ++
+            "  Watch mode: incremental codegen on lib/**/*.zig and contract changes\n" ++
+            "  Current targets: zig, swift, kotlin\n" ++
+            "  Default watch interval: {d}ms\n",
+        .{default_watch_interval_ms},
+    );
 }
 
 test "parseCodegenOptions defaults" {
     var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer err_writer.deinit();
 
-    const options = try parseCodegenOptions(&.{}, &err_writer.writer);
+    const options = (try parseCodegenOptions(std.testing.allocator, &err_writer.writer, &.{})).?;
     try std.testing.expectEqualStrings(".", options.project_root);
     try std.testing.expect(options.api_override == null);
     try std.testing.expect(!options.watch);
@@ -127,10 +105,11 @@ test "parseCodegenOptions parses watch and interval forms" {
     var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer err_writer.deinit();
 
-    const options = try parseCodegenOptions(
-        &.{ "/tmp/App", "--watch", "--watch-interval-ms=250", "--api", "/tmp/App/wizig.api.zig", "--allow-toolchain-drift" },
+    const options = (try parseCodegenOptions(
+        std.testing.allocator,
         &err_writer.writer,
-    );
+        &.{ "/tmp/App", "--watch", "--watch-interval-ms=250", "--api", "/tmp/App/wizig.api.zig", "--allow-toolchain-drift" },
+    )).?;
     try std.testing.expectEqualStrings("/tmp/App", options.project_root);
     try std.testing.expect(options.watch);
     try std.testing.expectEqual(@as(u64, 250), options.watch_interval_ms);
@@ -144,6 +123,14 @@ test "parseCodegenOptions rejects zero watch interval" {
 
     try std.testing.expectError(
         error.InvalidArguments,
-        parseCodegenOptions(&.{ "--watch-interval-ms", "0" }, &err_writer.writer),
+        parseCodegenOptions(std.testing.allocator, &err_writer.writer, &.{ "--watch-interval-ms", "0" }),
     );
+}
+
+test "printUsage documents optional project root" {
+    var out_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out_writer.deinit();
+
+    try printUsage(&out_writer.writer);
+    try std.testing.expect(std.mem.indexOf(u8, out_writer.writer.buffered(), "[project_root]") != null);
 }

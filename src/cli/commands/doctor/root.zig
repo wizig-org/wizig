@@ -5,19 +5,9 @@
 const std = @import("std");
 const Io = std.Io;
 
+const options = @import("options.zig");
 const sdk_locator = @import("../../support/sdk_locator.zig");
 const toolchains = @import("../../support/toolchains/root.zig");
-
-/// Parsed `wizig doctor` CLI flags.
-///
-/// `strict` uses tri-state semantics:
-/// - `null`: defer to manifest default,
-/// - `true`: force strict mode,
-/// - `false`: explicitly disable strict mode.
-const DoctorOptions = struct {
-    explicit_sdk_root: ?[]const u8 = null,
-    strict: ?bool = null,
-};
 
 /// Runs environment diagnostics and toolchain policy checks.
 ///
@@ -31,14 +21,17 @@ pub fn run(
     stdout: *Io.Writer,
     args: []const []const u8,
 ) !void {
-    const options = parseDoctorOptions(args, stderr) catch {
-        try stderr.flush();
-        return error.InvalidArguments;
-    };
+    const parsed = try options.parseDoctorOptions(arena, stderr, args);
+    if (parsed == null) {
+        try printUsage(stdout);
+        try stdout.flush();
+        return;
+    }
+    const doctor_options = parsed.?;
 
     try stdout.writeAll("Wizig doctor\n\n");
 
-    const resolved = sdk_locator.resolve(arena, io, env_map, stderr, options.explicit_sdk_root) catch {
+    const resolved = sdk_locator.resolve(arena, io, env_map, stderr, doctor_options.explicit_sdk_root) catch {
         try stdout.writeAll("[missing] Wizig SDK bundle\n");
         try stdout.flush();
         return error.DoctorFailed;
@@ -53,7 +46,7 @@ pub fn run(
         return error.DoctorFailed;
     };
 
-    const strict_enabled = options.strict orelse manifest.doctor.strict_default;
+    const strict_enabled = doctor_options.strict orelse manifest.doctor.strict_default;
     const probes = toolchains.probe.probeAll(arena, io, &manifest.doctor.tools);
 
     var required_issues: usize = 0;
@@ -120,74 +113,17 @@ pub fn run(
 }
 
 /// Writes usage help for the doctor command.
-///
-/// Keep this in sync with `parseDoctorOptions` whenever flags are added.
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
-    try writer.writeAll(
-        "Doctor:\n" ++
-            "  wizig doctor [--sdk-root <path>] [--strict|--no-strict]\n" ++
-            "\n",
-    );
+pub fn printUsage(writer: *Io.Writer) !void {
+    try options.printUsage(writer);
 }
 
-/// Parses doctor command flags from `args`.
-///
-/// The parser intentionally rejects unknown options to avoid silent behavior
-/// drift in policy enforcement workflows.
-fn parseDoctorOptions(args: []const []const u8, stderr: *Io.Writer) !DoctorOptions {
-    var options = DoctorOptions{};
-    var i: usize = 0;
-    while (i < args.len) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "--strict")) {
-            options.strict = true;
-            i += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--no-strict")) {
-            options.strict = false;
-            i += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--sdk-root")) {
-            if (i + 1 >= args.len) {
-                try stderr.writeAll("error: missing value for --sdk-root\n");
-                return error.InvalidArguments;
-            }
-            options.explicit_sdk_root = args[i + 1];
-            i += 2;
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--sdk-root=")) {
-            options.explicit_sdk_root = arg["--sdk-root=".len..];
-            i += 1;
-            continue;
-        }
+test "printUsage includes doctor syntax" {
+    var out_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out_writer.deinit();
 
-        try stderr.print("error: unknown doctor option '{s}'\n", .{arg});
-        return error.InvalidArguments;
-    }
-    return options;
-}
-
-test "parseDoctorOptions parses strict and sdk-root" {
-    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer err_writer.deinit();
-
-    const parsed = try parseDoctorOptions(
-        &.{ "--strict", "--sdk-root", "/tmp/wizig" },
-        &err_writer.writer,
-    );
-    try std.testing.expectEqual(@as(?bool, true), parsed.strict);
-    try std.testing.expectEqualStrings("/tmp/wizig", parsed.explicit_sdk_root.?);
-}
-
-test "parseDoctorOptions rejects unknown flag" {
-    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer err_writer.deinit();
-
-    try std.testing.expectError(
-        error.InvalidArguments,
-        parseDoctorOptions(&.{"--mystery"}, &err_writer.writer),
-    );
+    try printUsage(&out_writer.writer);
+    const output = out_writer.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, output, "wizig doctor") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "--strict") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "--no-strict") != null);
 }
