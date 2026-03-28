@@ -4,9 +4,8 @@ _Language: Zig_
 
 iOS platform run orchestration.
 
-This module coordinates simulator/device selection, host build, FFI bundling,
-and launch/debug behavior for `wizig run ios`.  Physical device support uses
-`xcrun devicectl` for installation and launch.
+This module owns the public `wizig run ios` entrypoint and delegates target
+discovery plus simulator/device launch details to smaller internal modules.
 
 ## Public API
 

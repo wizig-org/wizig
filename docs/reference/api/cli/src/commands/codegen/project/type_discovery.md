@@ -4,11 +4,8 @@ _Language: Zig_
 
 User-type discovery from `lib/**/*.zig`.
 
-## Responsibilities
-- Walk `lib/` and discover all public struct/enum declarations.
-- Build a global type-name registry before parsing fields.
-- Parse full definitions and reject conflicting duplicates by name.
-- Expose registry slices used by method discovery and renderers.
+This facade keeps the public API stable while delegating filesystem walking
+and registry assembly to smaller modules.
 
 ## Public API
 
@@ -17,16 +14,12 @@ User-type discovery from `lib/**/*.zig`.
 Collected user-defined type information discovered from app sources.
 
 ```zig
-pub const TypeRegistry = struct {
+pub const TypeRegistry = registry.TypeRegistry;
 ```
 
 ### `discoverLibTypes` (fn)
 
-Discovers user structs/enums from `project_root/lib/**/*.zig`.
-
-Parsing runs in two passes:
-1. collect all type names (for cross-file field references),
-2. parse concrete definitions and validate duplicates.
+Discovers user structs and enums from `project_root/lib/**/*.zig`.
 
 ```zig
 pub fn discoverLibTypes(

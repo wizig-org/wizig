@@ -2,10 +2,10 @@
 
 _Language: Zig_
 
-Android device and AVD discovery/selection helpers.
+Android device and AVD discovery/selection facade.
 
-This module provides enumeration and selection behavior for connected devices
-and emulator profiles, including AVD boot and adb visibility waits.
+This module preserves the public API used by the Android run flow while
+delegating parsing, selection, and emulator waiting to smaller helpers.
 
 ## Public API
 

@@ -1,0 +1,217 @@
+# Nightly build and pre-release workflow.
+#
+# Produces a rolling "nightly" GitHub pre-release with multi-platform
+# binaries built from the latest nightly branch commit.  The release is
+# replaced (not appended) on each run so there is always exactly one
+# nightly release.
+#
+# Triggers:
+#   - Daily schedule at 00:00 UTC
+#   - Push to the nightly branch
+#   - Manual workflow_dispatch
+
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  push:
+    branches:
+      - nightly
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. Test ────────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nightly
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python3 -m pip install --upgrade markdown
+
+      - name: Unit and integration tests
+        timeout-minutes: 20
+        run: zig build test -j1 --summary all
+
+  # ── 2. Build (4 platform matrix) ──────────────────────────────────
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-macos
+            os: macos
+            arch: arm64
+          - target: x86_64-macos
+            os: macos
+            arch: x86_64
+          - target: x86_64-linux-gnu
+            os: linux
+            arch: x86_64
+          - target: aarch64-linux-gnu
+            os: linux
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nightly
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python3 -m pip install --upgrade markdown
+
+      - name: Compute nightly version
+        id: version
+        run: |
+          DATE="$(date -u +%Y%m%d)"
+          SHORT_SHA="${GITHUB_SHA::8}"
+          VERSION="nightly-${DATE}-${SHORT_SHA}"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Generate templates
+        run: python3 tools/templategen/generate_templates.py --out build/generated/templates
+
+      - name: Build
+        timeout-minutes: 30
+        run: |
+          zig build \
+            -Dtarget=${{ matrix.target }} \
+            -Doptimize=ReleaseSafe \
+            -Dversion=${{ steps.version.outputs.VERSION }} \
+            --summary all
+
+      - name: Package tarball
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          DIRNAME="wizig-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
+          mkdir -p "$DIRNAME/bin" "$DIRNAME/share/wizig" "$DIRNAME/lib" "$DIRNAME/include"
+
+          cp zig-out/bin/wizig "$DIRNAME/bin/"
+          cp -R zig-out/share/wizig/sdk "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp -R zig-out/share/wizig/runtime "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp -R zig-out/share/wizig/templates "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp zig-out/share/wizig/toolchains.toml "$DIRNAME/share/wizig/" 2>/dev/null || true
+          cp zig-out/lib/libwizigffi.a "$DIRNAME/lib/" 2>/dev/null || true
+          cp zig-out/include/wizig.h "$DIRNAME/include/" 2>/dev/null || true
+
+          tar czf "${DIRNAME}.tar.gz" "$DIRNAME"
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${DIRNAME}.tar.gz" > "${DIRNAME}.tar.gz.sha256"
+          else
+            shasum -a 256 "${DIRNAME}.tar.gz" > "${DIRNAME}.tar.gz.sha256"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            wizig-*.tar.gz
+            wizig-*.tar.gz.sha256
+
+  # ── 3. Publish rolling pre-release ────────────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nightly
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: tarball-*
+          merge-multiple: true
+
+      - name: Compute nightly version
+        id: version
+        run: |
+          DATE="$(date -u +%Y%m%d)"
+          SHORT_SHA="${GITHUB_SHA::8}"
+          VERSION="nightly-${DATE}-${SHORT_SHA}"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Delete previous nightly release and tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+
+      - name: Create nightly pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          cat > release-notes.md << NOTES_EOF
+          ## Nightly Build — ${VERSION}
+
+          > **Warning** — Nightly builds are automatically generated from the
+          > \`nightly\` branch and may contain untested or incomplete changes.
+          > Use stable releases for production.
+
+          **Commit:** [\`${GITHUB_SHA::8}\`](https://github.com/${{ github.repository }}/commit/${GITHUB_SHA})
+          **Branch:** \`nightly\`
+          **Built:** $(date -u +"%Y-%m-%d %H:%M UTC")
+
+          ### Download
+
+          | Platform | Architecture | Archive |
+          |----------|-------------|---------|
+          | macOS | ARM64 (Apple Silicon) | \`wizig-${VERSION}-macos-arm64.tar.gz\` |
+          | macOS | x86_64 (Intel) | \`wizig-${VERSION}-macos-x86_64.tar.gz\` |
+          | Linux | ARM64 | \`wizig-${VERSION}-linux-arm64.tar.gz\` |
+          | Linux | x86_64 | \`wizig-${VERSION}-linux-x86_64.tar.gz\` |
+
+          ### Verify checksums
+
+          Each archive has a corresponding \`.sha256\` file. Verify your download:
+
+          \`\`\`sh
+          sha256sum -c wizig-*.tar.gz.sha256
+          \`\`\`
+
+          ### Install manually
+
+          \`\`\`sh
+          tar xzf wizig-${VERSION}-<os>-<arch>.tar.gz
+          export PATH="\$PWD/wizig-${VERSION}-<os>-<arch>/bin:\$PATH"
+          wizig version
+          \`\`\`
+          NOTES_EOF
+
+          # Remove leading whitespace from heredoc indentation
+          sed -i 's/^          //' release-notes.md
+
+          gh release create nightly \
+            --target nightly \
+            --title "Wizig Nightly (${VERSION})" \
+            --notes-file release-notes.md \
+            --prerelease \
+            artifacts/wizig-*.tar.gz \
+            artifacts/wizig-*.tar.gz.sha256

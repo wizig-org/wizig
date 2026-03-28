@@ -2,6 +2,10 @@
 
 ## 0.0.9
 
+### Added
+
+- CI/CD for nightly builds
+
 ### Fixed
 
 - Fixes [#12](https://github.com/wizig-org/wizig/issues/12) via conditional allocator selection based on build mode
@@ -9,6 +13,7 @@
 - Fixes [#15](https://github.com/wizig-org/wizig/issues/15) — generated JNI bridge uses `GetStringUTFLength` (O(1)) instead of `strlen` (O(n)) for all string input paths
 - Fixes [#16](https://github.com/wizig-org/wizig/issues/16) — generated JNI `new_jstring_from_bytes` uses a 512-byte stack buffer for small strings, eliminating `malloc`/`free` for ~95% of string returns
 - Fixes [#17](https://github.com/wizig-org/wizig/issues/17) — generated Swift `callStringOutput` uses `String(decoding:as: UTF8.self)` instead of allocating an intermediate `Data` object
+- Fix CI/CD failing for docs-checks and e2e tests.
 
 ### Changed
 

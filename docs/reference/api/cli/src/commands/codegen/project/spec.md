@@ -2,10 +2,10 @@
 
 _Language: Zig_
 
-Project-level API spec defaults and merge behavior.
+Project-level API spec facade.
 
-This module merges explicit contract data with discovered code symbols while
-preserving deterministic ordering and rejecting semantic conflicts.
+This module keeps the public codegen API stable while delegating default
+spec creation and merge logic to smaller focused helpers.
 
 ## Public API
 
@@ -32,11 +32,6 @@ pub fn mergeSpecWithDiscoveredMethods(
 ### `mergeSpecWithDiscoveredTypes` (fn)
 
 Merges discovered methods and user-defined types into a base spec.
-
-Conflict rules:
-- same method name with different signature => `error.InvalidContract`
-- same struct name with different field schema => `error.InvalidContract`
-- same enum name with different variants => `error.InvalidContract`
 
 ```zig
 pub fn mergeSpecWithDiscoveredTypes(

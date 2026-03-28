@@ -3,52 +3,54 @@
 _Language: Zig_
 
 C ABI bridge exposing Wizig runtime functions to native hosts.
-
-## Compatibility Surface
-This module exports:
-- runtime entrypoints (`wizig_runtime_*`)
-- ABI/version handshake symbols (`wizig_ffi_*`)
-- structured last-error accessors (`domain/code/message`)
-
-## Error Model
-Calls still return stable integer status codes for C ABI compatibility.
-Additionally, failures write a structured thread-local error envelope so
-higher-level host bindings can surface richer diagnostics.
+Exports `wizig_runtime_*` entrypoints, `wizig_ffi_*` handshake symbols,
+and structured last-error accessors with thread-local error envelopes.
 
 ## Public API
 
 ### `Status` (const)
 
-Stable status codes returned by exported FFI functions.
-
-## Contract
-- Numeric values are part of the public C ABI.
-- Host bindings may treat these as transport-level outcomes.
-- Rich diagnostics are available via `wizig_ffi_last_error_*`.
+Re-exported for test access.
 
 ```zig
-pub const Status = enum(i32) {
+pub const Status = ffi_error.Status;
 ```
 
 ### `WizigRuntimeHandle` (const)
 
-Opaque runtime handle used by C/Swift/Kotlin callers.
-
-## Safety
-The pointee layout is private to Zig; callers must treat this as an opaque
-token and only pass it back to exported Wizig functions.
+Opaque runtime handle; callers must treat as an opaque token.
 
 ```zig
 pub const WizigRuntimeHandle = opaque {};
 ```
 
+### `init` (const)
+
+No declaration docs available.
+
+```zig
+    pub const init: ReleaseAllocator = .{};
+```
+
+### `allocator` (fn)
+
+No declaration docs available.
+
+```zig
+    pub fn allocator(_: *ReleaseAllocator) std.mem.Allocator {
+```
+
+### `deinit` (fn)
+
+No declaration docs available.
+
+```zig
+    pub fn deinit(_: *ReleaseAllocator) std.heap.Check {
+```
+
 ### `wizig_ffi_abi_version` (export fn)
 
 Returns generated FFI ABI version for host compatibility checks.
-
-## Handshake
-Host bridges compare this value against their compiled expectation before
-invoking method entrypoints.
 
 ```zig
 pub export fn wizig_ffi_abi_version() u32 {
@@ -57,9 +59,6 @@ pub export fn wizig_ffi_abi_version() u32 {
 ### `wizig_ffi_contract_hash_ptr` (export fn)
 
 Returns generated contract hash pointer for host compatibility checks.
-
-## Handshake
-This hash represents the generated API contract expected by host bindings.
 
 ```zig
 pub export fn wizig_ffi_contract_hash_ptr() [*]const u8 {
@@ -76,10 +75,6 @@ pub export fn wizig_ffi_contract_hash_len() usize {
 ### `wizig_ffi_last_error_domain_ptr` (export fn)
 
 Returns structured error domain pointer for the current thread.
-
-## Usage
-Read this immediately after a non-`ok` status to retrieve the latest
-structured error envelope for the current thread.
 
 ```zig
 pub export fn wizig_ffi_last_error_domain_ptr() [*]const u8 {
@@ -121,14 +116,6 @@ pub export fn wizig_ffi_last_error_message_len() usize {
 
 Allocates and initializes a runtime handle for the provided app name.
 
-## Preconditions
-- `out_handle` must be non-null.
-- `app_name_len` must be greater than zero.
-
-## Postconditions
-- On success, writes a non-null handle to `out_handle`.
-- On failure, writes null and updates thread-local structured error state.
-
 ```zig
 pub export fn wizig_runtime_new(
     app_name_ptr: [*]const u8,
@@ -140,8 +127,6 @@ pub export fn wizig_runtime_new(
 ### `wizig_runtime_free` (export fn)
 
 Destroys a runtime handle previously returned by `wizig_runtime_new`.
-
-## Semantics
 Passing null is a no-op to simplify host-side cleanup code paths.
 
 ```zig
@@ -151,10 +136,8 @@ pub export fn wizig_runtime_free(handle: ?*WizigRuntimeHandle) void {
 ### `wizig_runtime_echo` (export fn)
 
 Executes runtime echo and returns an owned UTF-8 byte buffer.
-
-## Ownership
-On success, the caller owns `out_ptr[0..out_len]` and must release it with
-`wizig_bytes_free`.
+On success, the caller owns `out_ptr[0..out_len]` and must release
+it with `wizig_bytes_free`.
 
 ```zig
 pub export fn wizig_runtime_echo(
@@ -169,9 +152,7 @@ pub export fn wizig_runtime_echo(
 ### `wizig_bytes_free` (export fn)
 
 Frees buffers returned by Wizig FFI functions.
-
-## Ownership
-This function only accepts pointers returned by Wizig allocation paths.
+Only accepts pointers returned by Wizig allocation paths.
 
 ```zig
 pub export fn wizig_bytes_free(ptr: ?[*]u8, len: usize) void {

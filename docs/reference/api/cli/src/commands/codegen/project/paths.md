@@ -8,7 +8,13 @@ Generated output path discovery and optional SDK mirror targets.
 
 ### `resolveIosMirrorSwiftFile` (fn)
 
-Returns the Swift mirror path for the lexicographically first top-level `.xcodeproj` under `ios/`.
+Returns the Swift mirror path for the lexicographically first top-level
+`.xcodeproj` under `ios/`.
+
+Multi-project repos can contain several host projects under `ios/`. This
+resolver ignores nested `.xcodeproj` directories and selects the first
+top-level match in sorted order so the mirror target is stable across
+filesystem walk order.
 
 ```zig
 pub fn resolveIosMirrorSwiftFile(

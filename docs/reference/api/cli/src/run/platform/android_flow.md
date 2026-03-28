@@ -4,9 +4,8 @@ _Language: Zig_
 
 Android platform run orchestration.
 
-This module coordinates target selection, host-managed FFI planning, Gradle
-build, install, launch, and optional debugger/log monitor attachment for
-Android runs.
+This facade keeps the public entrypoint stable while delegating the Android
+run pipeline to smaller stage-specific modules.
 
 ## Public API
 
@@ -21,6 +20,6 @@ pub fn runAndroid(
     parent_environ_map: *const std.process.Environ.Map,
     stderr: *Io.Writer,
     stdout: *Io.Writer,
-    options: types.RunOptions,
+    options: @import("types.zig").RunOptions,
 ) !void {
 ```

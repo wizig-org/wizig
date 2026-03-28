@@ -4,14 +4,22 @@ _Language: Zig_
 
 iOS FFI build and bundling support for simulators and real devices.
 
-This module builds cached dynamic framework binaries and installs
-`WizigFFI.framework` into app bundle locations expected by runtime loaders.
+This facade keeps the long-lived public API stable while delegating the
+implementation to focused submodules under `ios_ffi/`.
 
 ## Public API
 
+### `BundleResult` (const)
+
+Detailed result for embedding the framework into an app bundle.
+
+```zig
+pub const BundleResult = bundle.BundleResult;
+```
+
 ### `buildIosSimulatorFfiLibrary` (fn)
 
-Builds or reuses cached iOS simulator FFI framework binary for the current app.
+Builds or reuses the cached iOS simulator FFI framework binary.
 
 ```zig
 pub fn buildIosSimulatorFfiLibrary(
@@ -25,7 +33,7 @@ pub fn buildIosSimulatorFfiLibrary(
 
 ### `buildIosDeviceFfiLibrary` (fn)
 
-Builds or reuses cached iOS device FFI framework binary for the current app.
+Builds or reuses the cached iOS device FFI framework binary.
 
 ```zig
 pub fn buildIosDeviceFfiLibrary(
@@ -39,9 +47,8 @@ pub fn buildIosDeviceFfiLibrary(
 
 ### `bundleIosFfiLibraryForDevice` (fn)
 
-Copies host dynamic framework into device app `Frameworks` location.
+Copies a host framework into a device app bundle and signs it when needed.
 
-## Signing
 Device installations require embedded frameworks to be code signed with the
 same identity used for the app bundle.
 
@@ -56,13 +63,26 @@ pub fn bundleIosFfiLibraryForDevice(
 ) ![]const u8 {
 ```
 
+### `bundleIosFfiLibraryForDeviceDetailed` (fn)
+
+Copies a host framework into a device app bundle and reports whether it changed.
+
+```zig
+pub fn bundleIosFfiLibraryForDeviceDetailed(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    app_path: []const u8,
+    host_ffi_path: []const u8,
+    sign_identity: ?[]const u8,
+) !BundleResult {
+```
+
 ### `bundleIosFfiLibraryForSimulator` (fn)
 
-Copies host dynamic framework into simulator app `Frameworks` location.
+Copies a host framework into a simulator app bundle.
 
-## Incrementality
-Destination files are updated only when bytes differ, preserving filesystem
-metadata via `cp` while avoiding redundant writes.
+Destination files are only rewritten when the bytes differ.
 
 ```zig
 pub fn bundleIosFfiLibraryForSimulator(
@@ -76,7 +96,7 @@ pub fn bundleIosFfiLibraryForSimulator(
 
 ### `resolveIosFfiLibraryPath` (fn)
 
-Resolves existing iOS FFI library path from environment or default output.
+Resolves an existing iOS FFI library path from the environment or `zig-out`.
 
 ```zig
 pub fn resolveIosFfiLibraryPath(

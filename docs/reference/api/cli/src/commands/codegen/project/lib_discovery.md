@@ -8,7 +8,7 @@ Discovery of API method signatures and module imports from `lib/**/*.zig`.
 
 ### `discoverLibApiMethods` (fn)
 
-No declaration docs available.
+Discovers public API methods from `lib/**/*.zig` using only built-in type rules.
 
 ```zig
 pub fn discoverLibApiMethods(
@@ -20,7 +20,7 @@ pub fn discoverLibApiMethods(
 
 ### `discoverLibApiMethodsWithTypes` (fn)
 
-No declaration docs available.
+Discovers public API methods from `lib/**/*.zig`, resolving known struct and enum names.
 
 ```zig
 pub fn discoverLibApiMethodsWithTypes(
@@ -34,7 +34,7 @@ pub fn discoverLibApiMethodsWithTypes(
 
 ### `collectLibModuleImports` (fn)
 
-No declaration docs available.
+Collects import paths for `lib/**/*.zig` files.
 
 ```zig
 pub fn collectLibModuleImports(

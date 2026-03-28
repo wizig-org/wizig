@@ -4,9 +4,8 @@ _Language: Zig_
 
 iOS simulator and physical device discovery and selection utilities.
 
-This module handles simulator enumeration, physical device discovery,
-scheme destination filtering, selector matching, and interactive target
-selection for iOS runs.
+This facade keeps the public API stable while delegating discovery,
+parsing, filtering, and selection to smaller testable modules.
 
 ## Public API
 

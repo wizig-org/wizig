@@ -4,17 +4,9 @@ _Language: Zig_
 
 iOS host project patching for direct Xcode FFI builds.
 
-## Problem
-Direct Xcode builds do not run `wizig run`, so host projects can miss
-per-app FFI packaging updates unless codegen patches build wiring.
-
-## Approach
-This module patches generated host `.xcodeproj/project.pbxproj` files with a
-deterministic `PBXShellScriptBuildPhase` that builds and embeds a framework
-artifact and mirrors it into a generated `.xcframework`.
-
-## Safety
-Patching is idempotent: if the phase already exists, no changes are written.
+Direct Xcode builds do not run `wizig run`, so codegen keeps generated host
+projects wired to the current FFI packaging flow by patching the project
+file deterministically and idempotently.
 
 ## Public API
 

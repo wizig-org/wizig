@@ -4,13 +4,8 @@ _Language: Zig_
 
 Android Gradle file compatibility migrations for host-managed FFI.
 
-This module performs targeted, idempotent migrations over
-`<project>/<module>/build.gradle.kts` to keep host-managed FFI tasks
-compatible with modern Android Gradle plugin behavior:
-- `jniLibs.directories.add(rootProject.file(...))`
-- `jniLibs.directories.add(rootProject.file(...).path)`
-- `commandLine("zig", ...)` -> `commandLine(discoverWizigZigBinary(), ...)`
-- `-OReleaseFast` -> configurable `-O${requestedWizigOptimize}`
+This entrypoint keeps the public API small and delegates the text rewrite
+rules to `android_gradle_migration/patch.zig`.
 
 ## Public API
 

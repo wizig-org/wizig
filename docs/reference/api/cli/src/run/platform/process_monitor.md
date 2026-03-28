@@ -4,66 +4,62 @@ _Language: Zig_
 
 Watchdog-controlled inherited monitor execution.
 
-This module owns long-running monitor behavior (timeout and app-liveness
-driven shutdown) so the main process supervisor remains focused on generic
-command execution.
+This facade keeps the public monitor surface stable while the internals are
+split across smaller helper modules.
 
 ## Public API
 
 ### `MonitorCommandSpec` (const)
 
-Monitor command invocation parameters.
+No declaration docs available.
 
 ```zig
-pub const MonitorCommandSpec = struct {
+pub const MonitorCommandSpec = spec.MonitorCommandSpec;
 ```
 
 ### `LivenessProbe` (const)
 
-App liveness probe settings used by monitor watchdog execution.
+No declaration docs available.
 
 ```zig
-pub const LivenessProbe = struct {
+pub const LivenessProbe = spec.LivenessProbe;
 ```
 
 ### `MonitorWatchdog` (const)
 
-Watchdog controls for long-running monitor commands.
+No declaration docs available.
 
 ```zig
-pub const MonitorWatchdog = struct {
+pub const MonitorWatchdog = spec.MonitorWatchdog;
 ```
 
 ### `MonitorStopReason` (const)
 
-Reason why monitored command execution completed.
+No declaration docs available.
 
 ```zig
-pub const MonitorStopReason = enum {
+pub const MonitorStopReason = spec.MonitorStopReason;
 ```
 
 ### `MonitoredTerm` (const)
 
-Result for monitored inherited command execution.
+No declaration docs available.
 
 ```zig
-pub const MonitoredTerm = struct {
+pub const MonitoredTerm = spec.MonitoredTerm;
 ```
 
 ### `runInheritMonitored` (fn)
 
 Runs an inherited command with watchdog timeout/liveness controls.
 
-This routine is intended for terminal monitors (`logcat`, simulator console)
-that should stop automatically when the app exits or a timeout is reached.
-
 ```zig
 pub fn runInheritMonitored(
-    arena: Allocator,
+    arena: std.mem.Allocator,
     io: std.Io,
-    stderr: *Io.Writer,
-    stdout: *Io.Writer,
-    spec: MonitorCommandSpec,
+    stderr: *std.Io.Writer,
+    stdout: *std.Io.Writer,
+    spec_arg: MonitorCommandSpec,
     watchdog: MonitorWatchdog,
 ) !MonitoredTerm {
 ```

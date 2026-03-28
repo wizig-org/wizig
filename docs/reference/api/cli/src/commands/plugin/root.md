@@ -2,7 +2,10 @@
 
 _Language: Zig_
 
-`wizig plugin` command handlers for validation, syncing, and adding plugins.
+Public `wizig plugin` entrypoint.
+
+The command implementation lives under `commands/plugin/root/` so the
+top-level module stays small and preserves the existing CLI surface.
 
 ## Public API
 
@@ -22,7 +25,7 @@ pub fn run(
 
 ### `printUsage` (fn)
 
-No declaration docs available.
+Writes the plugin command usage block used by the top-level help output.
 
 ```zig
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
