@@ -3,6 +3,9 @@
 const std = @import("std");
 const api = @import("../model/api.zig");
 
+/// Current binary wire format version for struct serialization.
+pub const wire_format_version: u32 = 1;
+
 /// Logical ABI wire categories used by generated host and bridge code.
 pub const WireKind = enum {
     string,
@@ -55,12 +58,19 @@ pub fn kotlinType(value: api.ApiType) []const u8 {
     };
 }
 
+/// Returns the JNI C type for the given API type.
+///
+/// `user_struct` maps to `jbyteArray` for binary wire format transport,
+/// while plain strings remain `jstring`.
 pub fn jniCType(value: api.ApiType) []const u8 {
-    return switch (wireKind(value)) {
-        .string => "jstring",
-        .int => "jlong",
-        .bool => "jboolean",
-        .void => "void",
+    return switch (value) {
+        .user_struct => "jbyteArray",
+        else => switch (wireKind(value)) {
+            .string => "jstring",
+            .int => "jlong",
+            .bool => "jboolean",
+            .void => "void",
+        },
     };
 }
 

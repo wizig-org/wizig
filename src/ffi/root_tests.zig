@@ -24,6 +24,7 @@ test "ffi runtime round trip and handshake exports" {
     try std.testing.expect(output_ptr != null);
     try std.testing.expectEqualStrings("demo:hello", output_ptr.?[0..output_len]);
     try std.testing.expectEqual(@as(u32, 1), root.wizig_ffi_abi_version());
+    try std.testing.expectEqual(@as(u32, 1), root.wizig_ffi_wire_format_version());
     try std.testing.expect(root.wizig_ffi_contract_hash_len() > 0);
 }
 
@@ -88,4 +89,29 @@ test "ffi rejects null non-empty echo input pointers" {
     );
     try std.testing.expect(output_ptr == null);
     try std.testing.expectEqual(@as(usize, 0), output_len);
+}
+
+test "ffi buffer pool reuses allocations across echo calls" {
+    var handle: ?*root.WizigRuntimeHandle = null;
+    try std.testing.expectEqual(@intFromEnum(root.Status.ok), root.wizig_runtime_new("pool".ptr, "pool".len, &handle));
+    defer root.wizig_runtime_free(handle);
+
+    var first_ptr: ?[*]u8 = null;
+    var first_len: usize = 0;
+    try std.testing.expectEqual(
+        @intFromEnum(root.Status.ok),
+        root.wizig_runtime_echo(handle, "ping".ptr, "ping".len, &first_ptr, &first_len),
+    );
+    try std.testing.expectEqualStrings("pool:ping", first_ptr.?[0..first_len]);
+    root.wizig_bytes_free(first_ptr, first_len);
+
+    var second_ptr: ?[*]u8 = null;
+    var second_len: usize = 0;
+    try std.testing.expectEqual(
+        @intFromEnum(root.Status.ok),
+        root.wizig_runtime_echo(handle, "pong".ptr, "pong".len, &second_ptr, &second_len),
+    );
+    try std.testing.expectEqualStrings("pool:pong", second_ptr.?[0..second_len]);
+    try std.testing.expectEqual(first_ptr, second_ptr);
+    root.wizig_bytes_free(second_ptr, second_len);
 }

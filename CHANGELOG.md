@@ -1,5 +1,29 @@
 # Changelog
 
+### 0.0.12
+
+### Added
+
+- Enabled `org.gradle.parallel` for parallelisation in Gradle
+- Added generated binary wire-format helpers for user structs and enums across Zig, Swift, Kotlin, and JNI bindings.
+- Added pooled FFI output allocation support for runtime and generated FFI roots.
+
+### Changed
+
+- Replaced the manual top-level and command argument parsing with `zig-clap` across the Wizig CLI.
+- Refactored CLI parsing and dispatch into smaller documented modules to keep the new clap-backed command surface maintainable.
+- Expanded generated compatibility metadata and host/runtime handshake checks to include the binary wire-format version alongside the ABI version and contract hash.
+- Split the updated codegen renderers and tests into smaller documented helper modules to keep touched source files at or under 200 lines.
+
+### Fixed
+
+- Removed duplicated top-level help output by limiting `wizig` help to the command summary and routing detailed usage to `wizig <command> --help`.
+- Corrected per-command help text for optional positional arguments such as `create`, `run`, `codegen`, and `plugin` subcommands.
+- Added dedicated help handling for `build android`, `plugin validate`, `plugin sync`, `plugin add`, `version`, and `self-update`.
+- Fixes [#13](https://github.com/wizig-org/wizig/issues/13) and [#25](https://github.com/wizig-org/wizig/issues/25) by replacing `page_allocator`-backed FFI output handling with GPA-backed pooled buffers in both the runtime and generated roots.
+- Fixes [#18](https://github.com/wizig-org/wizig/issues/18) by replacing JSON-based user type marshalling with the new binary wire format across generated Zig, Swift, Kotlin, and JNI bindings.
+- Fixes [#22](https://github.com/wizig-org/wizig/issues/22) by removing redundant Swift symbol validation and tightening generated Swift binary decode and empty-struct input handling.
+
 ## 0.0.11
 
 ### Fixed

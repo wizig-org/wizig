@@ -16,6 +16,7 @@ pub fn run(
     io: std.Io,
     stderr: *Io.Writer,
     stdout: *Io.Writer,
+    args: []const []const u8,
 ) !void {
 ```
 

@@ -4,9 +4,9 @@ _Language: Zig_
 
 Swift API method and event emitter renderer.
 
-Methods call C exports through the static `WizigFFI` import. User structs and
-enums are translated to wire representations automatically:
-- structs -> JSON string wire
+Methods call C exports through the static `WizigFFI` import. User structs
+and enums are translated to wire representations automatically:
+- structs -> binary wire format v1 (field concatenation)
 - enums   -> Int64 raw value wire
 
 ## Public API

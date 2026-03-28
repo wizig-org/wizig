@@ -20,7 +20,7 @@ pub fn run(
 }
 
 /// Writes run command usage text.
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
+pub fn printUsage(writer: *Io.Writer) !void {
     try writer.writeAll(
         "Run:\n" ++
             "  wizig run [project_dir] [options]\n" ++

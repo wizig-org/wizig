@@ -40,6 +40,7 @@ Compatibility metadata embedded into generated Zig/host bindings.
 ## Fields
 - `abi_version`: numeric ABI generation identifier.
 - `contract_hash_hex`: lower-case SHA-256 digest of API surface contract.
+- `wire_format_version`: binary wire format revision for struct serialization.
 
 ## Lifetime
 The hash string is arena-owned by the allocator passed into builders.

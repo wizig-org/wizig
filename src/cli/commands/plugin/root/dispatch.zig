@@ -1,26 +1,48 @@
-//! Parses `wizig plugin` arguments and routes them to subcommand handlers.
+//! `wizig plugin` clap-backed subcommand dispatch.
 const std = @import("std");
 const Io = std.Io;
+const clap = @import("clap");
 
 const add_cmd = @import("add.zig");
+const help = @import("help.zig");
 const sync_cmd = @import("sync.zig");
 const validate_cmd = @import("validate.zig");
+const clap_support = @import("../../../support/clap_support.zig");
 
-/// Parsed plugin subcommands.
-pub const Command = union(enum) {
-    validate: struct {
-        manifest_path: []const u8,
-    },
-    sync: struct {
-        project_root: []const u8,
-    },
-    add: struct {
-        source: []const u8,
-        project_root: []const u8,
-    },
+const Command = enum { validate, sync, add };
+const AddArgs = struct { source: []const u8, project_root: []const u8 };
+
+const main_parsers = .{ .COMMAND = clap.parsers.enumeration(Command) };
+const validate_parsers = .{ .MANIFEST = clap.parsers.string };
+const sync_parsers = .{ .PROJECT_ROOT = clap.parsers.string };
+const add_parsers = .{
+    .SOURCE = clap.parsers.string,
+    .PROJECT_ROOT = clap.parsers.string,
 };
 
-/// Parses the plugin command arguments and executes the requested handler.
+const main_params = clap.parseParamsComptime(
+    \\-h, --help      Display this help and exit.
+    \\<COMMAND>       Plugin subcommand to execute.
+    \\
+);
+const validate_params = clap.parseParamsComptime(
+    \\-h, --help      Display this help and exit.
+    \\<MANIFEST>      Path to wizig-plugin.json.
+    \\
+);
+const sync_params = clap.parseParamsComptime(
+    \\-h, --help          Display this help and exit.
+    \\<PROJECT_ROOT>      Project root to sync into.
+    \\
+);
+const add_params = clap.parseParamsComptime(
+    \\-h, --help          Display this help and exit.
+    \\<SOURCE>            Git URL or local plugin path.
+    \\<PROJECT_ROOT>      Project root to add into.
+    \\
+);
+
+/// Parses plugin arguments and executes the selected subcommand.
 pub fn run(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -28,84 +50,138 @@ pub fn run(
     stdout: *Io.Writer,
     args: []const []const u8,
 ) !void {
-    const command = try parse(args, stderr);
-    switch (command) {
-        .validate => |payload| return validate_cmd.run(arena, io, stderr, stdout, payload.manifest_path),
-        .sync => |payload| return sync_cmd.run(arena, io, stderr, stdout, payload.project_root),
-        .add => |payload| return add_cmd.run(arena, io, stderr, stdout, payload.source, payload.project_root),
-    }
-}
-
-/// Returns a typed plugin command or reports argument validation failures.
-pub fn parse(args: []const []const u8, stderr: *Io.Writer) !Command {
-    if (args.len == 0) {
-        try stderr.writeAll("error: plugin expects validate|sync|add\n");
+    var iter = clap_support.SliceIterator.init(args);
+    var diag = clap.Diagnostic{};
+    var parsed = clap.parseEx(clap.Help, &main_params, main_parsers, &iter, .{
+        .allocator = arena,
+        .diagnostic = &diag,
+        .terminating_positional = 0,
+    }) catch |err| {
+        try clap_support.reportDiagnostic(stderr, diag, err);
         return error.InvalidArguments;
+    };
+    defer parsed.deinit();
+
+    if (parsed.args.help != 0) {
+        try help.printUsage(stdout);
+        try stdout.flush();
+        return;
     }
 
-    if (std.mem.eql(u8, args[0], "validate")) {
-        if (args.len != 2) {
-            try stderr.writeAll("error: plugin validate expects <wizig-plugin.json>\n");
-            return error.InvalidArguments;
-        }
-        return .{ .validate = .{ .manifest_path = args[1] } };
-    }
+    const command = parsed.positionals[0] orelse {
+        try stderr.writeAll("error: plugin expects validate|sync|add\n");
+        try stderr.flush();
+        return error.InvalidArguments;
+    };
 
-    if (std.mem.eql(u8, args[0], "sync")) {
-        const project_root = if (args.len >= 2) args[1] else ".";
-        if (args.len > 2) {
-            try stderr.writeAll("error: plugin sync accepts at most [project_root]\n");
-            return error.InvalidArguments;
-        }
-        return .{ .sync = .{ .project_root = project_root } };
-    }
-
-    if (std.mem.eql(u8, args[0], "add")) {
-        if (args.len < 2 or args.len > 3) {
-            try stderr.writeAll("error: plugin add expects <git_or_path> [project_root]\n");
-            return error.InvalidArguments;
-        }
-        const project_root = if (args.len == 3) args[2] else ".";
-        return .{ .add = .{ .source = args[1], .project_root = project_root } };
-    }
-
-    try stderr.print("error: unknown plugin command '{s}'\n", .{args[0]});
-    return error.InvalidArguments;
-}
-
-test "parse accepts validate, sync, and add defaults" {
-    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer err_writer.deinit();
-
-    const validate_result = try parse(&.{ "validate", "wizig-plugin.json" }, &err_writer.writer);
-    switch (validate_result) {
-        .validate => |payload| try std.testing.expectEqualStrings("wizig-plugin.json", payload.manifest_path),
-        else => try std.testing.expect(false),
-    }
-
-    const sync_result = try parse(&.{"sync"}, &err_writer.writer);
-    switch (sync_result) {
-        .sync => |payload| try std.testing.expectEqualStrings(".", payload.project_root),
-        else => try std.testing.expect(false),
-    }
-
-    const add_result = try parse(&.{ "add", "https://example.com/repo.git" }, &err_writer.writer);
-    switch (add_result) {
-        .add => |payload| {
-            try std.testing.expectEqualStrings("https://example.com/repo.git", payload.source);
-            try std.testing.expectEqualStrings(".", payload.project_root);
-        },
-        else => try std.testing.expect(false),
+    switch (command) {
+        .validate => try runValidate(arena, io, stderr, stdout, iter.remaining()),
+        .sync => try runSync(arena, io, stderr, stdout, iter.remaining()),
+        .add => try runAdd(arena, io, stderr, stdout, iter.remaining()),
     }
 }
 
-test "parse rejects invalid plugin arguments" {
-    var err_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer err_writer.deinit();
+/// Writes plugin command usage text.
+pub fn printUsage(writer: *Io.Writer) !void {
+    return help.printUsage(writer);
+}
 
-    try std.testing.expectError(error.InvalidArguments, parse(&.{}, &err_writer.writer));
-    try std.testing.expectError(error.InvalidArguments, parse(&.{"validate"}, &err_writer.writer));
-    try std.testing.expectError(error.InvalidArguments, parse(&.{ "sync", ".", "extra" }, &err_writer.writer));
-    try std.testing.expectError(error.InvalidArguments, parse(&.{"add"}, &err_writer.writer));
-    try std.testing.expectError(error.InvalidArguments, parse(&.{"unknown"}, &err_writer.writer));
+fn runValidate(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    args: []const []const u8,
+) !void {
+    const manifest_path = (try parseValidateArgs(arena, stderr, args)) orelse {
+        try help.printValidateUsage(stdout);
+        try stdout.flush();
+        return;
+    };
+    return validate_cmd.run(arena, io, stderr, stdout, manifest_path);
+}
+
+fn runSync(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    args: []const []const u8,
+) !void {
+    const project_root = (try parseSyncProjectRoot(arena, stderr, args)) orelse {
+        try help.printSyncUsage(stdout);
+        try stdout.flush();
+        return;
+    };
+    return sync_cmd.run(arena, io, stderr, stdout, project_root);
+}
+
+fn runAdd(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    stderr: *Io.Writer,
+    stdout: *Io.Writer,
+    args: []const []const u8,
+) !void {
+    const parsed = (try parseAddArgs(arena, stderr, args)) orelse {
+        try help.printAddUsage(stdout);
+        try stdout.flush();
+        return;
+    };
+    return add_cmd.run(arena, io, stderr, stdout, parsed.source, parsed.project_root);
+}
+
+fn parseValidateArgs(allocator: std.mem.Allocator, stderr: *Io.Writer, args: []const []const u8) !?[]const u8 {
+    var iter = clap_support.SliceIterator.init(args);
+    var diag = clap.Diagnostic{};
+    var parsed = clap.parseEx(clap.Help, &validate_params, validate_parsers, &iter, .{
+        .allocator = allocator,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try clap_support.reportDiagnostic(stderr, diag, err);
+        return error.InvalidArguments;
+    };
+    defer parsed.deinit();
+    if (parsed.args.help != 0) return null;
+    return parsed.positionals[0] orelse {
+        try stderr.writeAll("error: plugin validate expects <wizig-plugin.json>\n");
+        try stderr.flush();
+        return error.InvalidArguments;
+    };
+}
+
+pub fn parseSyncProjectRoot(allocator: std.mem.Allocator, stderr: *Io.Writer, args: []const []const u8) !?[]const u8 {
+    var iter = clap_support.SliceIterator.init(args);
+    var diag = clap.Diagnostic{};
+    var parsed = clap.parseEx(clap.Help, &sync_params, sync_parsers, &iter, .{
+        .allocator = allocator,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try clap_support.reportDiagnostic(stderr, diag, err);
+        return error.InvalidArguments;
+    };
+    defer parsed.deinit();
+    if (parsed.args.help != 0) return null;
+    return parsed.positionals[0] orelse ".";
+}
+
+pub fn parseAddArgs(allocator: std.mem.Allocator, stderr: *Io.Writer, args: []const []const u8) !?AddArgs {
+    var iter = clap_support.SliceIterator.init(args);
+    var diag = clap.Diagnostic{};
+    var parsed = clap.parseEx(clap.Help, &add_params, add_parsers, &iter, .{
+        .allocator = allocator,
+        .diagnostic = &diag,
+    }) catch |err| {
+        try clap_support.reportDiagnostic(stderr, diag, err);
+        return error.InvalidArguments;
+    };
+    defer parsed.deinit();
+    if (parsed.args.help != 0) return null;
+
+    const source = parsed.positionals[0] orelse {
+        try stderr.writeAll("error: plugin add expects <git_or_path> [project_root]\n");
+        try stderr.flush();
+        return error.InvalidArguments;
+    };
+    return .{ .source = source, .project_root = parsed.positionals[1] orelse "." };
 }

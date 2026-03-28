@@ -22,32 +22,38 @@ pub fn run(
     stdout: *Io.Writer,
     args: []const []const u8,
 ) !void {
-    const parsed = try options.parseCodegenOptions(args, stderr);
-    const root_abs = try path_util.resolveAbsolute(arena, io, parsed.project_root);
+    const parsed = try options.parseCodegenOptions(arena, stderr, args);
+    if (parsed == null) {
+        try printUsage(stdout);
+        try stdout.flush();
+        return;
+    }
+    const parsed_options = parsed.?;
+    const root_abs = try path_util.resolveAbsolute(arena, io, parsed_options.project_root);
 
     try lock_enforce.enforceProjectLock(
         arena,
         io,
         stderr,
         root_abs,
-        parsed.allow_toolchain_drift,
+        parsed_options.allow_toolchain_drift,
     );
 
-    if (parsed.watch) {
+    if (parsed_options.watch) {
         try watch_runner.runWatchCodegenLoop(
             io,
             stderr,
             stdout,
             root_abs,
-            parsed.api_override,
-            parsed.watch_interval_ms,
+            parsed_options.api_override,
+            parsed_options.watch_interval_ms,
             resolveApiPathForWatch,
             generateProject,
         );
         return;
     }
 
-    const contract = try resolveApiContract(arena, io, stderr, root_abs, parsed.api_override);
+    const contract = try resolveApiContract(arena, io, stderr, root_abs, parsed_options.api_override);
     try generateProject(
         arena,
         io,
@@ -59,17 +65,10 @@ pub fn run(
 }
 
 /// Writes usage help for the codegen command.
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
+pub fn printUsage(writer: *Io.Writer) !void {
+    try options.printUsage(writer);
     const ts_supported = targets.supportedNow(.typescript);
-    try writer.writeAll(
-        "Codegen:\n" ++
-            "  wizig codegen [project_root] [--api <path>] [--watch] [--watch-interval-ms <milliseconds>] [--allow-toolchain-drift]\n" ++
-            "  # default contract lookup: wizig.api.zig -> wizig.api.json (optional)\n" ++
-            "  # watch mode: incremental codegen on lib/**/*.zig and contract changes\n" ++
-            "  # current targets: zig, swift, kotlin\n",
-    );
-    try writer.print("  # default watch interval: {d}ms\n", .{options.default_watch_interval_ms});
-    try writer.print("  # reserved target: typescript ({s})\n\n", .{if (ts_supported) "enabled" else "planned"});
+    try writer.print("  Reserved target: typescript ({s})\n", .{if (ts_supported) "enabled" else "planned"});
 }
 
 /// Resolves API contract path from explicit override or project defaults.

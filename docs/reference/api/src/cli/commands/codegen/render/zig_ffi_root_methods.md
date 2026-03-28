@@ -6,7 +6,7 @@ Per-method FFI export generation for `WizigGeneratedFfiRoot.zig`.
 
 Wire mapping:
 - `user_enum`   <-> `i64` ordinal
-- `user_struct` <-> UTF-8 JSON bytes over existing string ABI
+- `user_struct` <-> compact binary wire format (v1)
 
 ## Public API
 
@@ -19,5 +19,6 @@ pub fn appendMethodExports(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
     methods: []const api.ApiMethod,
+    structs: []const api.UserStruct,
 ) !void {
 ```

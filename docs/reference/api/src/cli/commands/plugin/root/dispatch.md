@@ -2,21 +2,13 @@
 
 _Language: Zig_
 
-Parses `wizig plugin` arguments and routes them to subcommand handlers.
+`wizig plugin` clap-backed subcommand dispatch.
 
 ## Public API
 
-### `Command` (const)
-
-Parsed plugin subcommands.
-
-```zig
-pub const Command = union(enum) {
-```
-
 ### `run` (fn)
 
-Parses the plugin command arguments and executes the requested handler.
+Parses plugin arguments and executes the selected subcommand.
 
 ```zig
 pub fn run(
@@ -28,10 +20,26 @@ pub fn run(
 ) !void {
 ```
 
-### `parse` (fn)
+### `printUsage` (fn)
 
-Returns a typed plugin command or reports argument validation failures.
+Writes plugin command usage text.
 
 ```zig
-pub fn parse(args: []const []const u8, stderr: *Io.Writer) !Command {
+pub fn printUsage(writer: *Io.Writer) !void {
+```
+
+### `parseSyncProjectRoot` (fn)
+
+No declaration docs available.
+
+```zig
+pub fn parseSyncProjectRoot(allocator: std.mem.Allocator, stderr: *Io.Writer, args: []const []const u8) !?[]const u8 {
+```
+
+### `parseAddArgs` (fn)
+
+No declaration docs available.
+
+```zig
+pub fn parseAddArgs(allocator: std.mem.Allocator, stderr: *Io.Writer, args: []const []const u8) !?AddArgs {
 ```

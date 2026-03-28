@@ -20,15 +20,10 @@ pub fn run(
 
 /// Writes the plugin command usage block used by the top-level help output.
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
-    try writer.writeAll(
-        "Plugin:\n" ++
-            "  wizig plugin validate <wizig-plugin.json>\n" ++
-            "  wizig plugin sync [project_root]\n" ++
-            "  wizig plugin add <git_or_path> [project_root]\n" ++
-            "\n",
-    );
+    try dispatch.printUsage(writer);
 }
 
 test {
     _ = @import("root/dispatch.zig");
+    _ = @import("root/dispatch_tests.zig");
 }

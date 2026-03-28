@@ -29,5 +29,5 @@ pub fn run(
 Writes unified run usage help.
 
 ```zig
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
+pub fn printUsage(writer: *Io.Writer) !void {
 ```

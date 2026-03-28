@@ -1,7 +1,4 @@
 //! Unified run orchestration entrypoint.
-//!
-//! Unified mode discovers available iOS/Android targets, selects one, logs
-//! run metadata, then delegates concrete execution to platform runners.
 const std = @import("std");
 const Io = std.Io;
 
@@ -13,7 +10,6 @@ const platform_run = @import("../platform/root.zig");
 const lock_enforce = @import("../../support/toolchains/lock_enforce.zig");
 const types = @import("types.zig");
 
-/// Discovers available targets and runs the selected host flow.
 pub fn run(
     arena: std.mem.Allocator,
     io: std.Io,
@@ -22,11 +18,13 @@ pub fn run(
     stdout: *Io.Writer,
     args: []const []const u8,
 ) !void {
-    const parsed = options_mod.parseUnifiedOptions(args, stderr) catch {
-        try printUsage(stderr);
-        try stderr.flush();
-        return error.RunFailed;
-    };
+    const parsed_request = try options_mod.parseUnifiedOptions(arena, stderr, args);
+    if (parsed_request == null) {
+        try printUsage(stdout);
+        try stdout.flush();
+        return;
+    }
+    const parsed = parsed_request.?;
 
     const project_root = try options_mod.resolveProjectRoot(arena, io, parsed.project_root);
     var log_lines = std.ArrayList(u8).empty;
@@ -161,13 +159,8 @@ pub fn run(
     try stdout.flush();
 }
 
-/// Writes unified run usage help.
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
-    try writer.writeAll(
-        "Unified run options:\n" ++
-            "  wizig run [project_dir] [--device <id_or_name>] [--debugger <mode>] [--non-interactive] [--once] [--monitor-timeout <seconds>] [--regenerate-host] [--allow-toolchain-drift]\n" ++
-            "\n",
-    );
+pub fn printUsage(writer: *Io.Writer) !void {
+    try options_mod.printUsage(writer);
 }
 
 fn writeNoHostError(stderr: *Io.Writer, project_root: []const u8) Io.Writer.Error!void {
@@ -178,10 +171,7 @@ fn writeNoHostError(stderr: *Io.Writer, project_root: []const u8) Io.Writer.Erro
     );
 }
 
-fn parseDelegatedDebugger(
-    stderr: *Io.Writer,
-    raw: ?[]const u8,
-) !platform_run.types.DebuggerMode {
+fn parseDelegatedDebugger(stderr: *Io.Writer, raw: ?[]const u8) !platform_run.types.DebuggerMode {
     if (raw == null) return .auto;
     return std.meta.stringToEnum(platform_run.types.DebuggerMode, raw.?) orelse {
         try stderr.print("error: invalid debugger mode '{s}'\n", .{raw.?});

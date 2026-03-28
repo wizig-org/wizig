@@ -2,32 +2,35 @@
 //!
 //! Wire mapping:
 //! - `user_enum`   <-> `i64` ordinal
-//! - `user_struct` <-> UTF-8 JSON bytes over existing string ABI
+//! - `user_struct` <-> compact binary wire format (v1)
 
 const std = @import("std");
 const api = @import("../model/api.zig");
 const helpers = @import("helpers.zig");
+const wire_codegen = @import("zig_ffi_wire_codegen.zig");
 
 /// Appends generated export functions for every discovered API method.
 pub fn appendMethodExports(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
     methods: []const api.ApiMethod,
+    structs: []const api.UserStruct,
 ) !void {
     for (methods) |method| {
         const export_name = try std.fmt.allocPrint(arena, "wizig_api_{s}", .{method.name});
 
         try appendSignature(out, arena, export_name, method);
         try appendOutputGuards(out, arena, method.output);
-        const call_arg = try appendInputSetup(out, arena, method.input);
+        const call_arg = try appendInputSetup(out, arena, method.input, structs);
         try appendInvocation(out, arena, method, call_arg);
-        try appendOutputMarshalling(out, arena, method.output);
+        try appendOutputMarshalling(out, arena, method.output, structs);
         try out.appendSlice(arena, "    clearLastError();\n");
         try out.appendSlice(arena, "    return statusCode(.ok);\n");
         try out.appendSlice(arena, "}\n\n");
     }
 }
 
+/// Emits the export function signature line.
 fn appendSignature(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
@@ -72,6 +75,7 @@ fn appendSignature(
     try out.appendSlice(arena, ") i32 {\n");
 }
 
+/// Emits null-pointer guard checks for output parameters.
 fn appendOutputGuards(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
@@ -92,10 +96,13 @@ fn appendOutputGuards(
     }
 }
 
+/// Emits input deserialization code; returns the Zig expression name
+/// to pass as the app function argument (or null for void).
 fn appendInputSetup(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
     input: api.ApiType,
+    structs: []const api.UserStruct,
 ) !?[]const u8 {
     return switch (input) {
         .void => null,
@@ -112,25 +119,21 @@ fn appendInputSetup(
             try helpers.appendFmt(
                 out,
                 arena,
-                "    const input_value = std.meta.intToEnum({s}, input) catch return setLastError(.argument, statusCode(.invalid_argument), \"invalid enum ordinal\");\n",
+                "    const input_value = std.enums.fromInt({s}, input) orelse return setLastError(.argument, statusCode(.invalid_argument), \"invalid enum ordinal\");\n",
                 .{name},
             );
             break :blk "input_value";
         },
         .user_struct => |name| blk: {
-            try out.appendSlice(arena, "    const input_json = input_ptr[0..input_len];\n");
-            try helpers.appendFmt(
-                out,
-                arena,
-                "    const parsed_input = std.json.parseFromSlice({s}, bootstrap_allocator, input_json, .{{}}) catch return setLastError(.argument, statusCode(.invalid_argument), \"invalid json input\");\n",
-                .{name},
-            );
-            try out.appendSlice(arena, "    defer parsed_input.deinit();\n");
-            break :blk "parsed_input.value";
+            try out.appendSlice(arena, "    const input_bytes = input_ptr[0..input_len];\n");
+            try out.appendSlice(arena, "    var wire_off: usize = 0;\n");
+            try wire_codegen.appendWireReadStruct(out, arena, name, "input_value", structs);
+            break :blk "input_value";
         },
     };
 }
 
+/// Emits the app function invocation, binding its result to `value`.
 fn appendInvocation(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
@@ -140,9 +143,9 @@ fn appendInvocation(
     const name = method.name;
     if (method.output == .string) {
         if (maybe_arg) |arg| {
-            try helpers.appendFmt(out, arena, "    const value = unwrapResult(app.{s}({s}, bootstrap_allocator)) catch |err| return mapError(err);\n", .{ name, arg });
+            try helpers.appendFmt(out, arena, "    const value = unwrapResult(app.{s}({s}, ffi_output_allocator)) catch |err| return mapError(err);\n", .{ name, arg });
         } else {
-            try helpers.appendFmt(out, arena, "    const value = unwrapResult(app.{s}(bootstrap_allocator)) catch |err| return mapError(err);\n", .{name});
+            try helpers.appendFmt(out, arena, "    const value = unwrapResult(app.{s}(ffi_output_allocator)) catch |err| return mapError(err);\n", .{name});
         }
         return;
     }
@@ -163,22 +166,21 @@ fn appendInvocation(
     }
 }
 
+/// Emits output marshalling code to serialize the return value into
+/// the C ABI output parameters.
 fn appendOutputMarshalling(
     out: *std.ArrayList(u8),
     arena: std.mem.Allocator,
     output: api.ApiType,
+    structs: []const api.UserStruct,
 ) !void {
     switch (helpers.wireKind(output)) {
         .void => {},
         .string => {
             if (output == .user_struct) {
-                try out.appendSlice(arena, "    var json_out: std.Io.Writer.Allocating = .init(bootstrap_allocator);\n");
-                try out.appendSlice(arena, "    defer json_out.deinit();\n");
-                try out.appendSlice(arena, "    std.json.Stringify.value(value, .{}, &json_out.writer) catch return setLastError(.runtime, statusCode(.internal_error), \"json encode failed\");\n");
-                try out.appendSlice(arena, "    const encoded = json_out.written();\n");
-                try out.appendSlice(arena, "    const owned = bootstrap_allocator.dupe(u8, encoded) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
+                try wire_codegen.appendStructBinaryEncode(out, arena, output.user_struct, structs);
             } else {
-                try out.appendSlice(arena, "    const owned = bootstrap_allocator.dupe(u8, value) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
+                try out.appendSlice(arena, "    const owned = ffi_output_allocator.dupe(u8, value) catch return setLastError(.memory, statusCode(.out_of_memory), \"out of memory\");\n");
             }
             try out.appendSlice(arena, "    output_ptr.* = owned.ptr;\n");
             try out.appendSlice(arena, "    output_len.* = owned.len;\n");

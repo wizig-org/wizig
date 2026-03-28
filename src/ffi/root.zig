@@ -1,14 +1,12 @@
-//! C ABI bridge exposing Wizig runtime functions to native hosts.
-//! Exports `wizig_runtime_*` entrypoints, `wizig_ffi_*` handshake symbols,
-//! and structured last-error accessors with thread-local error envelopes.
+//! C ABI bridge exposing Wizig runtime functions and compatibility handshakes.
 const std = @import("std");
 const builtin = @import("builtin");
 const wizig_core = @import("wizig_core");
+const buffer_pool = @import("buffer_pool.zig");
 const ffi_error = @import("error.zig");
 
 /// Re-exported for test access.
 pub const Status = ffi_error.Status;
-
 /// Opaque runtime handle; callers must treat as an opaque token.
 pub const WizigRuntimeHandle = opaque {};
 
@@ -17,20 +15,21 @@ const domainLabel = ffi_error.domainLabel;
 const setLastError = ffi_error.setLastError;
 const clearLastError = ffi_error.clearLastError;
 
-const bootstrap_allocator = std.heap.page_allocator;
+/// Global buffer pool for FFI output allocations.
+var ffi_pool = buffer_pool.BufferPool{};
+const ffi_output_allocator = ffi_pool.allocator();
 const wizig_ffi_abi_version_value: u32 = 1;
+const wizig_ffi_wire_format_version_value: u32 = 1;
 const wizig_ffi_contract_hash_value: []const u8 =
     "0d2ca7c6c4d473945f98fef4240f4f4f5456bfec4a4cb8f90a322604dbf99795";
 
-/// Build-mode-aware allocator type: `DebugAllocator` for leak detection in
-/// debug builds, lightweight `SmpAllocator` wrapper for performance in release.
+/// Build-mode-aware allocator: `DebugAllocator` in debug, `SmpAllocator` in release.
 const Gpa = if (builtin.mode == .Debug)
     std.heap.DebugAllocator(.{ .thread_safe = true })
 else
     ReleaseAllocator;
 
-/// Minimal wrapper matching the `DebugAllocator` instance API so
-/// `RuntimeBox` can use a single field type via `Gpa`.
+/// Minimal wrapper matching `DebugAllocator` API so `RuntimeBox` uses one type.
 const ReleaseAllocator = struct {
     pub const init: ReleaseAllocator = .{};
 
@@ -86,6 +85,11 @@ pub export fn wizig_ffi_contract_hash_len() usize {
     return wizig_ffi_contract_hash_value.len;
 }
 
+/// Returns the current binary wire format version for host compatibility checks.
+pub export fn wizig_ffi_wire_format_version() u32 {
+    return wizig_ffi_wire_format_version_value;
+}
+
 /// Returns structured error domain pointer for the current thread.
 pub export fn wizig_ffi_last_error_domain_ptr() [*]const u8 {
     return domainLabel(ffi_error.last_error.domain).ptr;
@@ -125,9 +129,9 @@ pub export fn wizig_runtime_new(
         return setLastError(.argument, statusCode(.null_argument), "null app_name_ptr");
     }
     const app_name = bytesFromAbi(app_name_ptr, app_name_len);
-    const box = bootstrap_allocator.create(RuntimeBox) catch
+    const box = std.heap.smp_allocator.create(RuntimeBox) catch
         return setLastError(.memory, statusCode(.out_of_memory), "out of memory");
-    errdefer bootstrap_allocator.destroy(box);
+    errdefer std.heap.smp_allocator.destroy(box);
     box.gpa = .init;
     const gpa_allocator = box.gpa.allocator();
     box.runtime = wizig_core.Runtime.init(gpa_allocator, app_name) catch |err| switch (err) {
@@ -138,19 +142,16 @@ pub export fn wizig_runtime_new(
     return statusCode(.ok);
 }
 
-/// Destroys a runtime handle previously returned by `wizig_runtime_new`.
-/// Passing null is a no-op to simplify host-side cleanup code paths.
+/// Destroys a runtime handle from `wizig_runtime_new`. Null is a safe no-op.
 pub export fn wizig_runtime_free(handle: ?*WizigRuntimeHandle) void {
     if (handle == null) return;
     const box = toBox(handle.?);
     box.runtime.deinit();
     _ = box.gpa.deinit();
-    bootstrap_allocator.destroy(box);
+    std.heap.smp_allocator.destroy(box);
 }
 
 /// Executes runtime echo and returns an owned UTF-8 byte buffer.
-/// On success, the caller owns `out_ptr[0..out_len]` and must release
-/// it with `wizig_bytes_free`.
 pub export fn wizig_runtime_echo(
     handle: ?*WizigRuntimeHandle,
     input_ptr: [*]const u8,
@@ -170,7 +171,7 @@ pub export fn wizig_runtime_echo(
         return setLastError(.argument, statusCode(.null_argument), "null input_ptr");
     }
     const input = bytesFromAbi(input_ptr, input_len);
-    const echoed = box.runtime.echo(input, bootstrap_allocator) catch |err| switch (err) {
+    const echoed = box.runtime.echo(input, ffi_output_allocator) catch |err| switch (err) {
         error.OutOfMemory => return setLastError(.memory, statusCode(.out_of_memory), "out of memory"),
     };
     output_ptr.* = echoed.ptr;
@@ -180,15 +181,15 @@ pub export fn wizig_runtime_echo(
 }
 
 /// Frees buffers returned by Wizig FFI functions.
-/// Only accepts pointers returned by Wizig allocation paths.
 pub export fn wizig_bytes_free(ptr: ?[*]u8, len: usize) void {
     if (ptr == null) return;
-    bootstrap_allocator.free(ptr.?[0..len]);
+    ffi_output_allocator.free(ptr.?[0..len]);
 }
 
 test {
     _ = @import("error.zig");
     _ = @import("root_tests.zig");
+    _ = @import("buffer_pool.zig");
 }
 
 test "Gpa type selection matches build mode" {

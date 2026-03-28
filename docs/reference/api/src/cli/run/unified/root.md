@@ -4,14 +4,11 @@ _Language: Zig_
 
 Unified run orchestration entrypoint.
 
-Unified mode discovers available iOS/Android targets, selects one, logs
-run metadata, then delegates concrete execution to platform runners.
-
 ## Public API
 
 ### `run` (fn)
 
-Discovers available targets and runs the selected host flow.
+No declaration docs available.
 
 ```zig
 pub fn run(
@@ -26,8 +23,8 @@ pub fn run(
 
 ### `printUsage` (fn)
 
-Writes unified run usage help.
+No declaration docs available.
 
 ```zig
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
+pub fn printUsage(writer: *Io.Writer) !void {
 ```

@@ -10,6 +10,7 @@ const android_flow = @import("android_flow.zig");
 const codegen_preflight = @import("codegen_preflight.zig");
 const ios_flow = @import("ios_flow.zig");
 const options_mod = @import("options.zig");
+const options_runtime = @import("options_runtime.zig");
 const process = @import("process_supervisor.zig");
 
 pub const types = @import("types.zig");
@@ -23,12 +24,13 @@ pub fn run(
     stdout: *Io.Writer,
     args: []const []const u8,
 ) !void {
-    const parsed_options = options_mod.parseRunOptions(args, stderr) catch {
-        try printUsage(stderr);
-        try stderr.flush();
-        return error.RunFailed;
-    };
-    const options = try options_mod.normalizeRunOptions(arena, io, parsed_options);
+    const parsed_options = try options_mod.parseRunOptions(arena, stderr, args);
+    if (parsed_options == null) {
+        try printUsage(stdout);
+        try stdout.flush();
+        return;
+    }
+    const options = try options_runtime.normalizeRunOptions(arena, io, parsed_options.?);
     return runWithOptions(arena, io, parent_environ_map, stderr, stdout, options);
 }
 

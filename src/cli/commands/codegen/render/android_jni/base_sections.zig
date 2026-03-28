@@ -161,6 +161,7 @@ pub fn appendBaseSections(
     try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_ffi_abi_version\")) return;\n");
     try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_ffi_contract_hash_ptr\")) return;\n");
     try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_ffi_contract_hash_len\")) return;\n");
+    try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_ffi_wire_format_version\")) return;\n");
     try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_ffi_last_error_domain_ptr\")) return;\n");
     try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_ffi_last_error_domain_len\")) return;\n");
     try out.appendSlice(arena, "    if (!ensure_symbol(env, \"wizig_ffi_last_error_code\")) return;\n");
@@ -170,13 +171,14 @@ pub fn appendBaseSections(
         try helpers.appendFmt(out, arena, "    if (!ensure_symbol(env, \"wizig_api_{s}\")) return;\n", .{method.name});
     }
     try out.appendSlice(arena, "    uint32_t actual_abi = wizig_ffi_abi_version();\n");
+    try out.appendSlice(arena, "    uint32_t actual_wire = wizig_ffi_wire_format_version();\n");
     try out.appendSlice(arena, "    const uint8_t* actual_hash_ptr = wizig_ffi_contract_hash_ptr();\n");
     try out.appendSlice(arena, "    size_t actual_hash_len = wizig_ffi_contract_hash_len();\n");
     try out.appendSlice(arena, "    char actual_hash[96];\n");
     try out.appendSlice(arena, "    copy_slice_to_buffer(actual_hash_ptr, actual_hash_len, actual_hash, sizeof(actual_hash));\n");
-    try out.appendSlice(arena, "    if (actual_abi != WIZIG_EXPECTED_ABI_VERSION || strcmp(actual_hash, WIZIG_EXPECTED_CONTRACT_HASH) != 0) {\n");
-    try out.appendSlice(arena, "        char message[320];\n");
-    try out.appendSlice(arena, "        snprintf(message, sizeof(message), \"ffi compatibility mismatch: expected abi=%u hash=%s got abi=%u hash=%s\", (unsigned)WIZIG_EXPECTED_ABI_VERSION, WIZIG_EXPECTED_CONTRACT_HASH, (unsigned)actual_abi, actual_hash);\n");
+    try out.appendSlice(arena, "    if (actual_abi != WIZIG_EXPECTED_ABI_VERSION || actual_wire != WIZIG_EXPECTED_WIRE_FORMAT_VERSION || strcmp(actual_hash, WIZIG_EXPECTED_CONTRACT_HASH) != 0) {\n");
+    try out.appendSlice(arena, "        char message[384];\n");
+    try out.appendSlice(arena, "        snprintf(message, sizeof(message), \"ffi compatibility mismatch: expected abi=%u wire=%u hash=%s got abi=%u wire=%u hash=%s\", (unsigned)WIZIG_EXPECTED_ABI_VERSION, (unsigned)WIZIG_EXPECTED_WIRE_FORMAT_VERSION, WIZIG_EXPECTED_CONTRACT_HASH, (unsigned)actual_abi, (unsigned)actual_wire, actual_hash);\n");
     try out.appendSlice(arena, "        throw_structured_error(env, \"wizig.compatibility\", 1002, message);\n");
     try out.appendSlice(arena, "        return;\n");
     try out.appendSlice(arena, "    }\n");

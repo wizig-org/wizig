@@ -5,9 +5,9 @@ _Language: Zig_
 Per-method Android JNI export generation.
 
 Generates `JNIEXPORT` C functions that bridge each `ApiMethod` from
-Kotlin/Java to the underlying Wizig FFI C ABI.  String inputs use
-`GetStringUTFLength` (O(1)) rather than `strlen` (O(n)) because the
-JVM already knows the encoded length.
+Kotlin/Java to the underlying Wizig FFI C ABI.  Struct parameters use
+`jbyteArray` for binary wire format transport; plain strings use
+`jstring` with `GetStringUTFLength` (O(1)) for encoded length.
 
 ## Public API
 

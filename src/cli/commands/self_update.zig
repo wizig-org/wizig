@@ -13,7 +13,19 @@ pub fn run(
     io: std.Io,
     stderr: *Io.Writer,
     stdout: *Io.Writer,
+    args: []const []const u8,
 ) !void {
+    if (isHelpRequest(args)) {
+        try printUsage(stdout);
+        try stdout.flush();
+        return;
+    }
+    if (args.len != 0) {
+        try stderr.writeAll("error: self-update does not accept additional arguments\n");
+        try stderr.flush();
+        return error.SelfUpdateFailed;
+    }
+
     const current = build_options.version;
 
     if (std.mem.eql(u8, current, "dev")) {
@@ -70,9 +82,8 @@ pub fn run(
 
     // Download tarball.
     _ = process.runChecked(arena, io, stderr, null, &.{
-        "curl", "-fsSL", "-o",
-        std.fmt.allocPrint(arena, "{s}/{s}", .{ tmpdir, tarball_gz }) catch return error.SelfUpdateFailed,
-        url,
+        "curl",                                                                                            "-fsSL", "-o",
+        std.fmt.allocPrint(arena, "{s}/{s}", .{ tmpdir, tarball_gz }) catch return error.SelfUpdateFailed, url,
     }, null, "download release") catch
         return error.SelfUpdateFailed;
 
@@ -107,9 +118,14 @@ pub fn run(
 pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
     try writer.writeAll(
         "Self-update:\n" ++
-            "  wizig self-update    Check for and install the latest version\n" ++
-            "\n",
+            "  wizig self-update    Check for and install the latest version\n\n" ++
+            "Options:\n" ++
+            "  -h, --help           Display this help and exit.\n",
     );
+}
+
+fn isHelpRequest(args: []const []const u8) bool {
+    return args.len == 1 and (std.mem.eql(u8, args[0], "-h") or std.mem.eql(u8, args[0], "--help"));
 }
 
 fn fetchLatestVersion(arena: std.mem.Allocator, io: std.Io, stderr: *Io.Writer) ![]const u8 {
@@ -157,4 +173,14 @@ fn archName() []const u8 {
         .x86_64 => "x86_64",
         else => @compileError("unsupported architecture for self-update"),
     };
+}
+
+test "printUsage includes self-update syntax" {
+    var out_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out_writer.deinit();
+
+    try printUsage(&out_writer.writer);
+    const output = out_writer.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, output, "wizig self-update") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "--help") != null);
 }
