@@ -6,6 +6,14 @@ Shared helpers for renderer modules.
 
 ## Public API
 
+### `wire_format_version` (const)
+
+Current binary wire format version for struct serialization.
+
+```zig
+pub const wire_format_version: u32 = 1;
+```
+
 ### `WireKind` (const)
 
 Logical ABI wire categories used by generated host and bridge code.
@@ -53,7 +61,10 @@ pub fn kotlinType(value: api.ApiType) []const u8 {
 
 ### `jniCType` (fn)
 
-No declaration docs available.
+Returns the JNI C type for the given API type.
+
+`user_struct` maps to `jbyteArray` for binary wire format transport,
+while plain strings remain `jstring`.
 
 ```zig
 pub fn jniCType(value: api.ApiType) []const u8 {

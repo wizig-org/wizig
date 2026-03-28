@@ -1,8 +1,8 @@
-# `src/cli/run/platform/options.zig`
+# `src/cli/run/platform/options_parse.zig`
 
 _Language: Zig_
 
-Public facade for platform run option parsing.
+clap-backed parsing for platform-specific run options.
 
 ## Public API
 
@@ -13,7 +13,7 @@ Parses CLI arguments into validated platform run options.
 ```zig
 pub fn parseRunOptions(
     allocator: std.mem.Allocator,
-    stderr: *std.Io.Writer,
+    stderr: *Io.Writer,
     args: []const []const u8,
 ) !?types.RunOptions {
 ```

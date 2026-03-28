@@ -5,7 +5,7 @@ _Language: Zig_
 Renderer for `WizigGeneratedApi.kt`.
 
 User type wire mapping:
-- `user_struct` <-> JSON `String`
+- `user_struct` <-> binary `ByteArray` (wire format v1)
 - `user_enum`   <-> `Long` raw value
 
 ## Public API

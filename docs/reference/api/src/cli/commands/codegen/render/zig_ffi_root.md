@@ -8,7 +8,7 @@ Renderer for generated Zig FFI root module.
 
 ### `renderZigFfiRoot` (fn)
 
-No declaration docs available.
+Renders the complete generated Zig FFI root module from an API spec.
 
 ```zig
 pub fn renderZigFfiRoot(

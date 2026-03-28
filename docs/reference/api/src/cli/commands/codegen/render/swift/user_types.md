@@ -4,11 +4,14 @@ _Language: Zig_
 
 Swift type definition generation for user-defined structs and enums.
 
+Structs get `toBinary()` and `fromBinary`/`fromBinaryReader` methods for
+wire format v1 encoding. Enums use `Int64` raw values (no Codable).
+
 ## Public API
 
 ### `appendSwiftTypeDefinitions` (fn)
 
-No declaration docs available.
+Appends Swift enum and struct definitions including binary wire methods.
 
 ```zig
 pub fn appendSwiftTypeDefinitions(

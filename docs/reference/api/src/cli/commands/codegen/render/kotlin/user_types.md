@@ -4,14 +4,15 @@ _Language: Zig_
 
 Kotlin type definition generation for user structs and enums.
 
-To keep Android integration dependency-free, struct JSON conversion is
-generated with `org.json.JSONObject` helpers instead of external serializers.
+Struct serialization uses a compact binary wire format (v1) with
+`ByteBuffer` / `ByteArrayOutputStream` instead of JSON, keeping the
+Android integration dependency-free.
 
 ## Public API
 
 ### `appendKotlinTypeDefinitions` (fn)
 
-Appends Kotlin enum/data classes plus JSON helpers for user types.
+Appends Kotlin enum/data classes plus binary wire helpers for user types.
 
 ```zig
 pub fn appendKotlinTypeDefinitions(

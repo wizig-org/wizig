@@ -34,5 +34,5 @@ pub fn run(
 Writes run command usage text.
 
 ```zig
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
+pub fn printUsage(writer: *Io.Writer) !void {
 ```

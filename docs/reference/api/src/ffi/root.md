@@ -2,9 +2,7 @@
 
 _Language: Zig_
 
-C ABI bridge exposing Wizig runtime functions to native hosts.
-Exports `wizig_runtime_*` entrypoints, `wizig_ffi_*` handshake symbols,
-and structured last-error accessors with thread-local error envelopes.
+C ABI bridge exposing Wizig runtime functions and compatibility handshakes.
 
 ## Public API
 
@@ -72,6 +70,14 @@ Returns generated contract hash length for host compatibility checks.
 pub export fn wizig_ffi_contract_hash_len() usize {
 ```
 
+### `wizig_ffi_wire_format_version` (export fn)
+
+Returns the current binary wire format version for host compatibility checks.
+
+```zig
+pub export fn wizig_ffi_wire_format_version() u32 {
+```
+
 ### `wizig_ffi_last_error_domain_ptr` (export fn)
 
 Returns structured error domain pointer for the current thread.
@@ -126,8 +132,7 @@ pub export fn wizig_runtime_new(
 
 ### `wizig_runtime_free` (export fn)
 
-Destroys a runtime handle previously returned by `wizig_runtime_new`.
-Passing null is a no-op to simplify host-side cleanup code paths.
+Destroys a runtime handle from `wizig_runtime_new`. Null is a safe no-op.
 
 ```zig
 pub export fn wizig_runtime_free(handle: ?*WizigRuntimeHandle) void {
@@ -136,8 +141,6 @@ pub export fn wizig_runtime_free(handle: ?*WizigRuntimeHandle) void {
 ### `wizig_runtime_echo` (export fn)
 
 Executes runtime echo and returns an owned UTF-8 byte buffer.
-On success, the caller owns `out_ptr[0..out_len]` and must release
-it with `wizig_bytes_free`.
 
 ```zig
 pub export fn wizig_runtime_echo(
@@ -152,7 +155,6 @@ pub export fn wizig_runtime_echo(
 ### `wizig_bytes_free` (export fn)
 
 Frees buffers returned by Wizig FFI functions.
-Only accepts pointers returned by Wizig allocation paths.
 
 ```zig
 pub export fn wizig_bytes_free(ptr: ?[*]u8, len: usize) void {

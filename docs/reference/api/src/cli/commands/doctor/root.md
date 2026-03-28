@@ -31,8 +31,6 @@ pub fn run(
 
 Writes usage help for the doctor command.
 
-Keep this in sync with `parseDoctorOptions` whenever flags are added.
-
 ```zig
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
+pub fn printUsage(writer: *Io.Writer) !void {
 ```

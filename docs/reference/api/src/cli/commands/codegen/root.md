@@ -41,7 +41,7 @@ pub fn run(
 Writes usage help for the codegen command.
 
 ```zig
-pub fn printUsage(writer: *Io.Writer) Io.Writer.Error!void {
+pub fn printUsage(writer: *Io.Writer) !void {
 ```
 
 ### `resolveApiContract` (fn)
