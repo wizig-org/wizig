@@ -214,18 +214,6 @@ Auto-generated from Zig, Swift, and Kotlin source comments.
 - [`src/root.zig`](src/root.md)
 - [`templates/app/lib/main.zig`](templates/app/lib/main.md)
 - [`templates/app/wizig.api.zig`](templates/app/wizig.api.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/build.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/build.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap/args.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap/args.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap/codepoint_counting_writer.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap/codepoint_counting_writer.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap/parsers.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap/parsers.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap/streaming.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/clap/streaming.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/help.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/help.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/simple-ex.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/simple-ex.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/simple.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/simple.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/streaming-clap.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/streaming-clap.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/subcommands.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/subcommands.md)
-- [`zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/usage.zig`](zig-pkg/clap-0.11.0-oBajB7foAQC3Iyn4IVCkUdYaOVVng5IZkSncySTjNig1/example/usage.md)
 
 ### Swift
 

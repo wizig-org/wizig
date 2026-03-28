@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,12 +79,59 @@ class KotlinScope:
     hidden: bool
 
 
+def should_skip_source_path(rel: Path) -> bool:
+    return any(part in SKIP_PARTS for part in rel.parts) or any(
+        part.startswith(prefix) for part in rel.parts for prefix in SKIP_PREFIXES
+    )
+
+
 def discover_source_files() -> list[SourceFile]:
+    files = discover_source_files_with_git()
+    if files is not None:
+        return files
+    return discover_source_files_with_filesystem()
+
+
+def discover_source_files_with_git() -> list[SourceFile] | None:
+    try:
+        completed = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+    files: list[SourceFile] = []
+    seen: set[Path] = set()
+    for raw_path in completed.stdout.split(b"\0"):
+        if not raw_path:
+            continue
+        rel = Path(raw_path.decode("utf-8"))
+        if rel in seen:
+            continue
+        seen.add(rel)
+        language = LANGUAGE_BY_SUFFIX.get(rel.suffix)
+        if language is None:
+            continue
+        if should_skip_source_path(rel):
+            continue
+        path = ROOT / rel
+        if not path.is_file():
+            continue
+        files.append(SourceFile(language=language, path=path, rel_path=rel))
+
+    files.sort(key=lambda item: (LANGUAGE_ORDER_INDEX[item.language], item.rel_path.as_posix()))
+    return files
+
+
+def discover_source_files_with_filesystem() -> list[SourceFile]:
     files: list[SourceFile] = []
     for suffix, language in LANGUAGE_BY_SUFFIX.items():
         for path in ROOT.rglob(f"*{suffix}"):
             rel = path.relative_to(ROOT)
-            if any(part in SKIP_PARTS or any(part.startswith(prefix) for prefix in SKIP_PREFIXES) for part in rel.parts):
+            if should_skip_source_path(rel):
                 continue
             files.append(SourceFile(language=language, path=path, rel_path=rel))
 
