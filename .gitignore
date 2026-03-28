@@ -10,6 +10,7 @@ __pycache__
 **/local.properties
 DerivedData/
 .DS_Store
+__pycache__/
 # Prerequisites
 *.d
 
@@ -18,7 +19,7 @@ DerivedData/
 *.lo
 *.o
 *.obj
-
+*.pyc
 # Precompiled Headers
 *.gch
 *.pch
