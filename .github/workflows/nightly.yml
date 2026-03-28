@@ -1,9 +1,10 @@
 # Nightly build and pre-release workflow.
 #
-# Produces a rolling "nightly" GitHub pre-release with multi-platform
-# binaries built from the latest nightly branch commit.  The release is
-# replaced (not appended) on each run so there is always exactly one
-# nightly release.
+# Publishes two GitHub pre-releases per run:
+#   1. Rolling `nightly` tag — always points to the latest build.
+#   2. Dated  `nightly-YYYYMMDD` tag — archived, one per calendar day.
+#
+# Old dated nightlies are pruned after 30 days.
 #
 # Triggers:
 #   - Daily schedule at 00:00 UTC
@@ -133,7 +134,7 @@ jobs:
             wizig-*.tar.gz
             wizig-*.tar.gz.sha256
 
-  # ── 3. Publish rolling pre-release ────────────────────────────────
+  # ── 3. Publish pre-releases ──────────────────────────────────────
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -154,19 +155,13 @@ jobs:
           DATE="$(date -u +%Y%m%d)"
           SHORT_SHA="${GITHUB_SHA::8}"
           VERSION="nightly-${DATE}-${SHORT_SHA}"
-          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION"    >> "$GITHUB_OUTPUT"
+          echo "DATE_TAG=nightly-${DATE}" >> "$GITHUB_OUTPUT"
 
-      - name: Delete previous nightly release and tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
-
-      - name: Create nightly pre-release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate release notes
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
+          DATE_TAG="${{ steps.version.outputs.DATE_TAG }}"
 
           cat > release-notes.md << NOTES_EOF
           ## Nightly Build — ${VERSION}
@@ -179,6 +174,16 @@ jobs:
           **Branch:** \`nightly\`
           **Built:** $(date -u +"%Y-%m-%d %H:%M UTC")
 
+          ### Install
+
+          \`\`\`sh
+          # Latest nightly
+          curl -fsSL wizig.org/install.sh | sh -s -- nightly
+
+          # Pin this specific nightly
+          curl -fsSL wizig.org/install.sh | sh -s -- ${DATE_TAG}
+          \`\`\`
+
           ### Download
 
           | Platform | Architecture | Archive |
@@ -190,24 +195,20 @@ jobs:
 
           ### Verify checksums
 
-          Each archive has a corresponding \`.sha256\` file. Verify your download:
-
           \`\`\`sh
           sha256sum -c wizig-*.tar.gz.sha256
-          \`\`\`
-
-          ### Install manually
-
-          \`\`\`sh
-          tar xzf wizig-${VERSION}-<os>-<arch>.tar.gz
-          export PATH="\$PWD/wizig-${VERSION}-<os>-<arch>/bin:\$PATH"
-          wizig version
           \`\`\`
           NOTES_EOF
 
           # Remove leading whitespace from heredoc indentation
           sed -i 's/^          //' release-notes.md
 
+      - name: Publish rolling "nightly" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
           gh release create nightly \
             --target nightly \
             --title "Wizig Nightly (${VERSION})" \
@@ -215,3 +216,46 @@ jobs:
             --prerelease \
             artifacts/wizig-*.tar.gz \
             artifacts/wizig-*.tar.gz.sha256
+
+      - name: Publish dated "nightly-YYYYMMDD" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          DATE_TAG="${{ steps.version.outputs.DATE_TAG }}"
+          # If the same calendar day was already published (e.g. multiple
+          # pushes), replace it with the latest build.
+          gh release delete "$DATE_TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$DATE_TAG" \
+            --target nightly \
+            --title "Wizig Nightly (${VERSION})" \
+            --notes-file release-notes.md \
+            --prerelease \
+            artifacts/wizig-*.tar.gz \
+            artifacts/wizig-*.tar.gz.sha256
+
+  # ── 4. Prune dated nightlies older than 30 days ───────────────────
+  cleanup:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old nightly releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUTOFF="$(date -u -d '30 days ago' +%Y%m%d 2>/dev/null \
+                 || date -u -v-30d +%Y%m%d)"
+
+          gh release list \
+            --repo ${{ github.repository }} \
+            --limit 100 \
+            --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease) | .tagName' \
+          | grep '^nightly-[0-9]\{8\}$' \
+          | while read -r tag; do
+              TAG_DATE="${tag#nightly-}"
+              if [ "$TAG_DATE" -lt "$CUTOFF" ]; then
+                printf "Pruning old nightly: %s\n" "$tag"
+                gh release delete "$tag" --repo ${{ github.repository }} --yes --cleanup-tag 2>/dev/null || true
+              fi
+            done

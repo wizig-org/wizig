@@ -2,13 +2,14 @@
 # Wizig installer — https://wizig.org
 #
 # Usage:
-#   curl -fsSL wizig.org/install.sh | sh                    # latest stable
-#   curl -fsSL wizig.org/install.sh | sh -s -- nightly       # latest nightly
-#   curl -fsSL wizig.org/install.sh | sh -s -- 0.1.0        # specific version
-#   curl -fsSL wizig.org/install.sh | sh -s -- --uninstall   # uninstall
+#   curl -fsSL wizig.org/install.sh | sh                          # latest stable
+#   curl -fsSL wizig.org/install.sh | sh -s -- nightly             # latest nightly
+#   curl -fsSL wizig.org/install.sh | sh -s -- nightly-20260328    # specific nightly
+#   curl -fsSL wizig.org/install.sh | sh -s -- 0.1.0              # specific version
+#   curl -fsSL wizig.org/install.sh | sh -s -- --uninstall         # uninstall
 #
 # Environment variables:
-#   WIZIG_VERSION       Install a specific version or "nightly" (default: latest)
+#   WIZIG_VERSION       "nightly", "nightly-YYYYMMDD", or semver (default: latest)
 #   WIZIG_INSTALL_DIR   Custom install location (default: $HOME/.wizig)
 
 set -eu
@@ -81,11 +82,14 @@ resolve_version() {
 }
 
 download_and_install() {
-    if [ "$VERSION" = "nightly" ]; then
-        download_nightly
-    else
-        download_stable
-    fi
+    case "$VERSION" in
+        nightly|nightly-[0-9]*)
+            download_nightly
+            ;;
+        *)
+            download_stable
+            ;;
+    esac
 
     printf "Installing wizig %s (%s-%s)...\n" "$VERSION" "$OS" "$ARCH"
 
@@ -125,14 +129,17 @@ download_and_install() {
     printf "Installed to %s\n" "$WIZIG_INSTALL_DIR"
 }
 
-# Resolve the nightly release asset URL via GitHub API.  Nightly tarballs
+# Resolve a nightly release asset URL via GitHub API.  Nightly tarballs
 # include a date+sha suffix (e.g. wizig-nightly-20260328-abc12345-macos-arm64)
 # so we cannot predict the exact filename.
+#
+# Accepts VERSION = "nightly" (rolling latest) or "nightly-YYYYMMDD" (dated).
 download_nightly() {
-    printf "Resolving nightly release...\n"
+    NIGHTLY_TAG="$VERSION"
+    printf "Resolving %s release...\n" "$NIGHTLY_TAG"
 
-    RESPONSE="$(curl -fsSL "https://api.github.com/repos/${WIZIG_REPO}/releases/tags/nightly" 2>/dev/null)" || {
-        err "could not fetch nightly release. Is there a nightly release published at\nhttps://github.com/${WIZIG_REPO}/releases/tag/nightly ?"
+    RESPONSE="$(curl -fsSL "https://api.github.com/repos/${WIZIG_REPO}/releases/tags/${NIGHTLY_TAG}" 2>/dev/null)" || {
+        err "could not fetch release '${NIGHTLY_TAG}'. Is there a release at\nhttps://github.com/${WIZIG_REPO}/releases/tag/${NIGHTLY_TAG} ?"
     }
 
     # Match the asset whose name ends with <os>-<arch>.tar.gz (not .sha256).
@@ -140,10 +147,10 @@ download_nightly() {
     TARBALL="$(printf '%s' "$RESPONSE" | grep '"name"' | grep "$ASSET_PATTERN" | grep -v '\.sha256' | head -n1 | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
 
     if [ -z "$TARBALL" ]; then
-        err "no nightly asset found for ${OS}-${ARCH}\nhint: the nightly release may not have been published yet"
+        err "no nightly asset found for ${OS}-${ARCH}\nhint: the ${NIGHTLY_TAG} release may not have been published yet"
     fi
 
-    URL="https://github.com/${WIZIG_REPO}/releases/download/nightly/${TARBALL}"
+    URL="https://github.com/${WIZIG_REPO}/releases/download/${NIGHTLY_TAG}/${TARBALL}"
     CHECKSUM_URL="${URL}.sha256"
 }
 
