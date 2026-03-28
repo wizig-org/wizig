@@ -51,7 +51,7 @@ This minimizes host-side lifetime mistakes and keeps call sites simple. An optio
 
 ## C Header
 
-The public C API is declared in `ffi/include/wizig.h`. This header is:
+The public C API is declared in `src/ffi/include/wizig.h`. This header is:
 
 - Packaged into iOS XCFramework builds
 - Used by the generated modulemap for Swift interop

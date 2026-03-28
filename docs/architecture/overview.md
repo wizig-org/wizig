@@ -14,7 +14,7 @@ Wizig applications are structured in four layers:
 
 1. **Host UI** — Native platform UI (SwiftUI / Jetpack Compose)
 2. **Generated Bridge** — Typed Swift, Kotlin, and Zig clients generated from API discovery
-3. **FFI/Runtime** — C ABI symbols exported by `ffi/src/root.zig` with runtime primitives
+3. **FFI/Runtime** — C ABI symbols exported by `src/ffi/root.zig` with runtime primitives
 4. **App Domain** — Business logic written in Zig under `lib/`
 
 See [Runtime Layers](runtime-layers.md) for a detailed breakdown of each layer.

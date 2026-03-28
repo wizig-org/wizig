@@ -2,6 +2,8 @@
 ISSUES.md
 problems.md
 zig-out/
+.wizig/
+lib/
 .gradle/
 __pycache__
 **/.gradle/

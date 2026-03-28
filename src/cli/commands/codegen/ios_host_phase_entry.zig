@@ -34,7 +34,7 @@ pub const phase_entry =
     "\t\t\t\t\"$(SRCROOT)/../.wizig/generated/ios/WizigGeneratedApi.h\",\n" ++
     "\t\t\t\t\"$(SRCROOT)/../.wizig/generated/ios/WizigFFI.h\",\n" ++
     "\t\t\t\t\"$(SRCROOT)/../.wizig/generated/ios/module.modulemap\",\n" ++
-    "\t\t\t\t\"$(SRCROOT)/../.wizig/runtime/core/src/root.zig\",\n" ++
+    "\t\t\t\t\"$(SRCROOT)/../.wizig/runtime/core/root.zig\",\n" ++
     "\t\t\t\t\"$(SRCROOT)/../lib/WizigGeneratedAppModule.zig\",\n" ++
     "\t\t\t);\n" ++
     "\t\t\tname = \"" ++ phase_name ++ "\";\n" ++
@@ -115,7 +115,7 @@ pub const phase_entry =
     "  SYSROOT_PATH=\\\"$2\\\"\\n" ++
     "  OUTPUT_BIN=\\\"$3\\\"\\n" ++
     "  mkdir -p \\\"$(dirname \\\"${OUTPUT_BIN}\\\")\\\"\\n" ++
-    "  \\\"${ZIG_BIN}\\\" build-lib -dynamic -O\\\"${ZIG_OPTIMIZE}\\\" -fno-error-tracing -fno-unwind-tables -fstrip -target \\\"${TARGET_NAME}\\\" --dep wizig_core --dep wizig_app -Mroot=\\\"${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig\\\" -Mwizig_core=\\\"${RUNTIME_ROOT}/core/src/root.zig\\\" -Mwizig_app=\\\"${LIB_ROOT}/WizigGeneratedAppModule.zig\\\" --name WizigFFI --sysroot \\\"${SYSROOT_PATH}\\\" -L/usr/lib -F/System/Library/Frameworks -lc -femit-bin=\\\"${OUTPUT_BIN}\\\"\\n" ++
+    "  \\\"${ZIG_BIN}\\\" build-lib -dynamic -O\\\"${ZIG_OPTIMIZE}\\\" -fno-error-tracing -fno-unwind-tables -fstrip -target \\\"${TARGET_NAME}\\\" --dep wizig_core --dep wizig_app -Mroot=\\\"${GENERATED_ROOT}/WizigGeneratedFfiRoot.zig\\\" -Mwizig_core=\\\"${RUNTIME_ROOT}/core/root.zig\\\" -Mwizig_app=\\\"${LIB_ROOT}/WizigGeneratedAppModule.zig\\\" --name WizigFFI --sysroot \\\"${SYSROOT_PATH}\\\" -L/usr/lib -F/System/Library/Frameworks -lc -femit-bin=\\\"${OUTPUT_BIN}\\\"\\n" ++
     "}\\n" ++
     ios_phase_macho_fixup.fix_macho_text_page_alignment ++
     "build_ffi_slice \\\"aarch64-ios\\\" \\\"${IOS_SDKROOT}\\\" \\\"${TMP_DEVICE_FRAMEWORK_BIN}\\\"\\n" ++

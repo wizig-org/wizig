@@ -6,28 +6,28 @@ Wizig is organized into focused modules, each with a single responsibility:
 
 | Module | Root Source | Purpose |
 |--------|------------|---------|
-| `wizig_core` | `core/src/root.zig` | Runtime primitives, plugin manifest, registry codegen |
-| `wizig_ffi` | `ffi/src/root.zig` | C ABI bridge; exports `wizig_runtime_*`, `wizig_ffi_*` symbols |
-| `wizig_cli` | `cli/src/main.zig` | CLI binary; dispatches to command handlers |
+| `wizig_core` | `src/core/root.zig` | Runtime primitives, plugin manifest, registry codegen |
+| `wizig_ffi` | `src/ffi/root.zig` | C ABI bridge; exports `wizig_runtime_*`, `wizig_ffi_*` symbols |
+| `wizig_cli` | `src/cli/main.zig` | CLI binary; dispatches to command handlers |
 | `wizig` | `src/root.zig` | Compatibility re-export layer |
-| `runtime/ffi/` | `runtime/ffi/src/root.zig` | Vendored FFI for app-local use |
+| `runtime/ffi/` | `runtime/ffi/root.zig` | Vendored FFI for app-local use |
 
 ## CLI Commands
 
-Each CLI command lives in its own subdirectory under `cli/src/commands/`:
+Each CLI command lives in its own subdirectory under `src/cli/commands/`:
 
 | Command | Directory | Purpose |
 |---------|-----------|---------|
-| `create` | `cli/src/commands/create/` | Scaffold new projects |
-| `codegen` | `cli/src/commands/codegen/` | Generate typed bridge bindings |
-| `run` | `cli/src/commands/run/` | Build and run on device/simulator |
-| `build` | `cli/src/commands/build/` | Android multi-ABI and release builds |
-| `plugin` | `cli/src/commands/plugin/` | Validate, sync, add plugins |
-| `doctor` | `cli/src/commands/doctor/` | Validate host tools |
+| `create` | `src/cli/commands/create/` | Scaffold new projects |
+| `codegen` | `src/cli/commands/codegen/` | Generate typed bridge bindings |
+| `run` | `src/cli/commands/run/` | Build and run on device/simulator |
+| `build` | `src/cli/commands/build/` | Android multi-ABI and release builds |
+| `plugin` | `src/cli/commands/plugin/` | Validate, sync, add plugins |
+| `doctor` | `src/cli/commands/doctor/` | Validate host tools |
 
 ## Codegen Pipeline
 
-The codegen system (`cli/src/commands/codegen/`) is the most complex subsystem:
+The codegen system (`src/cli/commands/codegen/`) is the most complex subsystem:
 
 | Sub-module | Purpose |
 |------------|---------|
@@ -55,10 +55,10 @@ The codegen system (`cli/src/commands/codegen/`) is the most complex subsystem:
 | File | Purpose |
 |------|---------|
 | `toolchains.toml` | Governance policy (single source of truth) |
-| `cli/src/support/toolchains/manifest.zig` | TOML parser |
-| `cli/src/support/toolchains/probe.zig` | Host tool version detection |
-| `cli/src/support/toolchains/version.zig` | Version comparison logic |
-| `cli/src/support/toolchains/lockfile.zig` | Lock file generation |
+| `src/cli/support/toolchains/manifest.zig` | TOML parser |
+| `src/cli/support/toolchains/probe.zig` | Host tool version detection |
+| `src/cli/support/toolchains/version.zig` | Version comparison logic |
+| `src/cli/support/toolchains/lockfile.zig` | Lock file generation |
 
 ## Build and Tooling
 
@@ -75,8 +75,8 @@ The codegen system (`cli/src/commands/codegen/`) is the most complex subsystem:
 
 When working on a specific area, start here:
 
-- **CLI dispatch**: `cli/src/main.zig` — command routing
-- **FFI boundary**: `ffi/src/root.zig` — C ABI exports
-- **Runtime core**: `core/src/root.zig` — runtime primitives
-- **Codegen model**: `cli/src/commands/codegen/model/` — API specification types
-- **Plugin registry**: `core/src/` — plugin manifest and registry
+- **CLI dispatch**: `src/cli/main.zig` — command routing
+- **FFI boundary**: `src/ffi/root.zig` — C ABI exports
+- **Runtime core**: `src/core/root.zig` — runtime primitives
+- **Codegen model**: `src/cli/commands/codegen/model/` — API specification types
+- **Plugin registry**: `src/core/` — plugin manifest and registry

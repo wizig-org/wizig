@@ -99,8 +99,8 @@ fn buildResolved(arena: std.mem.Allocator, io: std.Io, root: []const u8) !Resolv
 fn isValidRoot(arena: std.mem.Allocator, io: std.Io, root: []const u8) bool {
     const marker_a = path_util.join(arena, root, "sdk/ios/Package.swift") catch return false;
     const marker_b = path_util.join(arena, root, "sdk/android/src/main/kotlin/dev/wizig/WizigRuntime.kt") catch return false;
-    const marker_c = path_util.join(arena, root, "runtime/ffi/src/root.zig") catch return false;
-    const marker_d = path_util.join(arena, root, "runtime/core/src/root.zig") catch return false;
+    const marker_c = path_util.join(arena, root, "runtime/ffi/root.zig") catch return false;
+    const marker_d = path_util.join(arena, root, "runtime/core/root.zig") catch return false;
     const generated_templates_dir = path_util.join(arena, root, "build/generated/templates") catch return false;
     const source_templates_dir = path_util.join(arena, root, "templates") catch return false;
     const has_templates = isValidTemplatesRoot(arena, io, generated_templates_dir) or isValidTemplatesRoot(arena, io, source_templates_dir);
